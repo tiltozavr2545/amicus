@@ -8,6 +8,7 @@ import 'features/auth/auth_providers.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/sign_up_screen.dart';
 import 'features/connections/connections_screen.dart';
+import 'features/feed/feed_screen.dart';
 import 'features/profile/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -31,7 +32,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       );
     },
     routes: [
-      GoRoute(path: '/', builder: (context, state) => const ProfileScreen()),
+      GoRoute(path: '/', builder: (context, state) => const FeedScreen()),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfileScreen(),
+      ),
       GoRoute(
         path: '/connections',
         builder: (context, state) => const ConnectionsScreen(),
