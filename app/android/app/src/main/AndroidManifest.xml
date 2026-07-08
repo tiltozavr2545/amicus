@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug/profile manifests declare this too (Flutter tool needs it for
+         hot reload etc.), but release doesn't inherit from those — without
+         it here, the release build has no network access at all. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="krug"
+        android:label="Круг"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
