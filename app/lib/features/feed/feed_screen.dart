@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../auth/auth_providers.dart';
+import 'comments_screen.dart';
 import 'create_post_screen.dart';
 import 'feed_repository.dart';
 
@@ -47,7 +49,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       _errorMessage = null;
     });
     try {
-      final page = await ref.read(feedRepositoryProvider).fetchPage(_nextPage);
+      final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
+      final page = await ref
+          .read(feedRepositoryProvider)
+          .fetchPage(_nextPage, currentUserId: userId);
       setState(() {
         _posts.addAll(page);
         _nextPage++;
@@ -67,6 +72,28 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       _hasMore = true;
     });
     await _loadMore();
+  }
+
+  Future<void> _toggleLike(int index) async {
+    final post = _posts[index];
+    final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
+    final wasLiked = post.likedByMe;
+    setState(() {
+      _posts[index] = post.copyWith(
+        likedByMe: !wasLiked,
+        likeCount: post.likeCount + (wasLiked ? -1 : 1),
+      );
+    });
+    try {
+      final repo = ref.read(feedRepositoryProvider);
+      if (wasLiked) {
+        await repo.unlike(postId: post.id, userId: userId);
+      } else {
+        await repo.like(postId: post.id, userId: userId);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _posts[index] = post);
+    }
   }
 
   @override
@@ -134,7 +161,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           )
                         : const SizedBox.shrink();
                   }
-                  return _PostCard(post: _posts[index]);
+                  final post = _posts[index];
+                  return _PostCard(
+                    post: post,
+                    onToggleLike: () => _toggleLike(index),
+                    onOpenComments: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CommentsScreen(postId: post.id),
+                      ),
+                    ),
+                  );
                 },
               ),
       ),
@@ -143,9 +179,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 }
 
 class _PostCard extends StatelessWidget {
-  const _PostCard({required this.post});
+  const _PostCard({
+    required this.post,
+    required this.onToggleLike,
+    required this.onOpenComments,
+  });
 
   final Post post;
+  final VoidCallback onToggleLike;
+  final VoidCallback onOpenComments;
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +219,25 @@ class _PostCard extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                IconButton(
+                  icon: Icon(
+                    post.likedByMe ? Icons.favorite : Icons.favorite_border,
+                  ),
+                  color: post.likedByMe ? Colors.red : null,
+                  onPressed: onToggleLike,
+                ),
+                Text('${post.likeCount}'),
+                const SizedBox(width: 16),
+                IconButton(
+                  icon: const Icon(Icons.mode_comment_outlined),
+                  onPressed: onOpenComments,
+                ),
+                Text('${post.commentCount}'),
+              ],
+            ),
           ],
         ),
       ),
