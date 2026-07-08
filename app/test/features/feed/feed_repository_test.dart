@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:krug/features/feed/feed_repository.dart';
+import 'package:amicus/features/feed/feed_repository.dart';
 
 void main() {
   group('Post.fromRow', () {

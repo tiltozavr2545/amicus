@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:krug/features/auth/sign_up_screen.dart';
+import 'package:amicus/features/auth/sign_up_screen.dart';
 
 void main() {
   testWidgets(

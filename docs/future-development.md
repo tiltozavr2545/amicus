@@ -1,4 +1,4 @@
-# Future Development: «Круг»
+# Future Development: Amicus (ранее «Круг»)
 
 Всё, что сознательно отложено за пределы MVP (v1), чтобы не утонуть на старте. См. основной план в [project-brief.md](project-brief.md).
 

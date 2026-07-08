@@ -4,7 +4,7 @@
          it here, the release build has no network access at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="Круг"
+        android:label="Amicus"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

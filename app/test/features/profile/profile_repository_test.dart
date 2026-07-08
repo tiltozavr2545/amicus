@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:krug/features/profile/profile_repository.dart';
+import 'package:amicus/features/profile/profile_repository.dart';
 
 void main() {
   group('Profile.fromRow', () {

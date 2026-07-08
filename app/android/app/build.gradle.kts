@@ -18,7 +18,7 @@ if (hasKeystoreProperties) {
 }
 
 android {
-    namespace = "com.github.tiltozavr2545.krug"
+    namespace = "com.github.tiltozavr2545.amicus"
     compileSdk = flutter.compileSdkVersion
     // Pinned above flutter.ndkVersion (26.x): several plugins (app_links,
     // image_picker_android, etc.) require 27.0.12077973.
@@ -34,7 +34,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.github.tiltozavr2545.krug"
+        applicationId = "com.github.tiltozavr2545.amicus"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

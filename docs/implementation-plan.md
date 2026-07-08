@@ -1,4 +1,4 @@
-# Implementation Plan: «Круг» (MVP)
+# Implementation Plan: Amicus (ранее «Круг») (MVP)
 
 Пошаговый план реализации MVP из [project-brief.md](project-brief.md), с CI и деплоем, встроенными в этапы, а не отложенными на конец. Проект mobile-first (Android + iOS через Flutter), web не рассматривается.
 
@@ -99,7 +99,8 @@
 - **Кеширование картинок:** cached_network_image
 - **Версионирование схемы БД:** Supabase CLI migrations (не ручные правки в дашборде)
 - **Линтинг/форматирование:** flutter_lints + `dart format`, проверяются в CI с первого коммита
-- **Структура репозитория:** `docs/` — планирование, `app/` — Flutter-проект (org `com.github.tiltozavr2545`, имя пакета `krug`)
+- **Структура репозитория:** `docs/` — планирование, `app/` — Flutter-проект (org `com.github.tiltozavr2545`, имя пакета `amicus`)
+- **Название проекта:** Amicus (переименовано с рабочего «Круг» после старта разработки — см. project-brief.md)
 - **Репозиторий:** [github.com/tiltozavr2545/lk-system](https://github.com/tiltozavr2545/lk-system) (публичный)
 - **Версия Flutter:** закреплена на 3.32.8 (SDK в `~/development/flutter`) — новее нельзя, пока dev-машина на macOS 12; при обновлении macOS до 14+ можно снять пин и перейти на актуальную стабильную версию
 - **Supabase API keys:** используется новый формат (Publishable/Secret вместо legacy anon/service_role) — в `SUPABASE_ANON_KEY` кладём именно Publishable key (`sb_publishable_...`); Secret key нигде в клиентском коде не используется

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:krug/router.dart';
+import 'package:amicus/router.dart';
 
 void main() {
   group('computeRedirect', () {

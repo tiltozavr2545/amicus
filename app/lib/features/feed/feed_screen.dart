@@ -100,7 +100,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Круг'),
+        title: const Text('Amicus'),
         actions: [
           IconButton(
             icon: const Icon(Icons.people_outline),
