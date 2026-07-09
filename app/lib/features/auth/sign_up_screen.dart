@@ -18,6 +18,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  String? _successMessage;
 
   @override
   void dispose() {
@@ -31,6 +32,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
     });
     try {
       final client = ref.read(supabaseClientProvider);
@@ -39,11 +41,32 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       // out of this metadata. Doing it this way means the profile exists
       // even when email confirmation is pending and no session/JWT exists
       // yet for a client-side insert.
-      await client.auth.signUp(
+      final response = await client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         data: {'name': _nameController.text.trim()},
       );
+      // Supabase won't throw for an already-registered email (that would
+      // let an attacker enumerate accounts) — it silently returns a user
+      // with no identities instead. That's the only signal we get.
+      if (response.user != null &&
+          (response.user!.identities?.isEmpty ?? false)) {
+        setState(
+          () =>
+              _errorMessage = 'Этот email уже зарегистрирован. Попробуй войти.',
+        );
+        return;
+      }
+      // With email confirmation required, signUp() succeeds but doesn't
+      // return a session — without this message the screen would just sit
+      // there with no sign anything happened.
+      if (response.session == null && mounted) {
+        setState(
+          () => _successMessage =
+              'Письмо со ссылкой для подтверждения отправлено на ${_emailController.text.trim()}. '
+              'Перейди по ссылке в письме, потом вернись сюда и войди с этим email и паролем.',
+        );
+      }
     } on AuthException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
@@ -87,20 +110,33 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            FilledButton(
-              onPressed: _isLoading ? null : _signUp,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Зарегистрироваться'),
-            ),
-            TextButton(
-              onPressed: () => context.go('/sign-in'),
-              child: const Text('Уже есть аккаунт? Войти'),
-            ),
+            if (_successMessage != null) ...[
+              Text(
+                _successMessage!,
+                style: const TextStyle(color: Colors.green),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => context.go('/sign-in'),
+                child: const Text('Перейти ко входу'),
+              ),
+              const SizedBox(height: 12),
+            ] else ...[
+              FilledButton(
+                onPressed: _isLoading ? null : _signUp,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Зарегистрироваться'),
+              ),
+              TextButton(
+                onPressed: () => context.go('/sign-in'),
+                child: const Text('Уже есть аккаунт? Войти'),
+              ),
+            ],
           ],
         ),
       ),
