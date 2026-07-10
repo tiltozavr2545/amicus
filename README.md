@@ -16,7 +16,14 @@
 
 ## Скриншоты
 
-_TODO: добавить скриншоты ленты, профиля и экрана «Знакомства»._
+<table>
+<tr>
+<td><img src="docs/screenshots/feed.png" width="200" alt="Общая лента"><br><sub>Лента</sub></td>
+<td><img src="docs/screenshots/comments.png" width="200" alt="Комментарии"><br><sub>Комментарии</sub></td>
+<td><img src="docs/screenshots/connections.png" width="200" alt="Знакомства"><br><sub>Знакомства</sub></td>
+<td><img src="docs/screenshots/profile.png" width="200" alt="Профиль"><br><sub>Профиль</sub></td>
+</tr>
+</table>
 
 ## Стек
 
