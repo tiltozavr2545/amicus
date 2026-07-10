@@ -33,10 +33,7 @@ void main() {
         'created_at': '2026-01-01T12:00:00Z',
       });
 
-      final liked = post.copyWith(
-        myReaction: ReactionType.like,
-        likeCount: 1,
-      );
+      final liked = post.copyWith(myReaction: ReactionType.like, likeCount: 1);
 
       expect(liked.myReaction, ReactionType.like);
       expect(liked.likeCount, 1);
