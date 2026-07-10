@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Контекст для Claude при работе в этом репозитории. MVP-план — [docs/project-brief.md](docs/project-brief.md), всё отложенное (v1.5/v2+, открытые вопросы) — [docs/future-development.md](docs/future-development.md), пошаговый план реализации с CI/деплоем — [docs/implementation-plan.md](docs/implementation-plan.md).
+Контекст для Claude при работе в этом репозитории. MVP-план — [docs/project-brief.md](docs/project-brief.md), всё отложенное (1.0/2.0+, открытые вопросы) — [docs/future-development.md](docs/future-development.md), пошаговый план реализации с CI/деплоем — [docs/implementation-plan.md](docs/implementation-plan.md).
 
 ## Проект
 
@@ -18,7 +18,7 @@
 
 - **Frontend:** Flutter / Dart (кроссплатформенно, iOS + Android)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + Realtime, Row Level Security для контроля доступа к постам)
-- Альтернатива на будущее (не для v1): свой backend на ASP.NET Core + PostgreSQL
+- Альтернатива на будущее (не для 0.1): свой backend на ASP.NET Core + PostgreSQL
 
 ## Модель данных (черновик, дорабатывается по ходу)
 
@@ -26,11 +26,11 @@
 
 Полные поля — в разделе 3 брифа.
 
-## Границы MVP (v1)
+## Границы MVP (0.1)
 
 Делать: регистрация/вход, профиль, invite-ссылки → Connection, общая лента (текст + одно фото, видна всем Connections), лайк со счётчиком, **плоские** комментарии (без тредов).
 
-Не делать в v1 (отложено, см. [future-development.md](docs/future-development.md)): комнаты (Rooms) целиком, несколько типов реакций, вложенные комментарии, QR-сканирование, push-уведомления, модерация/жалобы/блокировка, настройки приватности контактов, web-версия, свой backend взамен Supabase.
+Не делать в 0.1 (отложено, см. [future-development.md](docs/future-development.md)): комнаты (Rooms) целиком, несколько типов реакций, вложенные комментарии, QR-сканирование, push-уведомления, модерация/жалобы/блокировка, настройки приватности контактов, web-версия, свой backend взамен Supabase.
 
 ## Дорожная карта
 
