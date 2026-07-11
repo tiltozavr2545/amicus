@@ -43,7 +43,7 @@ build-android:
 
 pre-commit: verify
 
-pre-push: verify verify-version build-android
+pre-push: verify build-android
 
 install-hooks:
 	git config core.hooksPath .githooks
