@@ -49,10 +49,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       _errorMessage = null;
     });
     try {
-      final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
-      final page = await ref
-          .read(feedRepositoryProvider)
-          .fetchPage(_nextPage, currentUserId: userId);
+      final page = await ref.read(feedRepositoryProvider).fetchPage(_nextPage);
       setState(() {
         _posts.addAll(page);
         _nextPage++;
@@ -343,15 +340,19 @@ class _PostCard extends StatelessWidget {
                   selected: post.myReaction == ReactionType.neutral,
                   onPressed: () => onReact(ReactionType.neutral),
                 ),
-                _ReactionButton(
-                  selectedIcon: Icons.thumb_down,
-                  unselectedIcon: Icons.thumb_down_outlined,
-                  color: Colors.red,
-                  tooltip: 'Не нравится',
-                  count: post.dislikeCount,
-                  selected: post.myReaction == ReactionType.dislike,
-                  onPressed: () => onReact(ReactionType.dislike),
-                ),
+                // Authors can opt out of negative reactions: hide the dislike
+                // button under their posts. The database enforces the same rule,
+                // so this stays a UI nicety rather than the actual guard.
+                if (!post.authorDislikesDisabled)
+                  _ReactionButton(
+                    selectedIcon: Icons.thumb_down,
+                    unselectedIcon: Icons.thumb_down_outlined,
+                    color: Colors.red,
+                    tooltip: 'Не нравится',
+                    count: post.dislikeCount,
+                    selected: post.myReaction == ReactionType.dislike,
+                    onPressed: () => onReact(ReactionType.dislike),
+                  ),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.mode_comment_outlined),

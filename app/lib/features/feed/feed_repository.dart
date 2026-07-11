@@ -27,6 +27,7 @@ class Post {
     required this.authorId,
     required this.authorName,
     required this.createdAt,
+    this.authorDislikesDisabled = false,
     this.text,
     this.imagePath,
     this.imageUrl,
@@ -41,6 +42,11 @@ class Post {
   final String authorId;
   final String authorName;
   final DateTime createdAt;
+
+  /// The author opted out of negative reactions: the dislike button is hidden
+  /// under their posts (and the database rejects a dislike on them). Sourced
+  /// from the author's profile, so nothing in this code names a specific user.
+  final bool authorDislikesDisabled;
   final String? text;
   final String? imagePath;
   final String? imageUrl;
@@ -58,6 +64,10 @@ class Post {
       authorId: row['author_id'] as String,
       authorName: (row['author'] as Map<String, dynamic>)['name'] as String,
       createdAt: DateTime.parse(row['created_at'] as String),
+      authorDislikesDisabled:
+          (row['author'] as Map<String, dynamic>)['dislikes_disabled']
+              as bool? ??
+          false,
       text: row['text'] as String?,
       imagePath: row['image_path'] as String?,
     );
@@ -76,6 +86,7 @@ class Post {
       authorId: authorId,
       authorName: authorName,
       createdAt: createdAt,
+      authorDislikesDisabled: authorDislikesDisabled,
       text: text,
       imagePath: imagePath,
       imageUrl: imageUrl ?? this.imageUrl,
@@ -126,16 +137,13 @@ class FeedRepository {
 
   /// Fetches one page of the feed (newest first), with a signed URL
   /// resolved for each post's photo (the `media` bucket is private, so a
-  /// plain public URL wouldn't be servable), plus like/comment counts.
-  Future<List<Post>> fetchPage(
-    int page, {
-    required String currentUserId,
-  }) async {
+  /// plain public URL wouldn't be servable), plus reaction/comment counts.
+  Future<List<Post>> fetchPage(int page) async {
     final from = page * pageSize;
     final to = from + pageSize - 1;
     final rows = await _client
         .from('posts')
-        .select('*, author:users(name)')
+        .select('*, author:users(name, dislikes_disabled)')
         .order('created_at', ascending: false)
         .range(from, to);
 
@@ -144,10 +152,13 @@ class FeedRepository {
 
     final postIds = posts.map((p) => p.id).toList();
 
-    final reactionRows = await _client
-        .from('reactions')
-        .select('post_id, user_id, type')
-        .inFilter('post_id', postIds);
+    // Reaction *counts* are public to anyone who can see the post, but who
+    // reacted is not: the reactions table only exposes the caller's own rows,
+    // so totals come from a server-side function that returns numbers plus the
+    // caller's own reaction — never other users' ids.
+    final summaryRows =
+        await _client.rpc('reaction_summary', params: {'p_post_ids': postIds})
+            as List<dynamic>;
     final commentRows = await _client
         .from('comments')
         .select('post_id')
@@ -157,18 +168,13 @@ class FeedRepository {
     final neutralCounts = <String, int>{};
     final dislikeCounts = <String, int>{};
     final myReactions = <String, ReactionType>{};
-    for (final row in reactionRows) {
+    for (final row in summaryRows.cast<Map<String, dynamic>>()) {
       final postId = row['post_id'] as String;
-      final type = ReactionType.fromDb(row['type'] as String);
-      switch (type) {
-        case ReactionType.like:
-          likeCounts[postId] = (likeCounts[postId] ?? 0) + 1;
-        case ReactionType.neutral:
-          neutralCounts[postId] = (neutralCounts[postId] ?? 0) + 1;
-        case ReactionType.dislike:
-          dislikeCounts[postId] = (dislikeCounts[postId] ?? 0) + 1;
-      }
-      if (row['user_id'] == currentUserId) myReactions[postId] = type;
+      likeCounts[postId] = (row['like_count'] as num).toInt();
+      neutralCounts[postId] = (row['neutral_count'] as num).toInt();
+      dislikeCounts[postId] = (row['dislike_count'] as num).toInt();
+      final mine = row['my_reaction'] as String?;
+      if (mine != null) myReactions[postId] = ReactionType.fromDb(mine);
     }
 
     final commentCounts = <String, int>{};

@@ -20,6 +20,19 @@ void main() {
       expect(post.neutralCount, 0);
       expect(post.dislikeCount, 0);
       expect(post.myReaction, null);
+      expect(post.authorDislikesDisabled, false);
+    });
+
+    test('reads the author opt-out flag when present', () {
+      final post = Post.fromRow({
+        'id': 'post-1',
+        'author_id': 'user-1',
+        'author': {'name': 'Alice', 'dislikes_disabled': true},
+        'text': 'Hello',
+        'created_at': '2026-01-01T12:00:00Z',
+      });
+
+      expect(post.authorDislikesDisabled, true);
     });
   });
 
@@ -39,6 +52,18 @@ void main() {
       expect(liked.likeCount, 1);
       expect(liked.text, 'Hello');
       expect(liked.id, 'post-1');
+    });
+
+    test('preserves the author opt-out flag across copies', () {
+      final post = Post.fromRow({
+        'id': 'post-1',
+        'author_id': 'user-1',
+        'author': {'name': 'Alice', 'dislikes_disabled': true},
+        'text': 'Hello',
+        'created_at': '2026-01-01T12:00:00Z',
+      });
+
+      expect(post.copyWith(likeCount: 5).authorDislikesDisabled, true);
     });
 
     test('can clear myReaction back to null', () {
