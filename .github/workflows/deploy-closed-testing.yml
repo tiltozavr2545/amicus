@@ -106,7 +106,7 @@ jobs:
         run: |
           set -eu
           umask 077
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/android/upload-keystore.jks
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/android/app/upload-keystore.jks
           cat > app/android/key.properties <<EOF
           storeFile=upload-keystore.jks
           storePassword=$ANDROID_KEYSTORE_PASSWORD
@@ -135,4 +135,4 @@ jobs:
       - name: Remove signing files
         if: always()
         working-directory: ${{ github.workspace }}
-        run: rm -f app/android/key.properties app/android/upload-keystore.jks
+        run: rm -f app/android/key.properties app/android/app/upload-keystore.jks
