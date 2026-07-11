@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: app
@@ -19,7 +26,14 @@ jobs:
         with:
           flutter-version: '3.32.8'
           channel: 'stable'
-      - run: flutter pub get
+          cache: true
+          pub-cache: true
+      - run: flutter pub get --enforce-lockfile
       - run: dart format --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Build Android app bundle
+        run: >-
+          flutter build appbundle --release
+          --dart-define=SUPABASE_URL=https://example.invalid
+          --dart-define=SUPABASE_ANON_KEY=ci-placeholder
