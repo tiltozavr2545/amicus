@@ -46,6 +46,33 @@ jobs:
 
       - run: flutter pub get --enforce-lockfile
 
+      - name: Validate deployment secrets
+        working-directory: ${{ github.workspace }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -eu
+          for secret_name in \
+            ANDROID_KEYSTORE_BASE64 \
+            ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS \
+            ANDROID_KEY_PASSWORD \
+            GOOGLE_PLAY_SERVICE_ACCOUNT_JSON \
+            SUPABASE_URL \
+            SUPABASE_ANON_KEY; do
+            eval "secret_value=\${$secret_name-}"
+            if [ -z "$secret_value" ]; then
+              echo "::error title=Missing deployment secret::$secret_name is not configured"
+              exit 1
+            fi
+          done
+
       - name: Verify merged version bump
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
