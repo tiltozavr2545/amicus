@@ -1,0 +1,61 @@
+name: Deploy to Google Play
+
+# Runs after CI finishes on main, and only deploys if CI passed — merging to
+# main is the release signal (see CLAUDE.md branching model), but a broken
+# build should never reach production just because it landed on main.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          channel: 'stable'
+
+      - run: flutter pub get
+
+      - name: Restore release keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+
+      - name: Write key.properties
+        run: |
+          cat <<EOF > android/key.properties
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=app/release.keystore
+          EOF
+
+      - name: Write .env
+        run: |
+          cat <<EOF > .env
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          EOF
+
+      - name: Build release AAB
+        run: flutter build appbundle --release --dart-define-from-file=.env
+
+      - name: Upload to Google Play (production)
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.github.tiltozavr2545.amicus
+          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
+          track: production
+          status: completed
