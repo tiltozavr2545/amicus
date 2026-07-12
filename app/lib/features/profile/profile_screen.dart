@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,16 +8,6 @@ import 'profile_repository.dart';
 final _profileProvider = FutureProvider.autoDispose<Profile>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   return ref.watch(profileRepositoryProvider).fetchProfile(userId!);
-});
-
-final _avatarBytesProvider = FutureProvider.autoDispose<Uint8List?>((
-  ref,
-) async {
-  final profile = await ref.watch(_profileProvider.future);
-  if (profile.avatarPath == null) return null;
-  return ref
-      .watch(profileRepositoryProvider)
-      .downloadAvatar(profile.avatarPath!);
 });
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -68,7 +56,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .read(profileRepositoryProvider)
           .uploadAvatar(userId: userId, bytes: bytes, fileExt: ext);
       ref.invalidate(_profileProvider);
-      ref.invalidate(_avatarBytesProvider);
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
     }
@@ -78,7 +65,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final userId = ref.watch(currentUserIdProvider);
     final profileAsync = ref.watch(_profileProvider);
-    final avatarAsync = ref.watch(_avatarBytesProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -99,6 +85,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (_nameController.text.isEmpty) {
             _nameController.text = profile.name;
           }
+          final avatarBytes = profile.avatarPath == null
+              ? null
+              : ref.watch(avatarBytesProvider(profile.avatarPath!)).value;
           return Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -109,12 +98,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       : () => _pickAndUploadAvatar(userId!),
                   child: CircleAvatar(
                     radius: 48,
-                    backgroundImage: avatarAsync.value != null
-                        ? MemoryImage(avatarAsync.value!)
+                    backgroundImage: avatarBytes != null
+                        ? MemoryImage(avatarBytes)
                         : null,
                     child: _isUploadingAvatar
                         ? const CircularProgressIndicator()
-                        : avatarAsync.value == null
+                        : avatarBytes == null
                         ? const Icon(Icons.camera_alt, size: 32)
                         : null,
                   ),

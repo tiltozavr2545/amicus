@@ -31,8 +31,8 @@
 **Статус:** сделано
 
 1. ✅ Экраны регистрации/входа (`sign_in_screen.dart`, `sign_up_screen.dart`) через Supabase Auth SDK; go_router с редиректом по auth-состоянию (`router.dart`).
-2. ✅ Таблица `users` создана миграцией, RLS: чтение — всем authenticated, запись/обновление — только своя строка (`auth.uid() = id`).
-3. ✅ Экран профиля: редактирование имени, выбор и загрузка аватара в приватный bucket `media` (`avatars/{user_id}/...`), отображение через `storage.download()` — SDK сам подставляет access token, ручные signed URL не понадобились.
+2. ✅ Таблица `users` создана миграцией, RLS: чтение — всем authenticated, запись/обновление — только своя строка (`auth.uid() = id`). (Чтение позже, в 0.4.0, сужено до «своя строка ИЛИ мой Connection» — см. CLAUDE.md и раздел «Безопасность и приватность» в future-development.md.)
+3. ✅ Экран профиля: редактирование имени, выбор и загрузка аватара в приватный bucket `media` (`avatars/{user_id}/...`), отображение через `storage.download()` — SDK сам подставляет access token, ручные signed URL не понадобились. (SELECT-политику Storage на аватарки позже, в 0.5.0, тоже сузили до Connections — см. future-development.md.)
 4. ⏸️ CI-job для проверки миграций (`supabase db push --dry-run` в пайплайне) — **не сделано**, отложено. Миграции применяются вручную через Supabase CLI с personal access token (используется только локально, не хранится в репозитории/CI). Для соло-проекта это приемлемо; если станет больно — добавить токен в GitHub Secrets и настроить job.
 
 Секреты передаются в приложение через `--dart-define-from-file=.env` (не `flutter_dotenv`) — так `.env` не нужно объявлять Flutter-ассетом, и CI (`flutter analyze`/`flutter test`) не ломается из-за отсутствия файла с секретами.

@@ -4,12 +4,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_providers.dart';
+import '../profile/profile_repository.dart';
+import 'connection_duration.dart';
 import 'connections_repository.dart';
 
 final _friendsProvider = FutureProvider.autoDispose<List<Friend>>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   return ref.watch(connectionsRepositoryProvider).fetchFriends(userId!);
 });
+
+class _FriendAvatar extends ConsumerWidget {
+  const _FriendAvatar({required this.avatarPath});
+
+  final String? avatarPath;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (avatarPath == null) {
+      return const CircleAvatar(child: Icon(Icons.person));
+    }
+
+    final avatarAsync = ref.watch(avatarBytesProvider(avatarPath!));
+    return CircleAvatar(
+      backgroundImage: avatarAsync.value != null
+          ? MemoryImage(avatarAsync.value!)
+          : null,
+      child: avatarAsync.value == null ? const Icon(Icons.person) : null,
+    );
+  }
+}
 
 class ConnectionsScreen extends ConsumerStatefulWidget {
   const ConnectionsScreen({super.key});
@@ -183,10 +206,13 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                         .map(
                           (friend) => ListTile(
                             contentPadding: EdgeInsets.zero,
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.person),
+                            leading: _FriendAvatar(
+                              avatarPath: friend.avatarPath,
                             ),
                             title: Text(friend.name),
+                            subtitle: Text(
+                              formatConnectionSummary(friend.connectedAt),
+                            ),
                           ),
                         )
                         .toList(),

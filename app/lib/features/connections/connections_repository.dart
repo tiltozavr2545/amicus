@@ -11,10 +11,17 @@ class ActivatedConnection {
 }
 
 class Friend {
-  const Friend({required this.userId, required this.name});
+  const Friend({
+    required this.userId,
+    required this.name,
+    required this.connectedAt,
+    this.avatarPath,
+  });
 
   final String userId;
   final String name;
+  final DateTime connectedAt;
+  final String? avatarPath;
 }
 
 class ConnectionsRepository {
@@ -42,9 +49,9 @@ class ConnectionsRepository {
     final rows = await _client
         .from('connections')
         .select(
-          'user_a_id, user_b_id, '
-          'user_a:users!connections_user_a_id_fkey(name), '
-          'user_b:users!connections_user_b_id_fkey(name)',
+          'user_a_id, user_b_id, created_at, '
+          'user_a:users!connections_user_a_id_fkey(name, avatar_path), '
+          'user_b:users!connections_user_b_id_fkey(name, avatar_path)',
         )
         .or('user_a_id.eq.$currentUserId,user_b_id.eq.$currentUserId')
         .order('created_at', ascending: false);
@@ -54,10 +61,15 @@ class ConnectionsRepository {
       final otherId = isCurrentUserA
           ? row['user_b_id'] as String
           : row['user_a_id'] as String;
-      final otherName =
+      final other =
           (isCurrentUserA ? row['user_b'] : row['user_a'])
               as Map<String, dynamic>;
-      return Friend(userId: otherId, name: otherName['name'] as String);
+      return Friend(
+        userId: otherId,
+        name: other['name'] as String,
+        connectedAt: DateTime.parse(row['created_at'] as String),
+        avatarPath: other['avatar_path'] as String?,
+      );
     }).toList();
   }
 }
