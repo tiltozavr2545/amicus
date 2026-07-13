@@ -1,42 +1,35 @@
 import 'package:intl/intl.dart';
 
-String _pluralize(int n, String one, String few, String many) {
-  final mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 14) return many;
-  switch (n % 10) {
-    case 1:
-      return one;
-    case 2:
-    case 3:
-    case 4:
-      return few;
-    default:
-      return many;
-  }
-}
+import '../../l10n/app_localizations.dart';
 
-/// Форматирует «мы знакомы N дней/месяцев/лет» по дате создания Connection.
-String formatConnectionDuration(DateTime connectedAt, {DateTime? now}) {
+/// Formats "known for N days/months/years" from the Connection's creation date.
+String formatConnectionDuration(
+  AppLocalizations l10n,
+  DateTime connectedAt, {
+  DateTime? now,
+}) {
   final days = (now ?? DateTime.now()).difference(connectedAt).inDays;
 
-  if (days < 1) return 'Знакомы меньше дня';
+  if (days < 1) return l10n.connectionKnownLessThanDay;
 
   if (days < 30) {
-    return 'Знакомы $days ${_pluralize(days, 'день', 'дня', 'дней')}';
+    return l10n.connectionKnownDays(days);
   }
 
   if (days < 365) {
-    final months = days ~/ 30;
-    return 'Знакомы $months ${_pluralize(months, 'месяц', 'месяца', 'месяцев')}';
+    return l10n.connectionKnownMonths(days ~/ 30);
   }
 
-  final years = days ~/ 365;
-  return 'Знакомы $years ${_pluralize(years, 'год', 'года', 'лет')}';
+  return l10n.connectionKnownYears(days ~/ 365);
 }
 
-/// «Знакомы N дней — с 10 июл 2026», для показа под именем знакомого.
-String formatConnectionSummary(DateTime connectedAt, {DateTime? now}) {
-  final duration = formatConnectionDuration(connectedAt, now: now);
-  final date = DateFormat('d MMM y').format(connectedAt);
-  return '$duration — с $date';
+/// "Known for N days — since 10 Jul 2026", for display under a connection's name.
+String formatConnectionSummary(
+  AppLocalizations l10n,
+  DateTime connectedAt, {
+  DateTime? now,
+}) {
+  final duration = formatConnectionDuration(l10n, connectedAt, now: now);
+  final date = DateFormat('d MMM y', l10n.localeName).format(connectedAt);
+  return l10n.connectionSummary(duration, date);
 }

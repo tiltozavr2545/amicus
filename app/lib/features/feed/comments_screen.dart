@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
 
@@ -39,24 +40,29 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           .fetchComments(widget.postId);
       setState(() => _comments = comments);
     } catch (e) {
-      setState(() => _errorMessage = 'Не удалось загрузить комментарии: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(
+          context,
+        )!.failedToLoadCommentsError(e),
+      );
     }
   }
 
   Future<void> _deleteComment(int index) async {
     final comment = _comments![index];
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить комментарий?'),
+        title: Text(l10n.deleteCommentTitle),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
+            child: Text(l10n.cancelButton),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Удалить'),
+            child: Text(l10n.deleteButton),
           ),
         ],
       ),
@@ -69,7 +75,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось удалить комментарий: $e')),
+          SnackBar(content: Text(l10n.failedToDeleteCommentError(e))),
         );
       }
     }
@@ -88,7 +94,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       _textController.clear();
       await _load();
     } catch (e) {
-      setState(() => _errorMessage = 'Не удалось отправить: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(
+          context,
+        )!.failedToSendCommentError(e),
+      );
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -96,8 +106,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Комментарии')),
+      appBar: AppBar(title: Text(l10n.commentsTitle)),
       body: Column(
         children: [
           Expanded(
@@ -106,7 +117,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                       ? Center(child: Text(_errorMessage!))
                       : const Center(child: CircularProgressIndicator())
                 : _comments!.isEmpty
-                ? const Center(child: Text('Пока нет комментариев'))
+                ? Center(child: Text(l10n.noCommentsYetMessage))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _comments!.length,
@@ -137,6 +148,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                                   Text(
                                     DateFormat(
                                       'd MMM y, HH:mm',
+                                      l10n.localeName,
                                     ).format(comment.createdAt),
                                     style: Theme.of(
                                       context,
@@ -165,8 +177,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                   Expanded(
                     child: TextField(
                       controller: _textController,
-                      decoration: const InputDecoration(
-                        hintText: 'Написать комментарий...',
+                      decoration: InputDecoration(
+                        hintText: l10n.writeCommentHint,
                       ),
                     ),
                   ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import 'profile_repository.dart';
 
@@ -65,14 +66,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final userId = ref.watch(currentUserIdProvider);
     final profileAsync = ref.watch(_profileProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Профиль'),
+        title: Text(l10n.profileTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            tooltip: 'Выйти',
+            tooltip: l10n.signOutTooltip,
             onPressed: () => ref.read(supabaseClientProvider).auth.signOut(),
           ),
         ],
@@ -80,7 +82,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) =>
-            Center(child: Text('Ошибка загрузки профиля: $error')),
+            Center(child: Text(l10n.failedToLoadProfileError(error))),
         data: (profile) {
           if (_nameController.text.isEmpty) {
             _nameController.text = profile.name;
@@ -111,7 +113,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: 24),
                 TextField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Имя'),
+                  decoration: InputDecoration(labelText: l10n.nameLabel),
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
@@ -122,7 +124,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           width: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Сохранить'),
+                      : Text(l10n.saveButton),
                 ),
               ],
             ),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import '../profile/profile_repository.dart';
 import 'connection_duration.dart';
@@ -69,7 +70,10 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           .createInviteLink();
       setState(() => _myInviteCode = code);
     } catch (e) {
-      setState(() => _createLinkError = 'Неожиданная ошибка: $e');
+      setState(
+        () =>
+            _createLinkError = AppLocalizations.of(context)!.unexpectedError(e),
+      );
     } finally {
       if (mounted) setState(() => _isCreatingLink = false);
     }
@@ -86,7 +90,9 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           .activateInviteLink(_codeController.text.trim());
       setState(() {
         _activationSucceeded = true;
-        _activationMessage = 'Вы теперь знакомы с ${connection.ownerName}';
+        _activationMessage = AppLocalizations.of(
+          context,
+        )!.nowConnectedWithMessage(connection.ownerName);
       });
       ref.invalidate(_friendsProvider);
     } on PostgrestException catch (e) {
@@ -97,7 +103,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     } catch (e) {
       setState(() {
         _activationSucceeded = false;
-        _activationMessage = 'Неожиданная ошибка: $e';
+        _activationMessage = AppLocalizations.of(context)!.unexpectedError(e);
       });
     } finally {
       if (mounted) setState(() => _isActivating = false);
@@ -107,13 +113,17 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
   @override
   Widget build(BuildContext context) {
     final friendsAsync = ref.watch(_friendsProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Знакомства')),
+      appBar: AppBar(title: Text(l10n.connectionsTitle)),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Пригласить', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            l10n.inviteSectionTitle,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           if (_myInviteCode != null)
             Row(
@@ -126,11 +136,11 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.copy),
-                  tooltip: 'Скопировать',
+                  tooltip: l10n.copyTooltip,
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: _myInviteCode!));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Код скопирован')),
+                      SnackBar(content: Text(l10n.codeCopiedMessage)),
                     );
                   },
                 ),
@@ -154,19 +164,19 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                   )
                 : Text(
                     _myInviteCode == null
-                        ? 'Создать код приглашения'
-                        : 'Создать новый код',
+                        ? l10n.createInviteCodeButton
+                        : l10n.createNewCodeButton,
                   ),
           ),
           const SizedBox(height: 32),
           Text(
-            'У меня есть код',
+            l10n.haveCodeSectionTitle,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _codeController,
-            decoration: const InputDecoration(labelText: 'Код приглашения'),
+            decoration: InputDecoration(labelText: l10n.inviteCodeLabel),
           ),
           const SizedBox(height: 12),
           if (_activationMessage != null) ...[
@@ -188,19 +198,20 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                     width: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Активировать'),
+                : Text(l10n.activateButton),
           ),
           const SizedBox(height: 32),
-          Text('Мои знакомые', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            l10n.myConnectionsTitle,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           friendsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, stack) =>
-                Text('Не удалось загрузить список: $error'),
+                Text(l10n.failedToLoadConnectionsError(error)),
             data: (friends) => friends.isEmpty
-                ? const Text(
-                    'Пока нет знакомых — активируй код или создай свой выше',
-                  )
+                ? Text(l10n.noConnectionsYetMessage)
                 : Column(
                     children: friends
                         .map(
@@ -211,7 +222,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                             ),
                             title: Text(friend.name),
                             subtitle: Text(
-                              formatConnectionSummary(friend.connectedAt),
+                              formatConnectionSummary(l10n, friend.connectedAt),
                             ),
                           ),
                         )

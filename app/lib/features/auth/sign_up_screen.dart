@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../l10n/app_localizations.dart';
 import 'auth_providers.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
@@ -52,8 +53,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       if (response.user != null &&
           (response.user!.identities?.isEmpty ?? false)) {
         setState(
-          () =>
-              _errorMessage = 'Этот email уже зарегистрирован. Попробуй войти.',
+          () => _errorMessage = AppLocalizations.of(
+            context,
+          )!.emailAlreadyRegisteredError,
         );
         return;
       }
@@ -62,15 +64,17 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       // there with no sign anything happened.
       if (response.session == null && mounted) {
         setState(
-          () => _successMessage =
-              'Письмо со ссылкой для подтверждения отправлено на ${_emailController.text.trim()}. '
-              'Перейди по ссылке в письме, потом вернись сюда и войди с этим email и паролем.',
+          () => _successMessage = AppLocalizations.of(
+            context,
+          )!.confirmationEmailSentMessage(_emailController.text.trim()),
         );
       }
     } on AuthException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Неожиданная ошибка: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(context)!.unexpectedError(e),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -78,8 +82,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Регистрация')),
+      appBar: AppBar(title: Text(l10n.signUpTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -88,7 +93,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           children: [
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Имя'),
+              decoration: InputDecoration(labelText: l10n.nameLabel),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -100,7 +105,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Пароль'),
+              decoration: InputDecoration(labelText: l10n.passwordLabel),
             ),
             const SizedBox(height: 24),
             if (_errorMessage != null) ...[
@@ -118,7 +123,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: () => context.go('/sign-in'),
-                child: const Text('Перейти ко входу'),
+                child: Text(l10n.goToSignInButton),
               ),
               const SizedBox(height: 12),
             ] else ...[
@@ -130,11 +135,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         width: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Зарегистрироваться'),
+                    : Text(l10n.signUpButton),
               ),
               TextButton(
                 onPressed: () => context.go('/sign-in'),
-                child: const Text('Уже есть аккаунт? Войти'),
+                child: Text(l10n.alreadyHaveAccountButton),
               ),
             ],
           ],

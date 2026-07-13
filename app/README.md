@@ -1,6 +1,6 @@
-# krug
+# amicus
 
-A new Flutter project.
+Flutter-приложение Amicus. Основной README проекта — в корне репозитория: [../README.md](../README.md).
 
 ## Getting Started
 

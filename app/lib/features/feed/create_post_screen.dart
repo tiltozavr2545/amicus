@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
 
@@ -43,7 +44,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   Future<void> _submit() async {
     final text = _textController.text.trim();
     if (text.isEmpty && _imageBytes == null) {
-      setState(() => _errorMessage = 'Добавь текст или фото');
+      setState(
+        () => _errorMessage = AppLocalizations.of(context)!.addTextOrPhotoError,
+      );
       return;
     }
 
@@ -63,7 +66,11 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
-      setState(() => _errorMessage = 'Не удалось опубликовать: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(
+          context,
+        )!.failedToPublishError(e),
+      );
     } finally {
       if (mounted) setState(() => _isPosting = false);
     }
@@ -71,9 +78,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Новый пост'),
+        title: Text(l10n.newPostTitle),
         actions: [
           TextButton(
             onPressed: _isPosting ? null : _submit,
@@ -83,7 +91,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     width: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Опубликовать'),
+                : Text(l10n.publishButton),
           ),
         ],
       ),
@@ -95,9 +103,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             TextField(
               controller: _textController,
               maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: 'Что нового?',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: l10n.whatsNewHint,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -115,7 +123,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               onPressed: _pickImage,
               icon: const Icon(Icons.photo_outlined),
               label: Text(
-                _imageBytes == null ? 'Добавить фото' : 'Заменить фото',
+                _imageBytes == null
+                    ? l10n.addPhotoButton
+                    : l10n.replacePhotoButton,
               ),
             ),
             if (_errorMessage != null) ...[

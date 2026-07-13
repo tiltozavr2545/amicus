@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import 'comments_screen.dart';
 import 'feed_repository.dart';
@@ -55,7 +56,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         _hasMore = page.length == pageSize;
       });
     } catch (e) {
-      setState(() => _errorMessage = 'Не удалось загрузить ленту: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(
+          context,
+        )!.failedToLoadFeedError(e),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -72,19 +77,20 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   Future<void> _deletePost(int index) async {
     final post = _posts[index];
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить пост?'),
-        content: const Text('Пост, фото и комментарии к нему будут удалены.'),
+        title: Text(l10n.deletePostTitle),
+        content: Text(l10n.deletePostContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
+            child: Text(l10n.cancelButton),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Удалить'),
+            child: Text(l10n.deleteButton),
           ),
         ],
       ),
@@ -98,9 +104,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       if (mounted) setState(() => _posts.removeAt(index));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Не удалось удалить пост: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.failedToDeletePostError(e))),
+        );
       }
     }
   }
@@ -166,6 +172,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     ref.listen<int>(feedRefreshTickProvider, (previous, next) {
       if (previous != null) _refresh();
     });
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Amicus')),
@@ -185,13 +192,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       padding: const EdgeInsets.all(24),
                       child: Column(
                         children: [
-                          const Text(
-                            'Пока нет постов от знакомых. Добавь знакомых или напиши первым.',
-                          ),
+                          Text(l10n.noPostsYetMessage),
                           const SizedBox(height: 16),
                           OutlinedButton(
                             onPressed: () => context.go('/connections'),
-                            child: const Text('Добавить знакомых'),
+                            child: Text(l10n.addConnectionsButton),
                           ),
                         ],
                       ),
@@ -257,6 +262,7 @@ class _PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -277,14 +283,17 @@ class _PostCard extends StatelessWidget {
                     itemBuilder: (context) => [
                       PopupMenuItem(
                         onTap: onDelete,
-                        child: const Text('Удалить'),
+                        child: Text(l10n.deleteButton),
                       ),
                     ],
                   ),
               ],
             ),
             Text(
-              DateFormat('d MMM y, HH:mm').format(post.createdAt),
+              DateFormat(
+                'd MMM y, HH:mm',
+                l10n.localeName,
+              ).format(post.createdAt),
               style: Theme.of(context).textTheme.bodySmall,
             ),
             if (post.text != null) ...[
@@ -308,7 +317,7 @@ class _PostCard extends StatelessWidget {
                   selectedIcon: Icons.thumb_up,
                   unselectedIcon: Icons.thumb_up_outlined,
                   color: Colors.green,
-                  tooltip: 'Нравится',
+                  tooltip: l10n.likeTooltip,
                   count: post.likeCount,
                   selected: post.myReaction == ReactionType.like,
                   onPressed: () => onReact(ReactionType.like),
@@ -317,7 +326,7 @@ class _PostCard extends StatelessWidget {
                   selectedIcon: Icons.sentiment_neutral,
                   unselectedIcon: Icons.sentiment_neutral_outlined,
                   color: Colors.amber,
-                  tooltip: 'Нейтрально',
+                  tooltip: l10n.neutralTooltip,
                   count: post.neutralCount,
                   selected: post.myReaction == ReactionType.neutral,
                   onPressed: () => onReact(ReactionType.neutral),
@@ -330,7 +339,7 @@ class _PostCard extends StatelessWidget {
                     selectedIcon: Icons.thumb_down,
                     unselectedIcon: Icons.thumb_down_outlined,
                     color: Colors.red,
-                    tooltip: 'Не нравится',
+                    tooltip: l10n.dislikeTooltip,
                     count: post.dislikeCount,
                     selected: post.myReaction == ReactionType.dislike,
                     onPressed: () => onReact(ReactionType.dislike),

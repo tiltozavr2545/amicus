@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../l10n/app_localizations.dart';
 import 'auth_providers.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
@@ -41,7 +42,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     } on AuthException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Неожиданная ошибка: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(context)!.unexpectedError(e),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -49,8 +52,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Вход')),
+      appBar: AppBar(title: Text(l10n.signInTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -66,7 +70,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Пароль'),
+              decoration: InputDecoration(labelText: l10n.passwordLabel),
             ),
             const SizedBox(height: 24),
             if (_errorMessage != null) ...[
@@ -84,15 +88,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       width: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Войти'),
+                  : Text(l10n.signInButton),
             ),
             TextButton(
               onPressed: () => context.go('/sign-up'),
-              child: const Text('Нет аккаунта? Зарегистрироваться'),
+              child: Text(l10n.noAccountSignUpButton),
             ),
             TextButton(
               onPressed: () => context.go('/forgot-password'),
-              child: const Text('Забыли пароль?'),
+              child: Text(l10n.forgotPasswordButton),
             ),
           ],
         ),

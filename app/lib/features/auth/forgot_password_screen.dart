@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../l10n/app_localizations.dart';
 import 'auth_providers.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
@@ -47,14 +48,17 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           );
       if (mounted) {
         setState(
-          () => _successMessage =
-              'Если аккаунт с email $email существует, на него отправлено письмо со ссылкой для сброса пароля.',
+          () => _successMessage = AppLocalizations.of(
+            context,
+          )!.resetPasswordSuccessMessage(email),
         );
       }
     } on AuthException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Неожиданная ошибка: $e');
+      setState(
+        () => _errorMessage = AppLocalizations.of(context)!.unexpectedError(e),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -62,17 +66,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Сброс пароля')),
+      appBar: AppBar(title: Text(l10n.resetPasswordTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Введи email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.',
-            ),
+            Text(l10n.resetPasswordInstructions),
             const SizedBox(height: 16),
             TextField(
               controller: _emailController,
@@ -102,11 +105,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       width: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Отправить ссылку'),
+                  : Text(l10n.sendLinkButton),
             ),
             TextButton(
               onPressed: () => context.go('/sign-in'),
-              child: const Text('Вернуться ко входу'),
+              child: Text(l10n.backToSignInButton),
             ),
           ],
         ),

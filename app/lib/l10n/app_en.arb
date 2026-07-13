@@ -1,0 +1,132 @@
+{
+  "@@locale": "en",
+
+  "unexpectedError": "Unexpected error: {error}",
+  "@unexpectedError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+  "cancelButton": "Cancel",
+  "deleteButton": "Delete",
+  "saveButton": "Save",
+
+  "nameLabel": "Name",
+  "passwordLabel": "Password",
+
+  "signUpTitle": "Sign up",
+  "signUpButton": "Sign up",
+  "goToSignInButton": "Go to sign in",
+  "alreadyHaveAccountButton": "Already have an account? Sign in",
+  "emailAlreadyRegisteredError": "This email is already registered. Try signing in.",
+  "confirmationEmailSentMessage": "A confirmation link has been sent to {email}. Follow the link in the email, then come back and sign in with this email and password.",
+  "@confirmationEmailSentMessage": {
+    "placeholders": { "email": { "type": "String" } }
+  },
+
+  "signInTitle": "Sign in",
+  "signInButton": "Sign in",
+  "noAccountSignUpButton": "No account? Sign up",
+  "forgotPasswordButton": "Forgot password?",
+
+  "resetPasswordTitle": "Reset password",
+  "resetPasswordInstructions": "Enter the email linked to your account — we'll send you a reset link.",
+  "resetPasswordSuccessMessage": "If an account with the email {email} exists, we've sent a link to reset the password.",
+  "@resetPasswordSuccessMessage": {
+    "placeholders": { "email": { "type": "String" } }
+  },
+  "sendLinkButton": "Send link",
+  "backToSignInButton": "Back to sign in",
+
+  "feedTabLabel": "Feed",
+  "connectionsTitle": "Connections",
+  "newPostTitle": "New post",
+  "profileTitle": "Profile",
+
+  "inviteSectionTitle": "Invite",
+  "copyTooltip": "Copy",
+  "codeCopiedMessage": "Code copied",
+  "createInviteCodeButton": "Create invite code",
+  "createNewCodeButton": "Create new code",
+  "haveCodeSectionTitle": "I have a code",
+  "inviteCodeLabel": "Invite code",
+  "activateButton": "Activate",
+  "myConnectionsTitle": "My connections",
+  "failedToLoadConnectionsError": "Failed to load list: {error}",
+  "@failedToLoadConnectionsError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+  "noConnectionsYetMessage": "No connections yet — activate a code or create one above",
+  "nowConnectedWithMessage": "You're now connected with {name}",
+  "@nowConnectedWithMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+
+  "publishButton": "Publish",
+  "whatsNewHint": "What's new?",
+  "addPhotoButton": "Add photo",
+  "replacePhotoButton": "Replace photo",
+  "addTextOrPhotoError": "Add text or a photo",
+  "failedToPublishError": "Failed to publish: {error}",
+  "@failedToPublishError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+
+  "deletePostTitle": "Delete post?",
+  "deletePostContent": "The post, its photo, and comments will be deleted.",
+  "failedToLoadFeedError": "Failed to load feed: {error}",
+  "@failedToLoadFeedError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+  "failedToDeletePostError": "Failed to delete post: {error}",
+  "@failedToDeletePostError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+  "noPostsYetMessage": "No posts from connections yet. Add connections or write the first one.",
+  "addConnectionsButton": "Add connections",
+  "likeTooltip": "Like",
+  "neutralTooltip": "Neutral",
+  "dislikeTooltip": "Dislike",
+
+  "signOutTooltip": "Sign out",
+  "failedToLoadProfileError": "Failed to load profile: {error}",
+  "@failedToLoadProfileError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+
+  "commentsTitle": "Comments",
+  "deleteCommentTitle": "Delete comment?",
+  "noCommentsYetMessage": "No comments yet",
+  "writeCommentHint": "Write a comment...",
+  "failedToLoadCommentsError": "Failed to load comments: {error}",
+  "@failedToLoadCommentsError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+  "failedToDeleteCommentError": "Failed to delete comment: {error}",
+  "@failedToDeleteCommentError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+  "failedToSendCommentError": "Failed to send: {error}",
+  "@failedToSendCommentError": {
+    "placeholders": { "error": { "type": "Object" } }
+  },
+
+  "connectionKnownLessThanDay": "Known for less than a day",
+  "connectionKnownDays": "Known for {days, plural, one{{days} day} other{{days} days}}",
+  "@connectionKnownDays": {
+    "placeholders": { "days": { "type": "int" } }
+  },
+  "connectionKnownMonths": "Known for {months, plural, one{{months} month} other{{months} months}}",
+  "@connectionKnownMonths": {
+    "placeholders": { "months": { "type": "int" } }
+  },
+  "connectionKnownYears": "Known for {years, plural, one{{years} year} other{{years} years}}",
+  "@connectionKnownYears": {
+    "placeholders": { "years": { "type": "int" } }
+  },
+  "connectionSummary": "{duration} — since {date}",
+  "@connectionSummary": {
+    "placeholders": {
+      "duration": { "type": "String" },
+      "date": { "type": "String" }
+    }
+  }
+}

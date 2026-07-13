@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../feed/create_post_screen.dart';
 import '../feed/feed_repository.dart';
 
@@ -32,6 +33,7 @@ class MainShellScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
@@ -49,25 +51,25 @@ class MainShellScreen extends ConsumerWidget {
             initialLocation: branchIndex == navigationShell.currentIndex,
           );
         },
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Лента',
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home),
+            label: l10n.feedTabLabel,
           ),
           NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Знакомства',
+            icon: const Icon(Icons.people_outline),
+            selectedIcon: const Icon(Icons.people),
+            label: l10n.connectionsTitle,
           ),
           NavigationDestination(
-            icon: Icon(Icons.add_circle_outline),
-            label: 'Новый пост',
+            icon: const Icon(Icons.add_circle_outline),
+            label: l10n.newPostTitle,
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Профиль',
+            icon: const Icon(Icons.person_outline),
+            selectedIcon: const Icon(Icons.person),
+            label: l10n.profileTitle,
           ),
         ],
       ),

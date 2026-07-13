@@ -1,0 +1,81 @@
+{
+  "@@locale": "ru",
+
+  "unexpectedError": "Неожиданная ошибка: {error}",
+  "cancelButton": "Отмена",
+  "deleteButton": "Удалить",
+  "saveButton": "Сохранить",
+
+  "nameLabel": "Имя",
+  "passwordLabel": "Пароль",
+
+  "signUpTitle": "Регистрация",
+  "signUpButton": "Зарегистрироваться",
+  "goToSignInButton": "Перейти ко входу",
+  "alreadyHaveAccountButton": "Уже есть аккаунт? Войти",
+  "emailAlreadyRegisteredError": "Этот email уже зарегистрирован. Попробуй войти.",
+  "confirmationEmailSentMessage": "Письмо со ссылкой для подтверждения отправлено на {email}. Перейди по ссылке в письме, потом вернись сюда и войди с этим email и паролем.",
+
+  "signInTitle": "Вход",
+  "signInButton": "Войти",
+  "noAccountSignUpButton": "Нет аккаунта? Зарегистрироваться",
+  "forgotPasswordButton": "Забыли пароль?",
+
+  "resetPasswordTitle": "Сброс пароля",
+  "resetPasswordInstructions": "Введи email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.",
+  "resetPasswordSuccessMessage": "Если аккаунт с email {email} существует, на него отправлено письмо со ссылкой для сброса пароля.",
+  "sendLinkButton": "Отправить ссылку",
+  "backToSignInButton": "Вернуться ко входу",
+
+  "feedTabLabel": "Лента",
+  "connectionsTitle": "Знакомства",
+  "newPostTitle": "Новый пост",
+  "profileTitle": "Профиль",
+
+  "inviteSectionTitle": "Пригласить",
+  "copyTooltip": "Скопировать",
+  "codeCopiedMessage": "Код скопирован",
+  "createInviteCodeButton": "Создать код приглашения",
+  "createNewCodeButton": "Создать новый код",
+  "haveCodeSectionTitle": "У меня есть код",
+  "inviteCodeLabel": "Код приглашения",
+  "activateButton": "Активировать",
+  "myConnectionsTitle": "Мои знакомые",
+  "failedToLoadConnectionsError": "Не удалось загрузить список: {error}",
+  "noConnectionsYetMessage": "Пока нет знакомых — активируй код или создай свой выше",
+  "nowConnectedWithMessage": "Вы теперь знакомы с {name}",
+
+  "publishButton": "Опубликовать",
+  "whatsNewHint": "Что нового?",
+  "addPhotoButton": "Добавить фото",
+  "replacePhotoButton": "Заменить фото",
+  "addTextOrPhotoError": "Добавь текст или фото",
+  "failedToPublishError": "Не удалось опубликовать: {error}",
+
+  "deletePostTitle": "Удалить пост?",
+  "deletePostContent": "Пост, фото и комментарии к нему будут удалены.",
+  "failedToLoadFeedError": "Не удалось загрузить ленту: {error}",
+  "failedToDeletePostError": "Не удалось удалить пост: {error}",
+  "noPostsYetMessage": "Пока нет постов от знакомых. Добавь знакомых или напиши первым.",
+  "addConnectionsButton": "Добавить знакомых",
+  "likeTooltip": "Нравится",
+  "neutralTooltip": "Нейтрально",
+  "dislikeTooltip": "Не нравится",
+
+  "signOutTooltip": "Выйти",
+  "failedToLoadProfileError": "Ошибка загрузки профиля: {error}",
+
+  "commentsTitle": "Комментарии",
+  "deleteCommentTitle": "Удалить комментарий?",
+  "noCommentsYetMessage": "Пока нет комментариев",
+  "writeCommentHint": "Написать комментарий...",
+  "failedToLoadCommentsError": "Не удалось загрузить комментарии: {error}",
+  "failedToDeleteCommentError": "Не удалось удалить комментарий: {error}",
+  "failedToSendCommentError": "Не удалось отправить: {error}",
+
+  "connectionKnownLessThanDay": "Знакомы меньше дня",
+  "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",
+  "connectionKnownMonths": "Знакомы {months, plural, one{{months} месяц} few{{months} месяца} many{{months} месяцев} other{{months} месяца}}",
+  "connectionKnownYears": "Знакомы {years, plural, one{{years} год} few{{years} года} many{{years} лет} other{{years} года}}",
+  "connectionSummary": "{duration} — с {date}"
+}
