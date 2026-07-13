@@ -33,14 +33,18 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     });
     try {
       final email = _emailController.text.trim();
-      await ref.read(supabaseClientProvider).auth.resetPasswordForEmail(
-        email,
-        // Same gh-pages site as email confirmation (see future-development.md
-        // on why there's no deep link back into the app yet), but this page
-        // is interactive: it reads the recovery tokens from the URL and lets
-        // the user actually set a new password via the Supabase JS SDK.
-        redirectTo: 'https://tiltozavr2545.github.io/amicus/reset-password.html',
-      );
+      await ref
+          .read(supabaseClientProvider)
+          .auth
+          .resetPasswordForEmail(
+            email,
+            // Same gh-pages site as email confirmation (see future-development.md
+            // on why there's no deep link back into the app yet), but this page
+            // is interactive: it reads the recovery tokens from the URL and lets
+            // the user actually set a new password via the Supabase JS SDK.
+            redirectTo:
+                'https://tiltozavr2545.github.io/amicus/reset-password.html',
+          );
       if (mounted) {
         setState(
           () => _successMessage =
