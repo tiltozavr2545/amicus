@@ -14,6 +14,7 @@
 - Удаление своих постов и комментариев
 - Нижняя навигация (Лента / Знакомства / Новый пост / Профиль)
 - Локализация: английский по умолчанию, русский — если это язык системы
+- Тёмная/светлая тема: переключатель на каждой вкладке, по умолчанию следует системной теме устройства
 
 Подробный статус по этапам — в [docs/implementation-plan.md](docs/implementation-plan.md).
 
@@ -30,7 +31,7 @@
 
 ## Стек
 
-- **Frontend:** Flutter / Dart (Android; iOS отложен — см. [docs/project-brief.md](docs/project-brief.md))
+- **Frontend:** Flutter / Dart (Android; iOS отложен — см. [docs/future-development.md](docs/future-development.md))
 - **Backend:** [Supabase](https://supabase.com) — PostgreSQL, Auth, Storage, Row Level Security
 - **State management:** Riverpod
 - **Навигация:** go_router
