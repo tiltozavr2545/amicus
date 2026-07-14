@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../profile/profile_repository.dart';
 import 'connection_duration.dart';
@@ -116,7 +117,10 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.connectionsTitle)),
+      appBar: AppBar(
+        title: Text(l10n.connectionsTitle),
+        actions: const [ThemeToggleSwitch()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [

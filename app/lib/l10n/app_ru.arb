@@ -63,6 +63,7 @@
   "dislikeTooltip": "Не нравится",
 
   "signOutTooltip": "Выйти",
+  "darkThemeToggleTooltip": "Переключить тёмную тему",
   "failedToLoadProfileError": "Ошибка загрузки профиля: {error}",
 
   "commentsTitle": "Комментарии",

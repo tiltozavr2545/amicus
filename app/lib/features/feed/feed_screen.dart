@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import 'comments_screen.dart';
 import 'feed_repository.dart';
@@ -175,7 +176,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Amicus')),
+      appBar: AppBar(
+        title: const Text('Amicus'),
+        actions: const [ThemeToggleSwitch()],
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _posts.isEmpty && !_isLoading

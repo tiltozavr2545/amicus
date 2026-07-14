@@ -189,6 +189,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signOutTooltip => 'Sign out';
 
   @override
+  String get darkThemeToggleTooltip => 'Toggle dark theme';
+
+  @override
   String failedToLoadProfileError(Object error) {
     return 'Failed to load profile: $error';
   }
