@@ -87,6 +87,7 @@
   "dislikeTooltip": "Dislike",
 
   "signOutTooltip": "Sign out",
+  "darkThemeToggleTooltip": "Toggle dark theme",
   "failedToLoadProfileError": "Failed to load profile: {error}",
   "@failedToLoadProfileError": {
     "placeholders": { "error": { "type": "Object" } }

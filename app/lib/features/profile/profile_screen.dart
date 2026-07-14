@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import 'profile_repository.dart';
 
@@ -72,6 +73,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       appBar: AppBar(
         title: Text(l10n.profileTitle),
         actions: [
+          const ThemeToggleSwitch(),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: l10n.signOutTooltip,

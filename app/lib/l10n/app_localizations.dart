@@ -416,6 +416,12 @@ abstract class AppLocalizations {
   /// **'Sign out'**
   String get signOutTooltip;
 
+  /// No description provided for @darkThemeToggleTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle dark theme'**
+  String get darkThemeToggleTooltip;
+
   /// No description provided for @failedToLoadProfileError.
   ///
   /// In en, this message translates to:

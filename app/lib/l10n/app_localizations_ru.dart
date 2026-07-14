@@ -189,6 +189,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get signOutTooltip => 'Выйти';
 
   @override
+  String get darkThemeToggleTooltip => 'Переключить тёмную тему';
+
+  @override
   String failedToLoadProfileError(Object error) {
     return 'Ошибка загрузки профиля: $error';
   }
