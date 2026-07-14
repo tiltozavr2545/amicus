@@ -69,8 +69,10 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
       final code = await ref
           .read(connectionsRepositoryProvider)
           .createInviteLink();
+      if (!mounted) return;
       setState(() => _myInviteCode = code);
     } catch (e) {
+      if (!mounted) return;
       setState(
         () =>
             _createLinkError = AppLocalizations.of(context)!.unexpectedError(e),
@@ -81,6 +83,18 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
   }
 
   Future<void> _activate() async {
+    final code = _codeController.text.trim();
+    if (code.isEmpty) {
+      // Nothing to activate — tell the user plainly instead of firing a
+      // request that comes back with a raw "Invite code not found".
+      setState(() {
+        _activationSucceeded = false;
+        _activationMessage = AppLocalizations.of(
+          context,
+        )!.inviteCodeRequiredError;
+      });
+      return;
+    }
     setState(() {
       _isActivating = true;
       _activationMessage = null;
@@ -88,7 +102,8 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     try {
       final connection = await ref
           .read(connectionsRepositoryProvider)
-          .activateInviteLink(_codeController.text.trim());
+          .activateInviteLink(code);
+      if (!mounted) return;
       setState(() {
         _activationSucceeded = true;
         _activationMessage = AppLocalizations.of(
@@ -97,11 +112,13 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
       });
       ref.invalidate(_friendsProvider);
     } on PostgrestException catch (e) {
+      if (!mounted) return;
       setState(() {
         _activationSucceeded = false;
         _activationMessage = e.message;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _activationSucceeded = false;
         _activationMessage = AppLocalizations.of(context)!.unexpectedError(e);

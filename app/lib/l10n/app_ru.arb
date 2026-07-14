@@ -8,6 +8,7 @@
 
   "nameLabel": "Имя",
   "passwordLabel": "Пароль",
+  "nameRequiredError": "Введи имя",
 
   "signUpTitle": "Регистрация",
   "signUpButton": "Зарегистрироваться",
@@ -39,6 +40,7 @@
   "createNewCodeButton": "Создать новый код",
   "haveCodeSectionTitle": "У меня есть код",
   "inviteCodeLabel": "Код приглашения",
+  "inviteCodeRequiredError": "Введи код приглашения",
   "activateButton": "Активировать",
   "myConnectionsTitle": "Мои знакомые",
   "failedToLoadConnectionsError": "Не удалось загрузить список: {error}",

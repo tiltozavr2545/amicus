@@ -38,8 +38,10 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       final comments = await ref
           .read(feedRepositoryProvider)
           .fetchComments(widget.postId);
+      if (!mounted) return;
       setState(() => _comments = comments);
     } catch (e) {
+      if (!mounted) return;
       setState(
         () => _errorMessage = AppLocalizations.of(
           context,
@@ -94,6 +96,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       _textController.clear();
       await _load();
     } catch (e) {
+      if (!mounted) return;
       setState(
         () => _errorMessage = AppLocalizations.of(
           context,

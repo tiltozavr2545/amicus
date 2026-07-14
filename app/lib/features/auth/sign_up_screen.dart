@@ -30,6 +30,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(
+        () => _errorMessage = AppLocalizations.of(context)!.nameRequiredError,
+      );
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -45,7 +52,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       final response = await client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        data: {'name': _nameController.text.trim()},
+        data: {'name': name},
       );
       // Supabase won't throw for an already-registered email (that would
       // let an attacker enumerate accounts) — it silently returns a user

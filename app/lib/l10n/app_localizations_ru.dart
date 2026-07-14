@@ -29,6 +29,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get passwordLabel => 'Пароль';
 
   @override
+  String get nameRequiredError => 'Введи имя';
+
+  @override
   String get signUpTitle => 'Регистрация';
 
   @override
@@ -111,6 +114,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get inviteCodeLabel => 'Код приглашения';
+
+  @override
+  String get inviteCodeRequiredError => 'Введи код приглашения';
 
   @override
   String get activateButton => 'Активировать';

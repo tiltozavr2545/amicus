@@ -29,6 +29,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passwordLabel => 'Password';
 
   @override
+  String get nameRequiredError => 'Enter your name';
+
+  @override
   String get signUpTitle => 'Sign up';
 
   @override
@@ -111,6 +114,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inviteCodeLabel => 'Invite code';
+
+  @override
+  String get inviteCodeRequiredError => 'Enter an invite code';
 
   @override
   String get activateButton => 'Activate';

@@ -134,6 +134,12 @@ abstract class AppLocalizations {
   /// **'Password'**
   String get passwordLabel;
 
+  /// No description provided for @nameRequiredError.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your name'**
+  String get nameRequiredError;
+
   /// No description provided for @signUpTitle.
   ///
   /// In en, this message translates to:
@@ -289,6 +295,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Invite code'**
   String get inviteCodeLabel;
+
+  /// No description provided for @inviteCodeRequiredError.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an invite code'**
+  String get inviteCodeRequiredError;
 
   /// No description provided for @activateButton.
   ///

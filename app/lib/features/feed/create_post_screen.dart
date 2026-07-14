@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/file_extension.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
 
@@ -37,7 +38,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     final bytes = await picked.readAsBytes();
     setState(() {
       _imageBytes = bytes;
-      _imageExt = picked.name.split('.').last;
+      _imageExt = fileExtension(picked.name);
     });
   }
 

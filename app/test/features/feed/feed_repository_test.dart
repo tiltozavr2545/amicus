@@ -89,6 +89,36 @@ void main() {
     });
   });
 
+  group('keysetFilter', () {
+    Post cursorAt(String createdAt, {String id = 'post-9'}) => Post.fromRow({
+      'id': id,
+      'author_id': 'user-1',
+      'author': {'name': 'Alice'},
+      'text': 'Hello',
+      'created_at': createdAt,
+    });
+
+    test('returns null for the first page (no cursor)', () {
+      expect(keysetFilter(null), isNull);
+    });
+
+    test('seeks strictly older than the cursor, with id as tiebreak', () {
+      final filter = keysetFilter(cursorAt('2026-01-01T12:00:00Z'));
+      expect(
+        filter,
+        'created_at.lt.2026-01-01T12:00:00.000Z,'
+        'and(created_at.eq.2026-01-01T12:00:00.000Z,id.lt.post-9)',
+      );
+    });
+
+    test('normalizes an offset timestamp to UTC so the filter has no "+"', () {
+      // A "+03:00" offset would break the URL-encoded filter; toUtc() avoids it.
+      final filter = keysetFilter(cursorAt('2026-01-01T15:00:00+03:00'));
+      expect(filter, contains('created_at.lt.2026-01-01T12:00:00.000Z'));
+      expect(filter, isNot(contains('+')));
+    });
+  });
+
   group('Comment.fromRow', () {
     test('parses a comment row', () {
       final comment = Comment.fromRow({

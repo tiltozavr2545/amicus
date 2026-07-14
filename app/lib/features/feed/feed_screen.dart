@@ -20,10 +20,14 @@ class FeedScreen extends ConsumerStatefulWidget {
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   final _scrollController = ScrollController();
   final _posts = <Post>[];
-  int _nextPage = 0;
   bool _isLoading = false;
   bool _hasMore = true;
   String? _errorMessage;
+
+  // Bumped on every refresh so a page load that's still in flight when the user
+  // pulls to refresh can detect it's stale and discard its result instead of
+  // appending it onto the freshly-cleared list.
+  int _loadEpoch = 0;
 
   @override
   void initState() {
@@ -45,33 +49,47 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   Future<void> _loadMore() async {
     if (_isLoading || !_hasMore) return;
+    final epoch = _loadEpoch;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
     try {
-      final page = await ref.read(feedRepositoryProvider).fetchPage(_nextPage);
+      // The last post already loaded is the keyset cursor for the next page
+      // (null on the first/refreshed load). Captured before the await, so a
+      // concurrent refresh can't move it mid-flight.
+      final cursor = _posts.isEmpty ? null : _posts.last;
+      final page = await ref
+          .read(feedRepositoryProvider)
+          .fetchPage(cursor: cursor);
+      // A refresh (or unmount) happened while this page was loading — its data
+      // is for a superseded feed state, so drop it.
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _posts.addAll(page);
-        _nextPage++;
         _hasMore = page.length == pageSize;
       });
     } catch (e) {
+      if (!mounted || epoch != _loadEpoch) return;
       setState(
         () => _errorMessage = AppLocalizations.of(
           context,
         )!.failedToLoadFeedError(e),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && epoch == _loadEpoch) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _refresh() async {
     setState(() {
+      // Invalidate any in-flight load and reset paging from scratch. Clearing
+      // _isLoading lets the fresh load below start even if one was running.
+      _loadEpoch++;
       _posts.clear();
-      _nextPage = 0;
       _hasMore = true;
+      _isLoading = false;
+      _errorMessage = null;
     });
     await _loadMore();
   }
@@ -102,7 +120,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       await ref
           .read(feedRepositoryProvider)
           .deletePost(postId: post.id, imagePath: post.imagePath);
-      if (mounted) setState(() => _posts.removeAt(index));
+      // Remove by id, not the captured index: the list may have shifted (a
+      // refresh, another delete) while the request was in flight.
+      if (mounted) setState(() => _posts.removeWhere((p) => p.id == post.id));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -128,7 +148,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         await repo.setReaction(postId: post.id, userId: userId, type: next);
       }
     } catch (_) {
-      if (mounted) setState(() => _posts[index] = post);
+      // Roll back by id, not the captured index: the list may have been
+      // refreshed or had a post removed while the request was in flight.
+      if (!mounted) return;
+      final current = _posts.indexWhere((p) => p.id == post.id);
+      if (current != -1) setState(() => _posts[current] = post);
     }
   }
 

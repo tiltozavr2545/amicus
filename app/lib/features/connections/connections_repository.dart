@@ -38,6 +38,12 @@ class ConnectionsRepository {
     final rows =
         await _client.rpc('activate_invite_link', params: {'p_code': code})
             as List<dynamic>;
+    // The function returns the inviter's row; an empty result would mean the
+    // owner profile vanished. Fail with a clear error instead of a raw
+    // "Bad state: No element" from `.first`.
+    if (rows.isEmpty) {
+      throw StateError('activate_invite_link returned no inviter row');
+    }
     final row = rows.first as Map<String, dynamic>;
     return ActivatedConnection(
       ownerId: row['owner_id'] as String,

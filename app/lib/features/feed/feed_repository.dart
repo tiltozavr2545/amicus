@@ -130,22 +130,43 @@ class Comment {
 const _bucket = 'media';
 const pageSize = 20;
 
+/// Builds the PostgREST keyset filter for the page strictly *older* than
+/// [cursor], newest-first. Returns null for the first page (no cursor).
+///
+/// Keyset (seek) paging instead of offset paging: the window is anchored to the
+/// last post already seen — `created_at < cursor` — rather than to a numeric
+/// offset. That way posts inserted at (or deleted from) the top between page
+/// loads can't shift the offset and cause a post to be shown twice or skipped.
+/// `created_at` alone isn't unique, so `id` is a deterministic tiebreak for the
+/// rare case of two posts sharing the exact same timestamp at a page boundary.
+String? keysetFilter(Post? cursor) {
+  if (cursor == null) return null;
+  final ts = cursor.createdAt.toUtc().toIso8601String();
+  return 'created_at.lt.$ts,and(created_at.eq.$ts,id.lt.${cursor.id})';
+}
+
 class FeedRepository {
   FeedRepository(this._client);
 
   final SupabaseClient _client;
 
-  /// Fetches one page of the feed (newest first), with a signed URL
-  /// resolved for each post's photo (the `media` bucket is private, so a
-  /// plain public URL wouldn't be servable), plus reaction/comment counts.
-  Future<List<Post>> fetchPage(int page) async {
-    final from = page * pageSize;
-    final to = from + pageSize - 1;
-    final rows = await _client
+  /// Fetches one page of the feed (newest first), starting strictly after
+  /// [cursor] (the last post of the previous page; null for the first page).
+  /// A signed URL is resolved for each post's photo (the `media` bucket is
+  /// private, so a plain public URL wouldn't be servable), plus
+  /// reaction/comment counts.
+  Future<List<Post>> fetchPage({Post? cursor}) async {
+    var query = _client
         .from('posts')
-        .select('*, author:users(name, dislikes_disabled)')
+        .select('*, author:users(name, dislikes_disabled)');
+    final filter = keysetFilter(cursor);
+    if (filter != null) {
+      query = query.or(filter);
+    }
+    final rows = await query
         .order('created_at', ascending: false)
-        .range(from, to);
+        .order('id', ascending: false)
+        .limit(pageSize);
 
     var posts = rows.map(Post.fromRow).toList();
     if (posts.isEmpty) return posts;

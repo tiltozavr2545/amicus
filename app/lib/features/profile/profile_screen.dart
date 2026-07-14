@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/file_extension.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import 'profile_repository.dart';
@@ -31,11 +32,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _saveName(String userId) async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.nameRequiredError),
+        ),
+      );
+      return;
+    }
     setState(() => _isSaving = true);
     try {
       await ref
           .read(profileRepositoryProvider)
-          .updateName(userId: userId, name: _nameController.text.trim());
+          .updateName(userId: userId, name: name);
       ref.invalidate(_profileProvider);
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -53,7 +63,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _isUploadingAvatar = true);
     try {
       final bytes = await picked.readAsBytes();
-      final ext = picked.name.split('.').last;
+      final ext = fileExtension(picked.name);
       await ref
           .read(profileRepositoryProvider)
           .uploadAvatar(userId: userId, bytes: bytes, fileExt: ext);

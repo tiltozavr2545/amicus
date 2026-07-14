@@ -11,6 +11,7 @@
 
   "nameLabel": "Name",
   "passwordLabel": "Password",
+  "nameRequiredError": "Enter your name",
 
   "signUpTitle": "Sign up",
   "signUpButton": "Sign up",
@@ -48,6 +49,7 @@
   "createNewCodeButton": "Create new code",
   "haveCodeSectionTitle": "I have a code",
   "inviteCodeLabel": "Invite code",
+  "inviteCodeRequiredError": "Enter an invite code",
   "activateButton": "Activate",
   "myConnectionsTitle": "My connections",
   "failedToLoadConnectionsError": "Failed to load list: {error}",
