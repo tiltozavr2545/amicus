@@ -9,9 +9,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String unexpectedError(Object error) {
-    return 'Unexpected error: $error';
-  }
+  String get unexpectedError => 'Unexpected error. Please try again.';
 
   @override
   String get cancelButton => 'Cancel';
@@ -125,9 +123,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get myConnectionsTitle => 'My connections';
 
   @override
-  String failedToLoadConnectionsError(Object error) {
-    return 'Failed to load list: $error';
-  }
+  String get failedToLoadConnectionsError =>
+      'Failed to load list. Please try again.';
 
   @override
   String get noConnectionsYetMessage =>
@@ -199,9 +196,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addTextOrPhotoError => 'Add text or a photo';
 
   @override
-  String failedToPublishError(Object error) {
-    return 'Failed to publish: $error';
-  }
+  String get failedToPublishError => 'Failed to publish. Please try again.';
 
   @override
   String get deletePostTitle => 'Delete post?';
@@ -211,14 +206,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'The post, its photo, and comments will be deleted.';
 
   @override
-  String failedToLoadFeedError(Object error) {
-    return 'Failed to load feed: $error';
-  }
+  String get failedToLoadFeedError => 'Failed to load feed. Please try again.';
 
   @override
-  String failedToDeletePostError(Object error) {
-    return 'Failed to delete post: $error';
-  }
+  String get failedToDeletePostError =>
+      'Failed to delete post. Please try again.';
 
   @override
   String get noPostsYetMessage =>
@@ -243,9 +235,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get darkThemeToggleTooltip => 'Toggle dark theme';
 
   @override
-  String failedToLoadProfileError(Object error) {
-    return 'Failed to load profile: $error';
-  }
+  String get failedToLoadProfileError =>
+      'Failed to load profile. Please try again.';
 
   @override
   String get commentsTitle => 'Comments';
@@ -260,19 +251,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get writeCommentHint => 'Write a comment...';
 
   @override
-  String failedToLoadCommentsError(Object error) {
-    return 'Failed to load comments: $error';
-  }
+  String get failedToLoadCommentsError =>
+      'Failed to load comments. Please try again.';
 
   @override
-  String failedToDeleteCommentError(Object error) {
-    return 'Failed to delete comment: $error';
-  }
+  String get failedToDeleteCommentError =>
+      'Failed to delete comment. Please try again.';
 
   @override
-  String failedToSendCommentError(Object error) {
-    return 'Failed to send: $error';
-  }
+  String get failedToSendCommentError => 'Failed to send. Please try again.';
 
   @override
   String get connectionKnownLessThanDay => 'Known for less than a day';

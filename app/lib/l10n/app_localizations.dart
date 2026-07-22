@@ -101,8 +101,8 @@ abstract class AppLocalizations {
   /// No description provided for @unexpectedError.
   ///
   /// In en, this message translates to:
-  /// **'Unexpected error: {error}'**
-  String unexpectedError(Object error);
+  /// **'Unexpected error. Please try again.'**
+  String get unexpectedError;
 
   /// No description provided for @cancelButton.
   ///
@@ -317,8 +317,8 @@ abstract class AppLocalizations {
   /// No description provided for @failedToLoadConnectionsError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load list: {error}'**
-  String failedToLoadConnectionsError(Object error);
+  /// **'Failed to load list. Please try again.'**
+  String get failedToLoadConnectionsError;
 
   /// No description provided for @noConnectionsYetMessage.
   ///
@@ -443,8 +443,8 @@ abstract class AppLocalizations {
   /// No description provided for @failedToPublishError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to publish: {error}'**
-  String failedToPublishError(Object error);
+  /// **'Failed to publish. Please try again.'**
+  String get failedToPublishError;
 
   /// No description provided for @deletePostTitle.
   ///
@@ -461,14 +461,14 @@ abstract class AppLocalizations {
   /// No description provided for @failedToLoadFeedError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load feed: {error}'**
-  String failedToLoadFeedError(Object error);
+  /// **'Failed to load feed. Please try again.'**
+  String get failedToLoadFeedError;
 
   /// No description provided for @failedToDeletePostError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to delete post: {error}'**
-  String failedToDeletePostError(Object error);
+  /// **'Failed to delete post. Please try again.'**
+  String get failedToDeletePostError;
 
   /// No description provided for @noPostsYetMessage.
   ///
@@ -515,8 +515,8 @@ abstract class AppLocalizations {
   /// No description provided for @failedToLoadProfileError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load profile: {error}'**
-  String failedToLoadProfileError(Object error);
+  /// **'Failed to load profile. Please try again.'**
+  String get failedToLoadProfileError;
 
   /// No description provided for @commentsTitle.
   ///
@@ -545,20 +545,20 @@ abstract class AppLocalizations {
   /// No description provided for @failedToLoadCommentsError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to load comments: {error}'**
-  String failedToLoadCommentsError(Object error);
+  /// **'Failed to load comments. Please try again.'**
+  String get failedToLoadCommentsError;
 
   /// No description provided for @failedToDeleteCommentError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to delete comment: {error}'**
-  String failedToDeleteCommentError(Object error);
+  /// **'Failed to delete comment. Please try again.'**
+  String get failedToDeleteCommentError;
 
   /// No description provided for @failedToSendCommentError.
   ///
   /// In en, this message translates to:
-  /// **'Failed to send: {error}'**
-  String failedToSendCommentError(Object error);
+  /// **'Failed to send. Please try again.'**
+  String get failedToSendCommentError;
 
   /// No description provided for @connectionKnownLessThanDay.
   ///

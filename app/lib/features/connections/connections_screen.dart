@@ -56,7 +56,7 @@ class _FriendListItem extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.unexpectedError(e))));
+      ).showSnackBar(SnackBar(content: Text(l10n.unexpectedError)));
     }
   }
 
@@ -211,8 +211,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(
-        () =>
-            _createLinkError = AppLocalizations.of(context)!.unexpectedError(e),
+        () => _createLinkError = AppLocalizations.of(context)!.unexpectedError,
       );
     } finally {
       if (mounted) setState(() => _isCreatingLink = false);
@@ -258,7 +257,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
       if (!mounted) return;
       setState(() {
         _activationSucceeded = false;
-        _activationMessage = AppLocalizations.of(context)!.unexpectedError(e);
+        _activationMessage = AppLocalizations.of(context)!.unexpectedError;
       });
     } finally {
       if (mounted) setState(() => _isActivating = false);
@@ -376,8 +375,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           const SizedBox(height: 12),
           friendsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) =>
-                Text(l10n.failedToLoadConnectionsError(error)),
+            error: (error, stack) => Text(l10n.failedToLoadConnectionsError),
             data: (friends) => friends.isEmpty
                 ? Text(l10n.noConnectionsYetMessage)
                 : Column(

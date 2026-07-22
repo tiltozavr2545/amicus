@@ -9,9 +9,7 @@ class AppLocalizationsRu extends AppLocalizations {
   AppLocalizationsRu([String locale = 'ru']) : super(locale);
 
   @override
-  String unexpectedError(Object error) {
-    return 'Неожиданная ошибка: $error';
-  }
+  String get unexpectedError => 'Неожиданная ошибка. Попробуйте ещё раз.';
 
   @override
   String get cancelButton => 'Отмена';
@@ -125,9 +123,8 @@ class AppLocalizationsRu extends AppLocalizations {
   String get myConnectionsTitle => 'Мои знакомые';
 
   @override
-  String failedToLoadConnectionsError(Object error) {
-    return 'Не удалось загрузить список: $error';
-  }
+  String get failedToLoadConnectionsError =>
+      'Не удалось загрузить список. Попробуйте ещё раз.';
 
   @override
   String get noConnectionsYetMessage =>
@@ -199,9 +196,8 @@ class AppLocalizationsRu extends AppLocalizations {
   String get addTextOrPhotoError => 'Добавь текст или фото';
 
   @override
-  String failedToPublishError(Object error) {
-    return 'Не удалось опубликовать: $error';
-  }
+  String get failedToPublishError =>
+      'Не удалось опубликовать. Попробуйте ещё раз.';
 
   @override
   String get deletePostTitle => 'Удалить пост?';
@@ -211,14 +207,12 @@ class AppLocalizationsRu extends AppLocalizations {
       'Пост, фото и комментарии к нему будут удалены.';
 
   @override
-  String failedToLoadFeedError(Object error) {
-    return 'Не удалось загрузить ленту: $error';
-  }
+  String get failedToLoadFeedError =>
+      'Не удалось загрузить ленту. Попробуйте ещё раз.';
 
   @override
-  String failedToDeletePostError(Object error) {
-    return 'Не удалось удалить пост: $error';
-  }
+  String get failedToDeletePostError =>
+      'Не удалось удалить пост. Попробуйте ещё раз.';
 
   @override
   String get noPostsYetMessage =>
@@ -243,9 +237,8 @@ class AppLocalizationsRu extends AppLocalizations {
   String get darkThemeToggleTooltip => 'Переключить тёмную тему';
 
   @override
-  String failedToLoadProfileError(Object error) {
-    return 'Ошибка загрузки профиля: $error';
-  }
+  String get failedToLoadProfileError =>
+      'Не удалось загрузить профиль. Попробуйте ещё раз.';
 
   @override
   String get commentsTitle => 'Комментарии';
@@ -260,19 +253,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String get writeCommentHint => 'Написать комментарий...';
 
   @override
-  String failedToLoadCommentsError(Object error) {
-    return 'Не удалось загрузить комментарии: $error';
-  }
+  String get failedToLoadCommentsError =>
+      'Не удалось загрузить комментарии. Попробуйте ещё раз.';
 
   @override
-  String failedToDeleteCommentError(Object error) {
-    return 'Не удалось удалить комментарий: $error';
-  }
+  String get failedToDeleteCommentError =>
+      'Не удалось удалить комментарий. Попробуйте ещё раз.';
 
   @override
-  String failedToSendCommentError(Object error) {
-    return 'Не удалось отправить: $error';
-  }
+  String get failedToSendCommentError =>
+      'Не удалось отправить. Попробуйте ещё раз.';
 
   @override
   String get connectionKnownLessThanDay => 'Знакомы меньше дня';

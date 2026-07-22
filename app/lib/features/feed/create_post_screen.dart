@@ -68,9 +68,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       setState(
-        () => _errorMessage = AppLocalizations.of(
-          context,
-        )!.failedToPublishError(e),
+        () =>
+            _errorMessage = AppLocalizations.of(context)!.failedToPublishError,
       );
     } finally {
       if (mounted) setState(() => _isPosting = false);
@@ -104,6 +103,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             TextField(
               controller: _textController,
               maxLines: 5,
+              maxLength: 5000,
               decoration: InputDecoration(
                 hintText: l10n.whatsNewHint,
                 border: const OutlineInputBorder(),

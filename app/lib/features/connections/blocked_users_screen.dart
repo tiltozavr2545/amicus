@@ -33,7 +33,7 @@ class _BlockedUserListItem extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.unexpectedError(e))));
+      ).showSnackBar(SnackBar(content: Text(l10n.unexpectedError)));
     }
   }
 
@@ -66,7 +66,7 @@ class BlockedUsersScreen extends ConsumerWidget {
       body: blockedAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) =>
-            Center(child: Text(l10n.failedToLoadConnectionsError(error))),
+            Center(child: Text(l10n.failedToLoadConnectionsError)),
         data: (blockedUsers) => blockedUsers.isEmpty
             ? Center(child: Text(l10n.noBlockedUsersMessage))
             : ListView(

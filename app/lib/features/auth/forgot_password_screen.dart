@@ -57,7 +57,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       setState(() => _errorMessage = e.message);
     } catch (e) {
       setState(
-        () => _errorMessage = AppLocalizations.of(context)!.unexpectedError(e),
+        () => _errorMessage = AppLocalizations.of(context)!.unexpectedError,
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

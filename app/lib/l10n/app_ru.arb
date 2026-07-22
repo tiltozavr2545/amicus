@@ -1,7 +1,7 @@
 {
   "@@locale": "ru",
 
-  "unexpectedError": "Неожиданная ошибка: {error}",
+  "unexpectedError": "Неожиданная ошибка. Попробуйте ещё раз.",
   "cancelButton": "Отмена",
   "deleteButton": "Удалить",
   "saveButton": "Сохранить",
@@ -43,7 +43,7 @@
   "inviteCodeRequiredError": "Введи код приглашения",
   "activateButton": "Активировать",
   "myConnectionsTitle": "Мои знакомые",
-  "failedToLoadConnectionsError": "Не удалось загрузить список: {error}",
+  "failedToLoadConnectionsError": "Не удалось загрузить список. Попробуйте ещё раз.",
   "noConnectionsYetMessage": "Пока нет знакомых — активируй код или создай свой выше",
   "nowConnectedWithMessage": "Вы теперь знакомы с {name}",
 
@@ -67,12 +67,12 @@
   "addPhotoButton": "Добавить фото",
   "replacePhotoButton": "Заменить фото",
   "addTextOrPhotoError": "Добавь текст или фото",
-  "failedToPublishError": "Не удалось опубликовать: {error}",
+  "failedToPublishError": "Не удалось опубликовать. Попробуйте ещё раз.",
 
   "deletePostTitle": "Удалить пост?",
   "deletePostContent": "Пост, фото и комментарии к нему будут удалены.",
-  "failedToLoadFeedError": "Не удалось загрузить ленту: {error}",
-  "failedToDeletePostError": "Не удалось удалить пост: {error}",
+  "failedToLoadFeedError": "Не удалось загрузить ленту. Попробуйте ещё раз.",
+  "failedToDeletePostError": "Не удалось удалить пост. Попробуйте ещё раз.",
   "noPostsYetMessage": "Пока нет постов от знакомых. Добавь знакомых или напиши первым.",
   "addConnectionsButton": "Добавить знакомых",
   "likeTooltip": "Нравится",
@@ -81,15 +81,15 @@
 
   "signOutTooltip": "Выйти",
   "darkThemeToggleTooltip": "Переключить тёмную тему",
-  "failedToLoadProfileError": "Ошибка загрузки профиля: {error}",
+  "failedToLoadProfileError": "Не удалось загрузить профиль. Попробуйте ещё раз.",
 
   "commentsTitle": "Комментарии",
   "deleteCommentTitle": "Удалить комментарий?",
   "noCommentsYetMessage": "Пока нет комментариев",
   "writeCommentHint": "Написать комментарий...",
-  "failedToLoadCommentsError": "Не удалось загрузить комментарии: {error}",
-  "failedToDeleteCommentError": "Не удалось удалить комментарий: {error}",
-  "failedToSendCommentError": "Не удалось отправить: {error}",
+  "failedToLoadCommentsError": "Не удалось загрузить комментарии. Попробуйте ещё раз.",
+  "failedToDeleteCommentError": "Не удалось удалить комментарий. Попробуйте ещё раз.",
+  "failedToSendCommentError": "Не удалось отправить. Попробуйте ещё раз.",
 
   "connectionKnownLessThanDay": "Знакомы меньше дня",
   "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",

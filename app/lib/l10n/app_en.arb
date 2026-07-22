@@ -1,10 +1,7 @@
 {
   "@@locale": "en",
 
-  "unexpectedError": "Unexpected error: {error}",
-  "@unexpectedError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
+  "unexpectedError": "Unexpected error. Please try again.",
   "cancelButton": "Cancel",
   "deleteButton": "Delete",
   "saveButton": "Save",
@@ -52,10 +49,7 @@
   "inviteCodeRequiredError": "Enter an invite code",
   "activateButton": "Activate",
   "myConnectionsTitle": "My connections",
-  "failedToLoadConnectionsError": "Failed to load list: {error}",
-  "@failedToLoadConnectionsError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
+  "failedToLoadConnectionsError": "Failed to load list. Please try again.",
   "noConnectionsYetMessage": "No connections yet — activate a code or create one above",
   "nowConnectedWithMessage": "You're now connected with {name}",
   "@nowConnectedWithMessage": {
@@ -88,21 +82,12 @@
   "addPhotoButton": "Add photo",
   "replacePhotoButton": "Replace photo",
   "addTextOrPhotoError": "Add text or a photo",
-  "failedToPublishError": "Failed to publish: {error}",
-  "@failedToPublishError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
+  "failedToPublishError": "Failed to publish. Please try again.",
 
   "deletePostTitle": "Delete post?",
   "deletePostContent": "The post, its photo, and comments will be deleted.",
-  "failedToLoadFeedError": "Failed to load feed: {error}",
-  "@failedToLoadFeedError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
-  "failedToDeletePostError": "Failed to delete post: {error}",
-  "@failedToDeletePostError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
+  "failedToLoadFeedError": "Failed to load feed. Please try again.",
+  "failedToDeletePostError": "Failed to delete post. Please try again.",
   "noPostsYetMessage": "No posts from connections yet. Add connections or write the first one.",
   "addConnectionsButton": "Add connections",
   "likeTooltip": "Like",
@@ -111,27 +96,15 @@
 
   "signOutTooltip": "Sign out",
   "darkThemeToggleTooltip": "Toggle dark theme",
-  "failedToLoadProfileError": "Failed to load profile: {error}",
-  "@failedToLoadProfileError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
+  "failedToLoadProfileError": "Failed to load profile. Please try again.",
 
   "commentsTitle": "Comments",
   "deleteCommentTitle": "Delete comment?",
   "noCommentsYetMessage": "No comments yet",
   "writeCommentHint": "Write a comment...",
-  "failedToLoadCommentsError": "Failed to load comments: {error}",
-  "@failedToLoadCommentsError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
-  "failedToDeleteCommentError": "Failed to delete comment: {error}",
-  "@failedToDeleteCommentError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
-  "failedToSendCommentError": "Failed to send: {error}",
-  "@failedToSendCommentError": {
-    "placeholders": { "error": { "type": "Object" } }
-  },
+  "failedToLoadCommentsError": "Failed to load comments. Please try again.",
+  "failedToDeleteCommentError": "Failed to delete comment. Please try again.",
+  "failedToSendCommentError": "Failed to send. Please try again.",
 
   "connectionKnownLessThanDay": "Known for less than a day",
   "connectionKnownDays": "Known for {days, plural, one{{days} day} other{{days} days}}",

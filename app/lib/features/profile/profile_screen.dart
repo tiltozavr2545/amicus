@@ -94,7 +94,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) =>
-            Center(child: Text(l10n.failedToLoadProfileError(error))),
+            Center(child: Text(l10n.failedToLoadProfileError)),
         data: (profile) {
           if (_nameController.text.isEmpty) {
             _nameController.text = profile.name;
