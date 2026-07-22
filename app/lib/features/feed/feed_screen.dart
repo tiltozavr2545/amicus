@@ -72,9 +72,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     } catch (e) {
       if (!mounted || epoch != _loadEpoch) return;
       setState(
-        () => _errorMessage = AppLocalizations.of(
-          context,
-        )!.failedToLoadFeedError(e),
+        () =>
+            _errorMessage = AppLocalizations.of(context)!.failedToLoadFeedError,
       );
     } finally {
       if (mounted && epoch == _loadEpoch) setState(() => _isLoading = false);
@@ -125,9 +124,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       if (mounted) setState(() => _posts.removeWhere((p) => p.id == post.id));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.failedToDeletePostError(e))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.failedToDeletePostError)));
       }
     }
   }

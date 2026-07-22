@@ -45,7 +45,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       setState(
         () => _errorMessage = AppLocalizations.of(
           context,
-        )!.failedToLoadCommentsError(e),
+        )!.failedToLoadCommentsError,
       );
     }
   }
@@ -77,7 +77,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.failedToDeleteCommentError(e))),
+          SnackBar(content: Text(l10n.failedToDeleteCommentError)),
         );
       }
     }
@@ -100,7 +100,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       setState(
         () => _errorMessage = AppLocalizations.of(
           context,
-        )!.failedToSendCommentError(e),
+        )!.failedToSendCommentError,
       );
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -180,6 +180,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                   Expanded(
                     child: TextField(
                       controller: _textController,
+                      maxLength: 5000,
                       decoration: InputDecoration(
                         hintText: l10n.writeCommentHint,
                       ),

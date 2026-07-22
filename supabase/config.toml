@@ -196,7 +196,9 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Custom SMTP (auth.email.smtp below) removes Supabase's free-tier limit, so this is raised
+# well above the previous default of 2/hour.
+email_sent = 100
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -234,14 +236,17 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
+# Actual SMTP is configured directly on the live Supabase project (Dashboard/Management API),
+# not via this file — this file isn't auto-pushed to the remote project. Left commented out so
+# local `supabase start` keeps using the fake local Inbucket catcher from [local_smtp] above.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
+# host = "smtp.gmail.com"
 # port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# user = "projectamicushelper@gmail.com"
+# pass = "env(GMAIL_SMTP_PASS)"
+# admin_email = "projectamicushelper@gmail.com"
+# sender_name = "Amicus"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
