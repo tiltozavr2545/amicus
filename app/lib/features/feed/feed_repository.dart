@@ -108,6 +108,9 @@ class Comment {
     required this.authorName,
     required this.text,
     required this.createdAt,
+    this.parentCommentId,
+    this.replyToId,
+    this.isDeleted = false,
   });
 
   final String id;
@@ -116,6 +119,18 @@ class Comment {
   final String text;
   final DateTime createdAt;
 
+  /// The thread root this comment belongs to; null for a root comment. Replies
+  /// are capped at one level, so a reply's parent is always a root.
+  final String? parentCommentId;
+
+  /// The comment this reply is addressed to — the root itself or a sibling
+  /// reply. Display only: it never affects nesting.
+  final String? replyToId;
+
+  /// A comment that was deleted while it still had replies: the row survives so
+  /// the thread stays readable, but [text] has been erased server-side.
+  final bool isDeleted;
+
   factory Comment.fromRow(Map<String, dynamic> row) {
     return Comment(
       id: row['id'] as String,
@@ -123,6 +138,9 @@ class Comment {
       authorName: (row['author'] as Map<String, dynamic>)['name'] as String,
       text: row['text'] as String,
       createdAt: DateTime.parse(row['created_at'] as String),
+      parentCommentId: row['parent_comment_id'] as String?,
+      replyToId: row['reply_to_id'] as String?,
+      isDeleted: row['deleted_at'] != null,
     );
   }
 }
@@ -273,24 +291,38 @@ class FeedRepository {
         .eq('user_id', userId);
   }
 
+  /// Fetches one post's comments, oldest first — a conversation reads forwards,
+  /// and replies have to follow the comment they answer.
+  ///
+  /// `ascending: true` is spelled out because postgrest-dart's `order()`
+  /// defaults to *descending*; `id` is a deterministic tiebreak for comments
+  /// sharing a timestamp, same as the feed's keyset paging.
   Future<List<Comment>> fetchComments(String postId) async {
     final rows = await _client
         .from('comments')
         .select('*, author:users(name)')
         .eq('post_id', postId)
-        .order('created_at');
+        .order('created_at', ascending: true)
+        .order('id', ascending: true);
     return rows.map(Comment.fromRow).toList();
   }
 
+  /// Adds a comment, or a reply when [parentCommentId] is given (always the
+  /// thread root — nesting is one level deep). [replyToId] only records who the
+  /// reply addresses, for the `in reply to: <name>` label.
   Future<void> addComment({
     required String postId,
     required String authorId,
     required String text,
+    String? parentCommentId,
+    String? replyToId,
   }) async {
     await _client.from('comments').insert({
       'post_id': postId,
       'author_id': authorId,
       'text': text,
+      'parent_comment_id': parentCommentId,
+      'reply_to_id': replyToId,
     });
   }
 
@@ -304,8 +336,15 @@ class FeedRepository {
     await _client.from('posts').delete().eq('id', postId);
   }
 
+  /// Deletes a comment of the current user's. Whether the row is removed or
+  /// merely tombstoned is decided server-side (a comment with replies is
+  /// tombstoned so those replies keep their context), hence the RPC instead of
+  /// a plain delete.
   Future<void> deleteComment(String commentId) async {
-    await _client.from('comments').delete().eq('id', commentId);
+    await _client.rpc(
+      'delete_own_comment',
+      params: {'p_comment_id': commentId},
+    );
   }
 }
 

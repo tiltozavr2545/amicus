@@ -542,6 +542,42 @@ abstract class AppLocalizations {
   /// **'Write a comment...'**
   String get writeCommentHint;
 
+  /// No description provided for @writeReplyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a reply...'**
+  String get writeReplyHint;
+
+  /// No description provided for @replyButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get replyButton;
+
+  /// No description provided for @cancelReplyTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel reply'**
+  String get cancelReplyTooltip;
+
+  /// No description provided for @replyingToLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Replying to: {name}'**
+  String replyingToLabel(String name);
+
+  /// No description provided for @inReplyToLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'In reply to: {name}'**
+  String inReplyToLabel(String name);
+
+  /// No description provided for @deletedCommentPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment deleted'**
+  String get deletedCommentPlaceholder;
+
   /// No description provided for @failedToLoadCommentsError.
   ///
   /// In en, this message translates to:
