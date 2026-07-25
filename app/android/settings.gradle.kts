@@ -18,7 +18,9 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.7.3" apply false
+    // 8.7.3 was tested only up to compileSdk 35 and refuses to build against 36;
+    // 8.9.x is the first line that supports it and still runs on Gradle 8.12.
+    id("com.android.application") version "8.9.3" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }
 

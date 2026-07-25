@@ -19,7 +19,10 @@ if (hasKeystoreProperties) {
 
 android {
     namespace = "com.github.tiltozavr2545.amicus"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned above flutter.compileSdkVersion (35 in Flutter 3.32.8): Google Play
+    // requires targetSdk 36 from 2026-08-31, and targetSdk can't exceed compileSdk.
+    // Flutter itself only defaults to 36 from 3.35, which needs macOS 14+.
+    compileSdk = 36
     // Pinned above flutter.ndkVersion (26.x): several plugins (app_links,
     // image_picker_android, etc.) require 27.0.12077973.
     ndkVersion = "27.0.12077973"
@@ -36,7 +39,7 @@ android {
     defaultConfig {
         applicationId = "com.github.tiltozavr2545.amicus"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
