@@ -251,6 +251,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get writeCommentHint => 'Write a comment...';
 
   @override
+  String get writeReplyHint => 'Write a reply...';
+
+  @override
+  String get replyButton => 'Reply';
+
+  @override
+  String get cancelReplyTooltip => 'Cancel reply';
+
+  @override
+  String replyingToLabel(String name) {
+    return 'Replying to: $name';
+  }
+
+  @override
+  String inReplyToLabel(String name) {
+    return 'In reply to: $name';
+  }
+
+  @override
+  String get deletedCommentPlaceholder => 'Comment deleted';
+
+  @override
   String get failedToLoadCommentsError =>
       'Failed to load comments. Please try again.';
 

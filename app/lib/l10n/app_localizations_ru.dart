@@ -253,6 +253,28 @@ class AppLocalizationsRu extends AppLocalizations {
   String get writeCommentHint => 'Написать комментарий...';
 
   @override
+  String get writeReplyHint => 'Написать ответ...';
+
+  @override
+  String get replyButton => 'Ответить';
+
+  @override
+  String get cancelReplyTooltip => 'Отменить ответ';
+
+  @override
+  String replyingToLabel(String name) {
+    return 'Ответ: $name';
+  }
+
+  @override
+  String inReplyToLabel(String name) {
+    return 'В ответ: $name';
+  }
+
+  @override
+  String get deletedCommentPlaceholder => 'Комментарий удалён';
+
+  @override
   String get failedToLoadCommentsError =>
       'Не удалось загрузить комментарии. Попробуйте ещё раз.';
 

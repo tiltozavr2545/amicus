@@ -87,6 +87,18 @@
   "deleteCommentTitle": "Удалить комментарий?",
   "noCommentsYetMessage": "Пока нет комментариев",
   "writeCommentHint": "Написать комментарий...",
+  "writeReplyHint": "Написать ответ...",
+  "replyButton": "Ответить",
+  "cancelReplyTooltip": "Отменить ответ",
+  "replyingToLabel": "Ответ: {name}",
+  "@replyingToLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "inReplyToLabel": "В ответ: {name}",
+  "@inReplyToLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "deletedCommentPlaceholder": "Комментарий удалён",
   "failedToLoadCommentsError": "Не удалось загрузить комментарии. Попробуйте ещё раз.",
   "failedToDeleteCommentError": "Не удалось удалить комментарий. Попробуйте ещё раз.",
   "failedToSendCommentError": "Не удалось отправить. Попробуйте ещё раз.",

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/parse_timestamp.dart';
 import '../auth/auth_providers.dart';
 
 class ActivatedConnection {
@@ -104,7 +105,7 @@ class ConnectionsRepository {
       return Friend(
         userId: otherId,
         name: other['name'] as String,
-        connectedAt: DateTime.parse(row['created_at'] as String),
+        connectedAt: parseTimestamp(row['created_at'] as String),
         avatarPath: other['avatar_path'] as String?,
         isMuted: mutedIds.contains(otherId),
         isBlocked: blockedIds.contains(otherId),
@@ -176,7 +177,7 @@ class ConnectionsRepository {
       return BlockedUser(
         userId: row['blocked_id'] as String,
         name: blocked['name'] as String,
-        blockedAt: DateTime.parse(row['created_at'] as String),
+        blockedAt: parseTimestamp(row['created_at'] as String),
         avatarPath: blocked['avatar_path'] as String?,
       );
     }).toList();

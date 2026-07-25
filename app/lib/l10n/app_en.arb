@@ -102,6 +102,18 @@
   "deleteCommentTitle": "Delete comment?",
   "noCommentsYetMessage": "No comments yet",
   "writeCommentHint": "Write a comment...",
+  "writeReplyHint": "Write a reply...",
+  "replyButton": "Reply",
+  "cancelReplyTooltip": "Cancel reply",
+  "replyingToLabel": "Replying to: {name}",
+  "@replyingToLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "inReplyToLabel": "In reply to: {name}",
+  "@inReplyToLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "deletedCommentPlaceholder": "Comment deleted",
   "failedToLoadCommentsError": "Failed to load comments. Please try again.",
   "failedToDeleteCommentError": "Failed to delete comment. Please try again.",
   "failedToSendCommentError": "Failed to send. Please try again.",
