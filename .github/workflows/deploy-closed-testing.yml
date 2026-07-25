@@ -60,7 +60,7 @@ jobs:
           sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           yes | "$sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null
           "$sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" \
-            "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
+            "platforms;android-36" "build-tools;35.0.0" "ndk;27.0.12077973"
 
       - run: flutter pub get --enforce-lockfile
 
