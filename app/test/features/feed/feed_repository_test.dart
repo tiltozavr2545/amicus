@@ -89,6 +89,102 @@ void main() {
     });
   });
 
+  // The feed adjusts the counters itself, before the server answers, so these
+  // six transitions are what the user sees while the request is in flight.
+  group('applyReaction', () {
+    Post postWith({
+      ReactionType? mine,
+      int like = 10,
+      int neutral = 5,
+      int dislike = 2,
+    }) => Post(
+      id: 'p1',
+      authorId: 'a1',
+      authorName: 'Alice',
+      createdAt: DateTime(2026, 1, 1),
+      likeCount: like,
+      neutralCount: neutral,
+      dislikeCount: dislike,
+      myReaction: mine,
+      commentCount: 0,
+    );
+
+    test('adding a first reaction only raises that counter', () {
+      final post = applyReaction(postWith(), ReactionType.like);
+
+      expect(post.myReaction, ReactionType.like);
+      expect(post.likeCount, 11);
+      expect(post.neutralCount, 5);
+      expect(post.dislikeCount, 2);
+    });
+
+    test('clearing your reaction only lowers that counter', () {
+      final post = applyReaction(postWith(mine: ReactionType.dislike), null);
+
+      expect(post.myReaction, null);
+      expect(post.dislikeCount, 1);
+      expect(post.likeCount, 10);
+      expect(post.neutralCount, 5);
+    });
+
+    test('switching moves exactly one vote between two counters', () {
+      final post = applyReaction(
+        postWith(mine: ReactionType.like),
+        ReactionType.dislike,
+      );
+
+      expect(post.myReaction, ReactionType.dislike);
+      expect(post.likeCount, 9);
+      expect(post.dislikeCount, 3);
+      expect(post.neutralCount, 5);
+      // The total across all three is what a switch must leave alone.
+      expect(post.likeCount + post.neutralCount + post.dislikeCount, 17);
+    });
+
+    test(
+      'every switch keeps the total, and every add/clear moves it by one',
+      () {
+        const types = [
+          null,
+          ReactionType.like,
+          ReactionType.neutral,
+          ReactionType.dislike,
+        ];
+        for (final from in types) {
+          for (final to in types) {
+            final before = postWith(mine: from);
+            final after = applyReaction(before, to);
+            final beforeTotal =
+                before.likeCount + before.neutralCount + before.dislikeCount;
+            final afterTotal =
+                after.likeCount + after.neutralCount + after.dislikeCount;
+            final expected =
+                beforeTotal + (to == null ? 0 : 1) - (from == null ? 0 : 1);
+
+            expect(
+              afterTotal,
+              expected,
+              reason: 'total wrong going from $from to $to',
+            );
+            expect(after.myReaction, to, reason: 'myReaction wrong for $to');
+          }
+        }
+      },
+    );
+
+    test('re-applying the reaction you already have is not a no-op', () {
+      // The screen never calls it this way — it maps a repeat tap to null —
+      // but the arithmetic still has to balance rather than double-count.
+      final post = applyReaction(
+        postWith(mine: ReactionType.like),
+        ReactionType.like,
+      );
+
+      expect(post.likeCount, 10);
+      expect(post.myReaction, ReactionType.like);
+    });
+  });
+
   group('keysetFilter', () {
     Post cursorAt(String createdAt, {String id = 'post-9'}) => Post.fromRow({
       'id': id,

@@ -302,6 +302,24 @@ abstract class AppLocalizations {
   /// **'Enter an invite code'**
   String get inviteCodeRequiredError;
 
+  /// No description provided for @inviteCodeNotFoundError.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite code not found. Check it and try again.'**
+  String get inviteCodeNotFoundError;
+
+  /// No description provided for @inviteCodeAlreadyUsedError.
+  ///
+  /// In en, this message translates to:
+  /// **'This invite code has already been used.'**
+  String get inviteCodeAlreadyUsedError;
+
+  /// No description provided for @ownInviteCodeError.
+  ///
+  /// In en, this message translates to:
+  /// **'That\'s your own invite code — share it with someone else.'**
+  String get ownInviteCodeError;
+
   /// No description provided for @activateButton.
   ///
   /// In en, this message translates to:

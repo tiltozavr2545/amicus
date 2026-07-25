@@ -117,6 +117,18 @@ class AppLocalizationsRu extends AppLocalizations {
   String get inviteCodeRequiredError => 'Введи код приглашения';
 
   @override
+  String get inviteCodeNotFoundError =>
+      'Код приглашения не найден. Проверь его и попробуй ещё раз.';
+
+  @override
+  String get inviteCodeAlreadyUsedError =>
+      'Этот код приглашения уже использован.';
+
+  @override
+  String get ownInviteCodeError =>
+      'Это твой собственный код — отправь его кому-нибудь другому.';
+
+  @override
   String get activateButton => 'Активировать';
 
   @override

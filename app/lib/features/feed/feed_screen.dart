@@ -138,7 +138,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final post = _posts[index];
     final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
     final next = post.myReaction == type ? null : type;
-    setState(() => _posts[index] = _applyReaction(post, next));
+    setState(() => _posts[index] = applyReaction(post, next));
     try {
       final repo = ref.read(feedRepositoryProvider);
       if (next == null) {
@@ -153,40 +153,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final current = _posts.indexWhere((p) => p.id == post.id);
       if (current != -1) setState(() => _posts[current] = post);
     }
-  }
-
-  /// Returns [post] with its counts and `myReaction` adjusted from the current
-  /// reaction to [next] (null = no reaction).
-  Post _applyReaction(Post post, ReactionType? next) {
-    var like = post.likeCount;
-    var neutral = post.neutralCount;
-    var dislike = post.dislikeCount;
-    switch (post.myReaction) {
-      case ReactionType.like:
-        like--;
-      case ReactionType.neutral:
-        neutral--;
-      case ReactionType.dislike:
-        dislike--;
-      case null:
-        break;
-    }
-    switch (next) {
-      case ReactionType.like:
-        like++;
-      case ReactionType.neutral:
-        neutral++;
-      case ReactionType.dislike:
-        dislike++;
-      case null:
-        break;
-    }
-    return post.copyWith(
-      likeCount: like,
-      neutralCount: neutral,
-      dislikeCount: dislike,
-      myReaction: next,
-    );
   }
 
   @override

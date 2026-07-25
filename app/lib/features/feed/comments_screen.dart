@@ -19,7 +19,12 @@ class CommentsScreen extends ConsumerStatefulWidget {
 class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   final _textController = TextEditingController();
   List<ThreadedComment>? _comments;
+
+  /// Set only when the list itself could not be loaded — it is rendered *in
+  /// place of* the list, so it can say nothing about a failure that happens
+  /// once comments are on screen. Those report through a snackbar.
   String? _errorMessage;
+
   bool _isSending = false;
 
   /// The comment being answered, or null when writing a root comment. Nesting
@@ -45,7 +50,10 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           .read(feedRepositoryProvider)
           .fetchComments(widget.postId);
       if (!mounted) return;
-      setState(() => _comments = threadComments(comments));
+      setState(() {
+        _comments = threadComments(comments);
+        _errorMessage = null;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(
@@ -99,10 +107,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
+    final l10n = AppLocalizations.of(context)!;
     final target = _replyTarget;
     setState(() => _isSending = true);
     try {
-      final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
+      final userId = ref.read(currentUserIdProvider)!;
       await ref
           .read(feedRepositoryProvider)
           .addComment(
@@ -118,12 +127,15 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       if (mounted) setState(() => _replyTarget = null);
       await _load();
     } catch (e) {
+      // A snackbar, not _errorMessage: that field is rendered only in place of
+      // the list, so once comments have loaded — which is the normal state when
+      // sending — assigning to it puts the message nowhere. The composer would
+      // just stop, and the server rejects a reply for several ordinary reasons
+      // (its target was deleted or blocked while the reply was being typed).
       if (!mounted) return;
-      setState(
-        () => _errorMessage = AppLocalizations.of(
-          context,
-        )!.failedToSendCommentError,
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.failedToSendCommentError)));
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -214,7 +226,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
 
   Widget _buildComment(AppLocalizations l10n, ThreadedComment threaded) {
     final comment = threaded.comment;
-    final currentUserId = ref.read(supabaseClientProvider).auth.currentUser!.id;
+    final currentUserId = ref.read(currentUserIdProvider);
     final isOwnComment = comment.authorId == currentUserId;
     final textTheme = Theme.of(context).textTheme;
 

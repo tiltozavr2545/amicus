@@ -44,7 +44,7 @@
 | **InviteLink** | id, owner_id, code, used_by_id, is_used, created_at | Одноразовая ссылка-приглашение |
 | **Post** | id, author_id, text, image_url, created_at | Сам пост |
 | **Reaction** | id, post_id, user_id, type, created_at | Лайк/эмоция |
-| **Comment** | id, post_id, author_id, parent_comment_id (nullable), text, created_at | Комментарий; `post_id` — группировка по постам (индекс для быстрой выборки списка комментариев конкретного поста), parent — для тредов (в реальную схему MVP это поле, вопреки этой строке, не попало: добавлено только в 0.10.0, см. CLAUDE.md) |
+| **Comment** | id, post_id, author_id, parent_comment_id (nullable), text, created_at | Комментарий; `post_id` — группировка по постам (индекс для быстрой выборки списка комментариев конкретного поста), parent — для тредов (в реальную схему MVP это поле, вопреки этой строке, не попало: добавлено только в 0.10.0, см. CHANGELOG.md) |
 
 Это черновик, не финальная DDL — таблицы и связи можно и нужно будет доработать, когда дойдём до кода.
 
