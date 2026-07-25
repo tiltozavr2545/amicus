@@ -187,3 +187,14 @@ class ConnectionsRepository {
 final connectionsRepositoryProvider = Provider<ConnectionsRepository>((ref) {
   return ConnectionsRepository(ref.watch(supabaseClientProvider));
 });
+
+/// The Connections list, with each friend's mute/block state.
+///
+/// Lives here rather than privately in `connections_screen.dart` because the
+/// "Blocked users" screen has to invalidate it too: it opens as a route pushed
+/// *over* ConnectionsScreen, which therefore stays mounted and keeps this
+/// autoDispose provider alive with its cached, now-stale isBlocked flags.
+final friendsProvider = FutureProvider.autoDispose<List<Friend>>((ref) {
+  final userId = ref.watch(currentUserIdProvider);
+  return ref.watch(connectionsRepositoryProvider).fetchFriends(userId!);
+});

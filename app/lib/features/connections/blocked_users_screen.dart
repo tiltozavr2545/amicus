@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
+import '../feed/feed_repository.dart';
 import 'connections_repository.dart';
 import 'connections_screen.dart';
 
@@ -29,6 +30,14 @@ class _BlockedUserListItem extends ConsumerWidget {
           .read(connectionsRepositoryProvider)
           .unblockUser(blockerId: currentUserId, blockedId: blockedUser.userId);
       ref.invalidate(_blockedUsersProvider);
+      // ConnectionsScreen is the route this one was pushed over, so it is still
+      // mounted and still holding this list with its now-wrong isBlocked flag —
+      // popping back would show the person as blocked, on a button whose
+      // tooltip says "Unblock".
+      ref.invalidate(friendsProvider);
+      // Their posts are allowed back into the feed now, and the feed tab is
+      // still alive in the shell behind this screen holding the old page.
+      ref.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(

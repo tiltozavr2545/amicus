@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/connections/connections_repository.dart';
 import 'package:amicus/features/connections/connections_screen.dart';
+import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
 /// Records calls so the tests can assert whether activation actually reached
@@ -14,6 +16,9 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   List<Friend> friends = [];
   int activateCalls = 0;
   String? lastCode;
+
+  /// Makes [muteUser] fail, so a test can check the failure path.
+  bool muteThrows = false;
 
   int muteCalls = 0;
   int unmuteCalls = 0;
@@ -27,10 +32,14 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   @override
   Future<String> createInviteLink() async => 'stub-code';
 
+  /// Thrown instead of activating, so a test can drive the error branch.
+  Object? activateError;
+
   @override
   Future<ActivatedConnection> activateInviteLink(String code) async {
     activateCalls++;
     lastCode = code;
+    if (activateError != null) throw activateError!;
     return const ActivatedConnection(ownerId: 'owner-1', ownerName: 'Owner');
   }
 
@@ -42,6 +51,7 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
     required String muterId,
     required String mutedId,
   }) async {
+    if (muteThrows) throw Exception('mute failed');
     muteCalls++;
     lastMutedId = mutedId;
   }
@@ -71,10 +81,33 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   }) async {
     unblockCalls++;
     lastUnblockedId = blockedId;
+    unblockEverywhere(blockedId);
   }
 
   @override
-  Future<List<BlockedUser>> fetchBlockedUsers(String currentUserId) async => [];
+  Future<List<BlockedUser>> fetchBlockedUsers(String currentUserId) async =>
+      blockedUsers;
+
+  /// Backing store for the round-trip test below: unblocking has to be visible
+  /// to a *later* fetchFriends, the way it is on the server.
+  List<BlockedUser> blockedUsers = [];
+
+  void unblockEverywhere(String userId) {
+    blockedUsers = blockedUsers.where((b) => b.userId != userId).toList();
+    friends = [
+      for (final f in friends)
+        if (f.userId == userId)
+          Friend(
+            userId: f.userId,
+            name: f.name,
+            connectedAt: f.connectedAt,
+            avatarPath: f.avatarPath,
+            isMuted: f.isMuted,
+          )
+        else
+          f,
+    ];
+  }
 }
 
 Widget _wrap(_FakeConnectionsRepository repo) {
@@ -232,5 +265,178 @@ void main() {
     expect(find.text('Block Alice?'), findsNothing);
     expect(repo.unblockCalls, 1);
     expect(repo.lastUnblockedId, 'friend-1');
+  });
+
+  // activate_invite_link() raises three errors the user needs to hear apart,
+  // tagged with stable SQLSTATEs so the wording can live in the ARB files
+  // instead of being hardcoded English inside a migration.
+  testWidgets('A known activation error is shown localized, by code', (
+    tester,
+  ) async {
+    final repo = _FakeConnectionsRepository()
+      ..activateError = const PostgrestException(
+        message: 'Invite code already used',
+        code: 'PT409',
+      );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'abc123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Activate'));
+    await tester.pump();
+
+    expect(
+      find.text('This invite code has already been used.'),
+      findsOneWidget,
+    );
+  });
+
+  // The same exception type also carries statement timeouts and constraint
+  // violations, whose raw text names tables and constraints. Those must not
+  // reach the screen.
+  testWidgets('An unexpected database error is not shown raw', (tester) async {
+    final repo = _FakeConnectionsRepository()
+      ..activateError = const PostgrestException(
+        message:
+            'insert or update on table "connections" violates foreign key '
+            'constraint "connections_user_a_id_fkey"',
+        code: '23503',
+      );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'abc123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Activate'));
+    await tester.pump();
+
+    expect(find.textContaining('connections_user_a_id_fkey'), findsNothing);
+    expect(find.textContaining('violates foreign key'), findsNothing);
+    expect(find.text('Unexpected error. Please try again.'), findsOneWidget);
+  });
+
+  // The feed tab keeps its loaded page alive in the shell's IndexedStack, so
+  // hiding (or un-hiding) an author has to reach it through the refresh tick —
+  // otherwise a blocked person's posts stay on screen until a pull-to-refresh.
+  testWidgets('Muting bumps the feed refresh tick', (tester) async {
+    final repo = _FakeConnectionsRepository()
+      ..friends = [
+        Friend(
+          userId: 'friend-1',
+          name: 'Alice',
+          connectedAt: DateTime(2026, 1, 1),
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ConnectionsScreen)),
+    );
+    final before = container.read(feedRefreshTickProvider);
+
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Mute'));
+    await tester.pump();
+
+    expect(repo.muteCalls, 1);
+    expect(container.read(feedRefreshTickProvider), before + 1);
+  });
+
+  testWidgets('Unblocking bumps the feed refresh tick', (tester) async {
+    final repo = _FakeConnectionsRepository()
+      ..friends = [
+        Friend(
+          userId: 'friend-1',
+          name: 'Alice',
+          connectedAt: DateTime(2026, 1, 1),
+          isBlocked: true,
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ConnectionsScreen)),
+    );
+    final before = container.read(feedRefreshTickProvider);
+
+    await tester.tap(find.byTooltip('Unblock'));
+    await tester.pump();
+
+    expect(repo.unblockCalls, 1);
+    expect(container.read(feedRefreshTickProvider), before + 1);
+  });
+
+  // The "Blocked users" screen is pushed *over* this one, so ConnectionsScreen
+  // stays mounted and keeps friendsProvider (autoDispose) alive with the flags
+  // it fetched before. Unblocking there has to invalidate it, or popping back
+  // lands on a row still marked blocked.
+  testWidgets('Unblocking on the blocked-users screen refreshes the '
+      'connections list behind it', (tester) async {
+    final repo = _FakeConnectionsRepository()
+      ..friends = [
+        Friend(
+          userId: 'friend-1',
+          name: 'Alice',
+          connectedAt: DateTime(2026, 1, 1),
+          isBlocked: true,
+        ),
+      ]
+      ..blockedUsers = [
+        BlockedUser(
+          userId: 'friend-1',
+          name: 'Alice',
+          blockedAt: DateTime(2026, 1, 1),
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    // Alice starts out blocked: her block button offers "Unblock".
+    expect(find.byTooltip('Unblock'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Blocked users'));
+    await tester.pumpAndSettle();
+    expect(find.text('Blocked'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Unblock'));
+    await tester.pump();
+    expect(repo.unblockCalls, 1);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Back on the connections list, the row must have caught up.
+    expect(find.byTooltip('Unblock'), findsNothing);
+    expect(find.byTooltip('Block'), findsOneWidget);
+  });
+
+  testWidgets('A failed mute does not bump the feed refresh tick', (
+    tester,
+  ) async {
+    final repo = _FakeConnectionsRepository()
+      ..muteThrows = true
+      ..friends = [
+        Friend(
+          userId: 'friend-1',
+          name: 'Alice',
+          connectedAt: DateTime(2026, 1, 1),
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ConnectionsScreen)),
+    );
+    final before = container.read(feedRefreshTickProvider);
+
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Mute'));
+    await tester.pump();
+
+    expect(container.read(feedRefreshTickProvider), before);
   });
 }

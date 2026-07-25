@@ -6,15 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../l10n/app_localizations.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
+import '../feed/feed_repository.dart';
 import '../profile/profile_repository.dart';
 import 'blocked_users_screen.dart';
 import 'connection_duration.dart';
 import 'connections_repository.dart';
-
-final _friendsProvider = FutureProvider.autoDispose<List<Friend>>((ref) {
-  final userId = ref.watch(currentUserIdProvider);
-  return ref.watch(connectionsRepositoryProvider).fetchFriends(userId!);
-});
 
 class FriendAvatar extends ConsumerWidget {
   const FriendAvatar({super.key, required this.avatarPath});
@@ -51,7 +47,13 @@ class _FriendListItem extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     try {
       await action();
-      ref.invalidate(_friendsProvider);
+      ref.invalidate(friendsProvider);
+      // Muting or blocking changes what the feed is allowed to show, but the
+      // feed tab lives in the shell's IndexedStack and keeps whatever it loaded
+      // last — leaving the newly hidden person's posts on screen, with buttons
+      // whose requests RLS now rejects. Same on the way back: unmuting has to
+      // bring the posts back without a manual pull-to-refresh.
+      ref.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -246,12 +248,23 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           context,
         )!.nowConnectedWithMessage(connection.ownerName);
       });
-      ref.invalidate(_friendsProvider);
+      ref.invalidate(friendsProvider);
     } on PostgrestException catch (e) {
+      // Switch on the SQLSTATE, never on e.message: the same exception type
+      // also carries statement timeouts and constraint violations, whose raw
+      // text names tables and constraints. The three codes below are raised
+      // deliberately by activate_invite_link(); anything else is unexpected and
+      // gets the generic message, same as any other failure.
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
       setState(() {
         _activationSucceeded = false;
-        _activationMessage = e.message;
+        _activationMessage = switch (e.code) {
+          'PT404' => l10n.inviteCodeNotFoundError,
+          'PT409' => l10n.inviteCodeAlreadyUsedError,
+          'PT422' => l10n.ownInviteCodeError,
+          _ => l10n.unexpectedError,
+        };
       });
     } catch (e) {
       if (!mounted) return;
@@ -266,7 +279,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final friendsAsync = ref.watch(_friendsProvider);
+    final friendsAsync = ref.watch(friendsProvider);
     final userId = ref.watch(currentUserIdProvider);
     final l10n = AppLocalizations.of(context)!;
 

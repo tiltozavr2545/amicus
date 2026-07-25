@@ -117,6 +117,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inviteCodeRequiredError => 'Enter an invite code';
 
   @override
+  String get inviteCodeNotFoundError =>
+      'Invite code not found. Check it and try again.';
+
+  @override
+  String get inviteCodeAlreadyUsedError =>
+      'This invite code has already been used.';
+
+  @override
+  String get ownInviteCodeError =>
+      'That\'s your own invite code — share it with someone else.';
+
+  @override
   String get activateButton => 'Activate';
 
   @override

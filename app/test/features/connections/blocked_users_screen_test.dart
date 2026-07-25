@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/connections/blocked_users_screen.dart';
 import 'package:amicus/features/connections/connections_repository.dart';
+import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
 /// Only the members `BlockedUsersScreen` actually calls need real behaviour;
@@ -102,5 +103,29 @@ void main() {
 
     expect(repo.unblockCalls, 1);
     expect(repo.lastUnblockedId, 'blocked-1');
+  });
+
+  testWidgets('Unblocking bumps the feed refresh tick so their posts come '
+      'back', (tester) async {
+    final repo = _FakeConnectionsRepository()
+      ..blockedUsers = [
+        BlockedUser(
+          userId: 'blocked-1',
+          name: 'Bob',
+          blockedAt: DateTime(2026, 1, 1),
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(BlockedUsersScreen)),
+    );
+    final before = container.read(feedRefreshTickProvider);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Unblock'));
+    await tester.pump();
+
+    expect(container.read(feedRefreshTickProvider), before + 1);
   });
 }

@@ -102,6 +102,47 @@ class Post {
   }
 }
 
+/// Returns [post] with its counters and `myReaction` moved from whatever the
+/// viewer had to [next] (null = no reaction at all).
+///
+/// The feed applies this optimistically, before the server has confirmed
+/// anything, so it has to do the same arithmetic the server would: take one off
+/// the old counter, add one to the new. Lives here as a pure function rather
+/// than inside the screen's State so the six transitions can be tested — the
+/// counters are what the user actually looks at, and an off-by-one here is
+/// invisible until someone counts.
+Post applyReaction(Post post, ReactionType? next) {
+  var like = post.likeCount;
+  var neutral = post.neutralCount;
+  var dislike = post.dislikeCount;
+  switch (post.myReaction) {
+    case ReactionType.like:
+      like--;
+    case ReactionType.neutral:
+      neutral--;
+    case ReactionType.dislike:
+      dislike--;
+    case null:
+      break;
+  }
+  switch (next) {
+    case ReactionType.like:
+      like++;
+    case ReactionType.neutral:
+      neutral++;
+    case ReactionType.dislike:
+      dislike++;
+    case null:
+      break;
+  }
+  return post.copyWith(
+    likeCount: like,
+    neutralCount: neutral,
+    dislikeCount: dislike,
+    myReaction: next,
+  );
+}
+
 class Comment {
   const Comment({
     required this.id,
@@ -357,8 +398,11 @@ final feedRepositoryProvider = Provider<FeedRepository>((ref) {
   return FeedRepository(ref.watch(supabaseClientProvider));
 });
 
-/// Bumped by the bottom-nav shell after a post is created from outside
-/// [FeedScreen] (the "new post" tab), so the feed knows to refresh itself.
+/// Bumped whenever something outside [FeedScreen] changes what the feed should
+/// show, so it can refresh itself: a post created from the bottom-nav "new
+/// post" tab, and muting/blocking (or unmuting/unblocking) a connection, which
+/// changes which authors RLS lets through. The feed tab keeps its state in the
+/// shell's IndexedStack, so without this it would sit on a stale page.
 class FeedRefreshTick extends Notifier<int> {
   @override
   int build() => 0;

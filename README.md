@@ -64,3 +64,4 @@ flutter run --dart-define-from-file=.env
 - [Бриф проекта](docs/project-brief.md) — идея, механика, MVP-скоуп
 - [План реализации](docs/implementation-plan.md) — пошаговый прогресс по этапам
 - [Отложенные фичи](docs/future-development.md) — комнаты, несколько реакций, треды в комментариях и т.д.
+- [Changelog](CHANGELOG.md) — что появилось в какой версии
