@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/parse_timestamp.dart';
 import '../auth/auth_providers.dart';
 
 /// The three mutually-exclusive reactions a user can leave on a post. Stored
@@ -63,7 +64,7 @@ class Post {
       id: row['id'] as String,
       authorId: row['author_id'] as String,
       authorName: (row['author'] as Map<String, dynamic>)['name'] as String,
-      createdAt: DateTime.parse(row['created_at'] as String),
+      createdAt: parseTimestamp(row['created_at'] as String),
       authorDislikesDisabled:
           (row['author'] as Map<String, dynamic>)['dislikes_disabled']
               as bool? ??
@@ -137,7 +138,7 @@ class Comment {
       authorId: row['author_id'] as String,
       authorName: (row['author'] as Map<String, dynamic>)['name'] as String,
       text: row['text'] as String,
-      createdAt: DateTime.parse(row['created_at'] as String),
+      createdAt: parseTimestamp(row['created_at'] as String),
       parentCommentId: row['parent_comment_id'] as String?,
       replyToId: row['reply_to_id'] as String?,
       isDeleted: row['deleted_at'] != null,
