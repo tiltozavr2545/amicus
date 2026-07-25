@@ -30,13 +30,16 @@ class ThreadedComment {
 /// Two rows are dropped on the way, both for the same reason — a reply is only
 /// meaningful next to what it replies to:
 ///
-///  * a reply whose root is missing. Comments are visible only when their author
-///    is the viewer or one of the viewer's connections, so a reply from a
-///    connection can perfectly well outlive the visibility of the comment it
-///    answers. Showing it as a root would tear it out of context, so the whole
-///    branch stays hidden.
+///  * a reply whose root is missing. Showing it as a root would tear it out of
+///    context, so the whole branch stays hidden. RLS now also guarantees this
+///    server-side — a reply is only returned when its thread root has a visible
+///    author, and a root with a visible author is itself visible — so this is a
+///    safety net rather than the primary rule.
 ///  * a tombstoned root with no visible replies. A tombstone is kept server-side
 ///    only to hold a thread together; with nothing left under it, it is noise.
+///    `delete_own_comment()` now removes a tombstone along with its last reply,
+///    but one can still be stranded when a reply disappears without going
+///    through it — an author deleting their account cascades their replies away.
 /// Oldest first, with the id as a tiebreak so comments sharing a timestamp
 /// still land in a stable order.
 int _byTime(Comment a, Comment b) {

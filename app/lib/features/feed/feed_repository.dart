@@ -198,10 +198,14 @@ class FeedRepository {
     final summaryRows =
         await _client.rpc('reaction_summary', params: {'p_post_ids': postIds})
             as List<dynamic>;
+    // Counts every comment including replies, but not tombstones: a deleted
+    // comment's row survives only to keep its branch readable, and it holds no
+    // text, so counting it would promise content that isn't there.
     final commentRows = await _client
         .from('comments')
         .select('post_id')
-        .inFilter('post_id', postIds);
+        .inFilter('post_id', postIds)
+        .isFilter('deleted_at', null);
 
     final likeCounts = <String, int>{};
     final neutralCounts = <String, int>{};
