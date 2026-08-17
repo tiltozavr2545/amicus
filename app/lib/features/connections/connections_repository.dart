@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
 import '../auth/auth_providers.dart';
 
@@ -49,13 +50,17 @@ class ConnectionsRepository {
   final SupabaseClient _client;
 
   Future<String> createInviteLink() async {
-    final code = await _client.rpc('create_invite_link');
+    final code = await _client
+        .rpc('create_invite_link')
+        .timeout(networkTimeout);
     return code as String;
   }
 
   Future<ActivatedConnection> activateInviteLink(String code) async {
     final rows =
-        await _client.rpc('activate_invite_link', params: {'p_code': code})
+        await _client
+                .rpc('activate_invite_link', params: {'p_code': code})
+                .timeout(networkTimeout)
             as List<dynamic>;
     // The function returns the inviter's row; an empty result would mean the
     // owner profile vanished. Fail with a clear error instead of a raw
@@ -79,7 +84,8 @@ class ConnectionsRepository {
           'user_b:users!connections_user_b_id_fkey(name, avatar_path)',
         )
         .or('user_a_id.eq.$currentUserId,user_b_id.eq.$currentUserId')
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .timeout(networkTimeout);
 
     final mutedIds = await _fetchIdSet(
       table: 'muted_users',
@@ -122,15 +128,16 @@ class ConnectionsRepository {
     final rows = await _client
         .from(table)
         .select(otherColumn)
-        .eq(ownerColumn, ownerId);
+        .eq(ownerColumn, ownerId)
+        .timeout(networkTimeout);
     return rows.map((row) => row[otherColumn] as String).toSet();
   }
 
   Future<void> muteUser({required String muterId, required String mutedId}) {
-    return _client.from('muted_users').upsert({
-      'muter_id': muterId,
-      'muted_id': mutedId,
-    });
+    return _client
+        .from('muted_users')
+        .upsert({'muter_id': muterId, 'muted_id': mutedId})
+        .timeout(networkTimeout);
   }
 
   Future<void> unmuteUser({required String muterId, required String mutedId}) {
@@ -138,17 +145,18 @@ class ConnectionsRepository {
         .from('muted_users')
         .delete()
         .eq('muter_id', muterId)
-        .eq('muted_id', mutedId);
+        .eq('muted_id', mutedId)
+        .timeout(networkTimeout);
   }
 
   Future<void> blockUser({
     required String blockerId,
     required String blockedId,
   }) {
-    return _client.from('blocked_users').upsert({
-      'blocker_id': blockerId,
-      'blocked_id': blockedId,
-    });
+    return _client
+        .from('blocked_users')
+        .upsert({'blocker_id': blockerId, 'blocked_id': blockedId})
+        .timeout(networkTimeout);
   }
 
   Future<void> unblockUser({
@@ -159,7 +167,8 @@ class ConnectionsRepository {
         .from('blocked_users')
         .delete()
         .eq('blocker_id', blockerId)
-        .eq('blocked_id', blockedId);
+        .eq('blocked_id', blockedId)
+        .timeout(networkTimeout);
   }
 
   Future<List<BlockedUser>> fetchBlockedUsers(String currentUserId) async {
@@ -170,7 +179,8 @@ class ConnectionsRepository {
           'blocked:users!blocked_users_blocked_id_fkey(name, avatar_path)',
         )
         .eq('blocker_id', currentUserId)
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .timeout(networkTimeout);
 
     return rows.map((row) {
       final blocked = row['blocked'] as Map<String, dynamic>;

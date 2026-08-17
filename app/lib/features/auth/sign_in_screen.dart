@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
@@ -38,7 +39,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           .signInWithPassword(
             email: _emailController.text.trim(),
             password: _passwordController.text,
-          );
+          )
+          .timeout(networkTimeout);
     } on AuthException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {

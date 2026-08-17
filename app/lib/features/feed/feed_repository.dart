@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
 import '../auth/auth_providers.dart';
 
@@ -226,7 +227,8 @@ class FeedRepository {
     final rows = await query
         .order('created_at', ascending: false)
         .order('id', ascending: false)
-        .limit(pageSize);
+        .limit(pageSize)
+        .timeout(networkTimeout);
 
     var posts = rows.map(Post.fromRow).toList();
     if (posts.isEmpty) return posts;
@@ -238,16 +240,19 @@ class FeedRepository {
     // so totals come from a server-side function that returns numbers plus the
     // caller's own reaction — never other users' ids.
     final summaryRows =
-        await _client.rpc('reaction_summary', params: {'p_post_ids': postIds})
+        await _client
+                .rpc('reaction_summary', params: {'p_post_ids': postIds})
+                .timeout(networkTimeout)
             as List<dynamic>;
-    // Counts every comment including replies, but not tombstones: a deleted
-    // comment's row survives only to keep its branch readable, and it holds no
-    // text, so counting it would promise content that isn't there.
-    final commentRows = await _client
-        .from('comments')
-        .select('post_id')
-        .inFilter('post_id', postIds)
-        .isFilter('deleted_at', null);
+    // Counts every comment including replies, but not tombstones (a deleted
+    // comment's row survives only to keep its branch readable and holds no
+    // text). Server-side: the comments SELECT policy already gates exactly
+    // these rows, so `comment_summary` needs no visibility logic of its own.
+    final commentSummaryRows =
+        await _client
+                .rpc('comment_summary', params: {'p_post_ids': postIds})
+                .timeout(networkTimeout)
+            as List<dynamic>;
 
     final likeCounts = <String, int>{};
     final neutralCounts = <String, int>{};
@@ -263,9 +268,9 @@ class FeedRepository {
     }
 
     final commentCounts = <String, int>{};
-    for (final row in commentRows) {
+    for (final row in commentSummaryRows.cast<Map<String, dynamic>>()) {
       final postId = row['post_id'] as String;
-      commentCounts[postId] = (commentCounts[postId] ?? 0) + 1;
+      commentCounts[postId] = (row['comment_count'] as num).toInt();
     }
 
     posts = posts
@@ -286,7 +291,8 @@ class FeedRepository {
         if (path == null) return posts[i];
         final url = await _client.storage
             .from(_bucket)
-            .createSignedUrl(path, 60 * 60 * 24);
+            .createSignedUrl(path, 60 * 60 * 24)
+            .timeout(networkTimeout);
         return posts[i].copyWith(imageUrl: url);
       }),
     );
@@ -302,13 +308,19 @@ class FeedRepository {
     if (imageBytes != null) {
       imagePath =
           'posts/$authorId/${DateTime.now().microsecondsSinceEpoch}.$imageExt';
-      await _client.storage.from(_bucket).uploadBinary(imagePath, imageBytes);
+      await _client.storage
+          .from(_bucket)
+          .uploadBinary(imagePath, imageBytes)
+          .timeout(networkTimeout);
     }
-    await _client.from('posts').insert({
-      'author_id': authorId,
-      if (text != null && text.isNotEmpty) 'text': text,
-      if (imagePath != null) 'image_path': imagePath,
-    });
+    await _client
+        .from('posts')
+        .insert({
+          'author_id': authorId,
+          if (text != null && text.isNotEmpty) 'text': text,
+          if (imagePath != null) 'image_path': imagePath,
+        })
+        .timeout(networkTimeout);
   }
 
   /// Sets (or switches) the current user's reaction on a post. Upserts onto
@@ -319,11 +331,14 @@ class FeedRepository {
     required String userId,
     required ReactionType type,
   }) async {
-    await _client.from('reactions').upsert({
-      'post_id': postId,
-      'user_id': userId,
-      'type': type.dbValue,
-    }, onConflict: 'post_id, user_id');
+    await _client
+        .from('reactions')
+        .upsert({
+          'post_id': postId,
+          'user_id': userId,
+          'type': type.dbValue,
+        }, onConflict: 'post_id, user_id')
+        .timeout(networkTimeout);
   }
 
   Future<void> removeReaction({
@@ -334,7 +349,8 @@ class FeedRepository {
         .from('reactions')
         .delete()
         .eq('post_id', postId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .timeout(networkTimeout);
   }
 
   /// Fetches one post's comments, oldest first — a conversation reads forwards,
@@ -349,7 +365,8 @@ class FeedRepository {
         .select('*, author:users(name)')
         .eq('post_id', postId)
         .order('created_at', ascending: true)
-        .order('id', ascending: true);
+        .order('id', ascending: true)
+        .timeout(networkTimeout);
     return rows.map(Comment.fromRow).toList();
   }
 
@@ -363,13 +380,16 @@ class FeedRepository {
     String? parentCommentId,
     String? replyToId,
   }) async {
-    await _client.from('comments').insert({
-      'post_id': postId,
-      'author_id': authorId,
-      'text': text,
-      'parent_comment_id': parentCommentId,
-      'reply_to_id': replyToId,
-    });
+    await _client
+        .from('comments')
+        .insert({
+          'post_id': postId,
+          'author_id': authorId,
+          'text': text,
+          'parent_comment_id': parentCommentId,
+          'reply_to_id': replyToId,
+        })
+        .timeout(networkTimeout);
   }
 
   /// Deletes a post the current user owns. Comments/reactions cascade via
@@ -377,9 +397,16 @@ class FeedRepository {
   /// it's removed separately.
   Future<void> deletePost({required String postId, String? imagePath}) async {
     if (imagePath != null) {
-      await _client.storage.from(_bucket).remove([imagePath]);
+      await _client.storage
+          .from(_bucket)
+          .remove([imagePath])
+          .timeout(networkTimeout);
     }
-    await _client.from('posts').delete().eq('id', postId);
+    await _client
+        .from('posts')
+        .delete()
+        .eq('id', postId)
+        .timeout(networkTimeout);
   }
 
   /// Deletes a comment of the current user's. Whether the row is removed or
@@ -387,10 +414,9 @@ class FeedRepository {
   /// tombstoned so those replies keep their context), hence the RPC instead of
   /// a plain delete.
   Future<void> deleteComment(String commentId) async {
-    await _client.rpc(
-      'delete_own_comment',
-      params: {'p_comment_id': commentId},
-    );
+    await _client
+        .rpc('delete_own_comment', params: {'p_comment_id': commentId})
+        .timeout(networkTimeout);
   }
 }
 

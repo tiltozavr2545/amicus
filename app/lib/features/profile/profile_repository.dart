@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/network_timeout.dart';
 import '../auth/auth_providers.dart';
 
 class Profile {
@@ -29,7 +30,12 @@ class ProfileRepository {
   final SupabaseClient _client;
 
   Future<Profile> fetchProfile(String userId) async {
-    final row = await _client.from('users').select().eq('id', userId).single();
+    final row = await _client
+        .from('users')
+        .select()
+        .eq('id', userId)
+        .single()
+        .timeout(networkTimeout);
     return Profile.fromRow(row);
   }
 
@@ -37,7 +43,11 @@ class ProfileRepository {
     required String userId,
     required String name,
   }) async {
-    await _client.from('users').update({'name': name}).eq('id', userId);
+    await _client
+        .from('users')
+        .update({'name': name})
+        .eq('id', userId)
+        .timeout(networkTimeout);
   }
 
   /// Uploads [bytes] as the user's avatar and returns the new storage path.
@@ -56,17 +66,28 @@ class ProfileRepository {
         .from('users')
         .select('avatar_path')
         .eq('id', userId)
-        .single();
+        .single()
+        .timeout(networkTimeout);
     final previousPath = existing['avatar_path'] as String?;
 
     final path =
         'avatars/$userId/avatar_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-    await _client.storage.from(_bucket).uploadBinary(path, bytes);
-    await _client.from('users').update({'avatar_path': path}).eq('id', userId);
+    await _client.storage
+        .from(_bucket)
+        .uploadBinary(path, bytes)
+        .timeout(networkTimeout);
+    await _client
+        .from('users')
+        .update({'avatar_path': path})
+        .eq('id', userId)
+        .timeout(networkTimeout);
 
     if (previousPath != null && previousPath != path) {
       try {
-        await _client.storage.from(_bucket).remove([previousPath]);
+        await _client.storage
+            .from(_bucket)
+            .remove([previousPath])
+            .timeout(networkTimeout);
       } catch (_) {
         // Best-effort cleanup; a leftover old avatar file is harmless.
       }
@@ -78,7 +99,7 @@ class ProfileRepository {
   /// client automatically attaches the current user's access token, so a
   /// plain SDK download respects the same policies as any other request.
   Future<Uint8List> downloadAvatar(String path) {
-    return _client.storage.from(_bucket).download(path);
+    return _client.storage.from(_bucket).download(path).timeout(networkTimeout);
   }
 }
 
