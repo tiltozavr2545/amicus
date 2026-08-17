@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
@@ -45,7 +46,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             // the user actually set a new password via the Supabase JS SDK.
             redirectTo:
                 'https://tiltozavr2545.github.io/amicus/reset-password.html',
-          );
+          )
+          .timeout(networkTimeout);
       if (mounted) {
         setState(
           () => _successMessage = AppLocalizations.of(

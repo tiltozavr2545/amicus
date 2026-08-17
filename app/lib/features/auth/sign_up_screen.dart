@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
@@ -49,11 +50,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       // out of this metadata. Doing it this way means the profile exists
       // even when email confirmation is pending and no session/JWT exists
       // yet for a client-side insert.
-      final response = await client.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        data: {'name': name},
-      );
+      final response = await client.auth
+          .signUp(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+            data: {'name': name},
+          )
+          .timeout(networkTimeout);
       // Supabase won't throw for an already-registered email (that would
       // let an attacker enumerate accounts) — it silently returns a user
       // with no identities instead. That's the only signal we get.
