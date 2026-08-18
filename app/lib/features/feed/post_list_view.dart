@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import 'comments_screen.dart';
+import 'feed_cache.dart';
 import 'feed_repository.dart';
 
 /// A paginated, pull-to-refresh list of posts, optionally scoped to a single
@@ -29,9 +32,29 @@ class PostListView extends ConsumerStatefulWidget {
 class _PostListViewState extends ConsumerState<PostListView> {
   final _scrollController = ScrollController();
   final _posts = <Post>[];
+
+  // The keyset cursor for the next page, tracked separately from `_posts`
+  // rather than derived from its last element: `_posts` may start out primed
+  // with a cached preview (see [_primeFromCache]), and that preview must
+  // never be mistaken for an already-fetched page — the first real fetch
+  // always has to ask the server for page one.
+  Post? _cursor;
   bool _isLoading = false;
   bool _hasMore = true;
   String? _errorMessage;
+
+  // Started once in initState and awaited from both [_primeFromCache] (an
+  // instant preview) and [_loadMore]'s failure path (a fallback if the fetch
+  // loses that race). A single shared read — rather than each side issuing
+  // its own — means the two can never disagree about what was cached or
+  // apply it twice.
+  late final Future<List<Post>?> _cacheLoadFuture;
+
+  // Set once the very first fetch attempt (success or failure) has settled,
+  // so a cache read that resolves after it can no longer touch `_posts` —
+  // including when the real fetch came back with zero posts: that confirmed
+  // "nothing to show", and a stale cached page must not overwrite it.
+  bool _firstFetchSettled = false;
 
   // Bumped on every refresh so a page load that's still in flight when the user
   // pulls to refresh can detect it's stale and discard its result instead of
@@ -41,6 +64,8 @@ class _PostListViewState extends ConsumerState<PostListView> {
   @override
   void initState() {
     super.initState();
+    _cacheLoadFuture = ref.read(feedCacheProvider).load(widget.authorId);
+    _primeFromCache();
     _loadMore();
     _scrollController.addListener(() {
       final nearBottom =
@@ -56,45 +81,97 @@ class _PostListViewState extends ConsumerState<PostListView> {
     super.dispose();
   }
 
+  /// Shows the last-seen page for this scope (see [FeedCache]) immediately,
+  /// before the real fetch below completes — and keeps showing it if that
+  /// fetch never succeeds because there's no connection.
+  Future<void> _primeFromCache() async {
+    final cached = await _cacheLoadFuture;
+    if (!mounted || _firstFetchSettled || cached == null || cached.isEmpty) {
+      return;
+    }
+    setState(() => _posts.addAll(cached));
+  }
+
   Future<void> _loadMore() async {
     if (_isLoading || !_hasMore) return;
     final epoch = _loadEpoch;
+    final isFirstPage = _cursor == null;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
     try {
-      // The last post already loaded is the keyset cursor for the next page
-      // (null on the first/refreshed load). Captured before the await, so a
-      // concurrent refresh can't move it mid-flight.
-      final cursor = _posts.isEmpty ? null : _posts.last;
       final page = await ref
           .read(feedRepositoryProvider)
-          .fetchPage(cursor: cursor, authorId: widget.authorId);
+          .fetchPage(cursor: _cursor, authorId: widget.authorId);
       // A refresh (or unmount) happened while this page was loading — its data
       // is for a superseded feed state, so drop it.
       if (!mounted || epoch != _loadEpoch) return;
       setState(() {
-        _posts.addAll(page);
+        if (isFirstPage) {
+          // Replaces rather than appends: `_posts` may hold a cache preview
+          // (or, on a pull-to-refresh, the previous live page) that this
+          // fresh page one supersedes outright.
+          _posts
+            ..clear()
+            ..addAll(page);
+        } else {
+          _posts.addAll(page);
+        }
+        if (page.isNotEmpty) _cursor = page.last;
         _hasMore = page.length == pageSize;
       });
+      if (isFirstPage) {
+        unawaited(ref.read(feedCacheProvider).save(widget.authorId, page));
+      }
     } catch (e) {
       if (!mounted || epoch != _loadEpoch) return;
-      setState(
-        () =>
-            _errorMessage = AppLocalizations.of(context)!.failedToLoadFeedError,
-      );
+      if (isFirstPage && _posts.isEmpty) {
+        // Nothing on screen yet — [_primeFromCache] may simply not have
+        // resolved yet. Wait on the same cache read rather than issuing a
+        // second one, so the decision below sees its result either way.
+        final cached = await _cacheLoadFuture;
+        if (!mounted || epoch != _loadEpoch) return;
+        if (_posts.isEmpty && cached != null && cached.isNotEmpty) {
+          setState(() => _posts.addAll(cached));
+        }
+      }
+      if (_posts.isEmpty) {
+        setState(
+          () => _errorMessage = AppLocalizations.of(
+            context,
+          )!.failedToLoadFeedError,
+        );
+      } else {
+        // Something is on screen — a cached page (just found above, or by
+        // [_primeFromCache] beforehand), or an earlier successful load — so
+        // don't blank it out from under the user over a failed refresh;
+        // report it without discarding what's shown.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.failedToLoadFeedError),
+          ),
+        );
+      }
     } finally {
-      if (mounted && epoch == _loadEpoch) setState(() => _isLoading = false);
+      if (mounted && epoch == _loadEpoch) {
+        setState(() {
+          _isLoading = false;
+          _firstFetchSettled = true;
+        });
+      }
     }
   }
 
   Future<void> _refresh() async {
     setState(() {
-      // Invalidate any in-flight load and reset paging from scratch. Clearing
-      // _isLoading lets the fresh load below start even if one was running.
+      // Invalidate any in-flight load and reset paging from scratch. Not
+      // clearing `_posts` up front means an offline pull-to-refresh falls
+      // back to the "keep what's on screen" branch above instead of wiping
+      // the feed out and showing an error. Clearing _isLoading lets the fresh
+      // load below start even if one was running.
       _loadEpoch++;
-      _posts.clear();
+      _cursor = null;
       _hasMore = true;
       _isLoading = false;
       _errorMessage = null;
@@ -145,7 +222,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
   /// back on error.
   Future<void> _react(int index, ReactionType type) async {
     final post = _posts[index];
-    final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
+    final userId = ref.read(currentUserIdProvider)!;
     final next = post.myReaction == type ? null : type;
     setState(() => _posts[index] = applyReaction(post, next));
     try {
@@ -211,11 +288,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
                       : const SizedBox.shrink();
                 }
                 final post = _posts[index];
-                final currentUserId = ref
-                    .read(supabaseClientProvider)
-                    .auth
-                    .currentUser!
-                    .id;
+                final currentUserId = ref.read(currentUserIdProvider)!;
                 return _PostCard(
                   post: post,
                   isOwnPost: post.authorId == currentUserId,
@@ -294,6 +367,16 @@ class _PostCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
                   imageUrl: post.imageUrl!,
+                  // The URL is a signed Storage link that gets re-signed
+                  // (different query string) on every fetch, which would
+                  // otherwise cache-bust on every app restart even though the
+                  // underlying photo hasn't changed. Keying on the storage
+                  // path instead — stable for the life of the post today,
+                  // and the thing that would actually change if post editing
+                  // ever lets a photo be replaced — means a previously seen
+                  // photo paints from disk instantly instead of behind a
+                  // fresh download.
+                  cacheKey: post.imagePath,
                   fit: BoxFit.cover,
                 ),
               ),

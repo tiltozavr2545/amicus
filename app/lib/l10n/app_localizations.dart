@@ -721,6 +721,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{duration}\nsince {date}'**
   String connectionSummary(String duration, String date);
+
+  /// No description provided for @settingsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTooltip;
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @notificationsSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notificationsSectionTitle;
+
+  /// No description provided for @notifyAmicusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Posts from Amicus'**
+  String get notifyAmicusLabel;
+
+  /// No description provided for @notifyFavoritesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Posts from favorite friends'**
+  String get notifyFavoritesLabel;
+
+  /// No description provided for @notifyCommentsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments on your posts and replies to you'**
+  String get notifyCommentsLabel;
+
+  /// No description provided for @notifyDigestLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest of posts from everyone else'**
+  String get notifyDigestLabel;
+
+  /// No description provided for @notifyInactiveLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders after a quiet week'**
+  String get notifyInactiveLabel;
+
+  /// No description provided for @failedToLoadSettingsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load settings. Please try again.'**
+  String get failedToLoadSettingsError;
+
+  /// No description provided for @failedToSaveSettingsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save. Please try again.'**
+  String get failedToSaveSettingsError;
+
+  /// No description provided for @appVersionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} ({build})'**
+  String appVersionLabel(String version, String build);
 }
 
 class _AppLocalizationsDelegate

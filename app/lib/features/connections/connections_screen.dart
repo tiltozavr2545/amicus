@@ -8,6 +8,7 @@ import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/feed_repository.dart';
 import '../profile/profile_repository.dart';
+import '../settings/settings_button.dart';
 import 'blocked_users_screen.dart';
 import 'connection_duration.dart';
 import 'connections_repository.dart';
@@ -361,6 +362,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
             ),
           ),
           const ThemeToggleSwitch(),
+          const SettingsButton(),
         ],
       ),
       body: ListView(

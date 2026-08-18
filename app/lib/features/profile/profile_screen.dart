@@ -8,6 +8,7 @@ import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
 import '../notifications/push_notifications_repository.dart';
+import '../settings/settings_button.dart';
 import 'profile_repository.dart';
 
 final _profileProvider = FutureProvider.autoDispose<Profile>((ref) {
@@ -129,6 +130,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         title: Text(l10n.profileTitle),
         actions: [
           const ThemeToggleSwitch(),
+          const SettingsButton(),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: l10n.signOutTooltip,

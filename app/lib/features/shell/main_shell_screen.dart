@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../feed/create_post_screen.dart';
 import '../feed/feed_repository.dart';
 import '../notifications/push_notifications_repository.dart';
+import '../notifications/user_activity_repository.dart';
 
 /// Destination index of the "new post" button in the bottom bar. It doesn't
 /// correspond to a shell branch — tapping it pushes [CreatePostScreen] on top
@@ -40,6 +41,11 @@ class MainShellScreen extends ConsumerWidget {
     // this is the natural single place to trigger it — no loading/error UI
     // needed, the provider itself is a no-op once already registered.
     ref.watch(pushRegistrationProvider);
+    // Same fire-and-forget shape, right above: tells the server "the app was
+    // just opened" so the digest push can count only posts that appeared
+    // since — see notification_preferences' notify_digest and migration
+    // 20260819190000.
+    ref.watch(userActivityProvider);
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(

@@ -124,5 +124,17 @@
   "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",
   "connectionKnownMonths": "Знакомы {months, plural, one{{months} месяц} few{{months} месяца} many{{months} месяцев} other{{months} месяца}}",
   "connectionKnownYears": "Знакомы {years, plural, one{{years} год} few{{years} года} many{{years} лет} other{{years} года}}",
-  "connectionSummary": "{duration}\nс {date}"
+  "connectionSummary": "{duration}\nс {date}",
+
+  "settingsTooltip": "Настройки",
+  "settingsTitle": "Настройки",
+  "notificationsSectionTitle": "Уведомления",
+  "notifyAmicusLabel": "Уведомления от Amicus",
+  "notifyFavoritesLabel": "Уведомления от постов избранных друзей",
+  "notifyCommentsLabel": "Уведомления от оставленных комментариев",
+  "notifyDigestLabel": "Уведомления о накопившихся постах остальных людей",
+  "notifyInactiveLabel": "Уведомления о долгой неактивности",
+  "failedToLoadSettingsError": "Не удалось загрузить настройки. Попробуйте ещё раз.",
+  "failedToSaveSettingsError": "Не удалось сохранить. Попробуйте ещё раз.",
+  "appVersionLabel": "Версия {version} ({build})"
 }

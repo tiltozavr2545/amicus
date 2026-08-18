@@ -378,4 +378,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String connectionSummary(String duration, String date) {
     return '$duration\nsince $date';
   }
+
+  @override
+  String get settingsTooltip => 'Settings';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get notificationsSectionTitle => 'Notifications';
+
+  @override
+  String get notifyAmicusLabel => 'Posts from Amicus';
+
+  @override
+  String get notifyFavoritesLabel => 'Posts from favorite friends';
+
+  @override
+  String get notifyCommentsLabel => 'Comments on your posts and replies to you';
+
+  @override
+  String get notifyDigestLabel => 'Digest of posts from everyone else';
+
+  @override
+  String get notifyInactiveLabel => 'Reminders after a quiet week';
+
+  @override
+  String get failedToLoadSettingsError =>
+      'Failed to load settings. Please try again.';
+
+  @override
+  String get failedToSaveSettingsError => 'Failed to save. Please try again.';
+
+  @override
+  String appVersionLabel(String version, String build) {
+    return 'Version $version ($build)';
+  }
 }

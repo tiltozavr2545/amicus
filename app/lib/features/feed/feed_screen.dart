@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../theme/theme_toggle_switch.dart';
+import '../settings/settings_button.dart';
 import 'post_list_view.dart';
 
 class FeedScreen extends StatelessWidget {
@@ -15,7 +16,7 @@ class FeedScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Amicus'),
-        actions: const [ThemeToggleSwitch()],
+        actions: const [ThemeToggleSwitch(), SettingsButton()],
       ),
       body: PostListView(
         emptyState: (context) => Column(

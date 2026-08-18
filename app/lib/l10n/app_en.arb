@@ -154,5 +154,23 @@
       "duration": { "type": "String" },
       "date": { "type": "String" }
     }
+  },
+
+  "settingsTooltip": "Settings",
+  "settingsTitle": "Settings",
+  "notificationsSectionTitle": "Notifications",
+  "notifyAmicusLabel": "Posts from Amicus",
+  "notifyFavoritesLabel": "Posts from favorite friends",
+  "notifyCommentsLabel": "Comments on your posts and replies to you",
+  "notifyDigestLabel": "Digest of posts from everyone else",
+  "notifyInactiveLabel": "Reminders after a quiet week",
+  "failedToLoadSettingsError": "Failed to load settings. Please try again.",
+  "failedToSaveSettingsError": "Failed to save. Please try again.",
+  "appVersionLabel": "Version {version} ({build})",
+  "@appVersionLabel": {
+    "placeholders": {
+      "version": { "type": "String" },
+      "build": { "type": "String" }
+    }
   }
 }
