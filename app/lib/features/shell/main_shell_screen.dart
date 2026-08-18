@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/app_localizations.dart';
 import '../feed/create_post_screen.dart';
 import '../feed/feed_repository.dart';
+import '../notifications/push_notifications_repository.dart';
 
 /// Destination index of the "new post" button in the bottom bar. It doesn't
 /// correspond to a shell branch — tapping it pushes [CreatePostScreen] on top
@@ -34,6 +35,11 @@ class MainShellScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    // Fire-and-forget: registers this device for push once per signed-in
+    // user. Only reachable once already authenticated (router redirect), so
+    // this is the natural single place to trigger it — no loading/error UI
+    // needed, the provider itself is a no-op once already registered.
+    ref.watch(pushRegistrationProvider);
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(

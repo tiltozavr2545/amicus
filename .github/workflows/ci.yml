@@ -39,6 +39,36 @@ jobs:
       - run: dart format --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Write placeholder google-services.json
+        # The Google Services Gradle plugin (android/app/build.gradle.kts)
+        # fails the build outright if this file is missing — it never
+        # actually talks to Firebase during a build, so a structurally valid
+        # placeholder is enough for CI. The real file (deploy-closed-testing.yml)
+        # comes from the GOOGLE_SERVICES_JSON secret instead.
+        run: |
+          cat > android/app/google-services.json <<'EOF'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "ci-placeholder",
+              "storage_bucket": "ci-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.github.tiltozavr2545.amicus"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [{ "current_key": "ci-placeholder-api-key" }],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
       - name: Build Android app bundle
         run: >-
           flutter build appbundle --release

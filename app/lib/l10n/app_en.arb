@@ -59,6 +59,9 @@
     "placeholders": { "name": { "type": "String" } }
   },
 
+  "favoriteFriendTooltip": "Add to favorites",
+  "unfavoriteFriendTooltip": "Remove from favorites",
+
   "muteFriendTooltip": "Mute",
   "unmuteFriendTooltip": "Unmute",
   "muteFriendTitle": "Mute {name}?",

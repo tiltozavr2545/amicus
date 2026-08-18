@@ -50,6 +50,9 @@
   "noConnectionsYetMessage": "Пока нет знакомых — активируй код или создай свой выше",
   "nowConnectedWithMessage": "Вы теперь знакомы с {name}",
 
+  "favoriteFriendTooltip": "В избранное",
+  "unfavoriteFriendTooltip": "Убрать из избранного",
+
   "muteFriendTooltip": "Заглушить",
   "unmuteFriendTooltip": "Включить обратно",
   "muteFriendTitle": "Заглушить {name}?",

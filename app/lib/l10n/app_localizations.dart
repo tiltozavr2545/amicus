@@ -350,6 +350,18 @@ abstract class AppLocalizations {
   /// **'You\'re now connected with {name}'**
   String nowConnectedWithMessage(String name);
 
+  /// No description provided for @favoriteFriendTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to favorites'**
+  String get favoriteFriendTooltip;
+
+  /// No description provided for @unfavoriteFriendTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from favorites'**
+  String get unfavoriteFriendTooltip;
+
   /// No description provided for @muteFriendTooltip.
   ///
   /// In en, this message translates to:

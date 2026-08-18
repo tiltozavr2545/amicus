@@ -148,6 +148,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get favoriteFriendTooltip => 'Add to favorites';
+
+  @override
+  String get unfavoriteFriendTooltip => 'Remove from favorites';
+
+  @override
   String get muteFriendTooltip => 'Mute';
 
   @override

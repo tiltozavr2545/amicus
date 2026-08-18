@@ -20,6 +20,7 @@ class Friend {
     this.avatarPath,
     this.isMuted = false,
     this.isBlocked = false,
+    this.isFavorite = false,
   });
 
   final String userId;
@@ -28,6 +29,11 @@ class Friend {
   final String? avatarPath;
   final bool isMuted;
   final bool isBlocked;
+
+  /// Favorited connections always push a notification on a new post, instead
+  /// of only counting toward the "6+ posts" digest. Purely personal — the
+  /// other side never knows or is affected.
+  final bool isFavorite;
 }
 
 class BlockedUser {
@@ -99,6 +105,12 @@ class ConnectionsRepository {
       otherColumn: 'blocked_id',
       ownerId: currentUserId,
     );
+    final favoriteIds = await _fetchIdSet(
+      table: 'favorite_users',
+      ownerColumn: 'user_id',
+      otherColumn: 'favorite_id',
+      ownerId: currentUserId,
+    );
 
     return rows.map((row) {
       final isCurrentUserA = row['user_a_id'] == currentUserId;
@@ -115,6 +127,7 @@ class ConnectionsRepository {
         avatarPath: other['avatar_path'] as String?,
         isMuted: mutedIds.contains(otherId),
         isBlocked: blockedIds.contains(otherId),
+        isFavorite: favoriteIds.contains(otherId),
       );
     }).toList();
   }
@@ -168,6 +181,28 @@ class ConnectionsRepository {
         .delete()
         .eq('blocker_id', blockerId)
         .eq('blocked_id', blockedId)
+        .timeout(networkTimeout);
+  }
+
+  Future<void> favoriteUser({
+    required String userId,
+    required String favoriteId,
+  }) {
+    return _client
+        .from('favorite_users')
+        .upsert({'user_id': userId, 'favorite_id': favoriteId})
+        .timeout(networkTimeout);
+  }
+
+  Future<void> unfavoriteUser({
+    required String userId,
+    required String favoriteId,
+  }) {
+    return _client
+        .from('favorite_users')
+        .delete()
+        .eq('user_id', userId)
+        .eq('favorite_id', favoriteId)
         .timeout(networkTimeout);
   }
 

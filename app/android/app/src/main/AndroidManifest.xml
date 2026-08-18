@@ -3,6 +3,11 @@
          hot reload etc.), but release doesn't inherit from those — without
          it here, the release build has no network access at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13+ (API 33) requires this to be declared and granted at
+         runtime before a notification will actually show; requested via
+         FirebaseMessaging.instance.requestNotificationsPermission() in
+         push_notifications.dart. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="Amicus"
         android:name="${applicationName}"

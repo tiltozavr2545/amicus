@@ -56,6 +56,18 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   @override
   Future<List<BlockedUser>> fetchBlockedUsers(String currentUserId) async =>
       blockedUsers;
+
+  @override
+  Future<void> favoriteUser({
+    required String userId,
+    required String favoriteId,
+  }) async {}
+
+  @override
+  Future<void> unfavoriteUser({
+    required String userId,
+    required String favoriteId,
+  }) async {}
 }
 
 Widget _wrap(_FakeConnectionsRepository repo) {
