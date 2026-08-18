@@ -18,6 +18,11 @@ class _FakeFeedRepository implements FeedRepository {
   String? lastParentCommentId;
   String? lastReplyToId;
 
+  /// Every idempotency token the screen has sent, failed attempts included —
+  /// the point of the token is what happens across a *failed* send, so it is
+  /// recorded before [addThrows] gets its say.
+  final List<String> tokens = [];
+
   /// Makes [addComment] fail, standing in for the server rejecting a reply —
   /// its target was tombstoned or its author blocked while it was being typed.
   bool addThrows = false;
@@ -27,12 +32,14 @@ class _FakeFeedRepository implements FeedRepository {
 
   @override
   Future<void> addComment({
+    required String clientToken,
     required String postId,
     required String authorId,
     required String text,
     String? parentCommentId,
     String? replyToId,
   }) async {
+    tokens.add(clientToken);
     if (addThrows) throw Exception('rejected');
     addCalls++;
     lastParentCommentId = parentCommentId;
@@ -59,6 +66,7 @@ class _FakeFeedRepository implements FeedRepository {
 
   @override
   Future<void> createPost({
+    required String clientToken,
     required String authorId,
     String? text,
     dynamic imageBytes,
@@ -137,6 +145,108 @@ void main() {
     expect(find.text('Failed to send. Please try again.'), findsOneWidget);
     // The text survives so the user can retry without retyping it.
     expect(find.widgetWithText(TextField, 'my reply'), findsOneWidget);
+  });
+
+  // `.timeout()` only stops waiting; it does not cancel the request. So a send
+  // that "failed" may in fact have committed, and the retry the test above
+  // invites has to be recognisable as the *same* submission or it lands twice.
+  group('idempotency token', () {
+    testWidgets('a retry of unchanged content reuses the token', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository()
+        ..comments = [_comment('c1')]
+        ..addThrows = true;
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'my comment');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+
+      // The retry: same text, still sitting in the composer.
+      repo.addThrows = false;
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      await tester.pump();
+
+      expect(repo.tokens, hasLength(2));
+      expect(repo.tokens[0], repo.tokens[1]);
+    });
+
+    testWidgets('editing the text after a failure mints a new token', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository()
+        ..comments = [_comment('c1')]
+        ..addThrows = true;
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'my comment');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+
+      // Reusing the token here would let the server answer the edit with
+      // "already have that one" and silently keep the original wording.
+      repo.addThrows = false;
+      await tester.enterText(find.byType(TextField), 'my corrected comment');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      await tester.pump();
+
+      expect(repo.tokens, hasLength(2));
+      expect(repo.tokens[0], isNot(repo.tokens[1]));
+    });
+
+    testWidgets('changing who the reply addresses mints a new token', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository()
+        ..comments = [_comment('c1')]
+        ..addThrows = true;
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Reply'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'my comment');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+
+      // Same text, but now meant as a root comment rather than a reply.
+      repo.addThrows = false;
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      await tester.pump();
+
+      expect(repo.tokens, hasLength(2));
+      expect(repo.tokens[0], isNot(repo.tokens[1]));
+      expect(repo.lastParentCommentId, null);
+    });
+
+    testWidgets('a fresh comment after a success gets its own token', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository()..comments = [_comment('c1')];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'first');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'second');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+      await tester.pump();
+
+      expect(repo.tokens, hasLength(2));
+      expect(repo.tokens[0], isNot(repo.tokens[1]));
+    });
   });
 
   testWidgets('A successful send clears the field and shows no error', (

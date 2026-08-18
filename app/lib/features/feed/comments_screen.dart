@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
@@ -26,6 +27,17 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   String? _errorMessage;
 
   bool _isSending = false;
+
+  /// Idempotency key for the send in flight, and the content it was minted for.
+  ///
+  /// Kept across retries so a resend after a timeout can't create a second
+  /// comment (see [FeedRepository.addComment]), but tied to the *content* and
+  /// not merely to the attempt: the server resolves a repeat token by doing
+  /// nothing, so reusing one after the user edited the text or changed who the
+  /// reply addresses would silently discard that edit while the screen reported
+  /// success. A changed composition therefore mints a fresh token.
+  String? _pendingToken;
+  String? _pendingSignature;
 
   /// The comment being answered, or null when writing a root comment. Nesting
   /// is one level deep, so the reply is filed under this comment's root while
@@ -112,17 +124,30 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     setState(() => _isSending = true);
     try {
       final userId = ref.read(currentUserIdProvider)!;
+      final parentCommentId = target == null
+          ? null
+          : target.comment.parentCommentId ?? target.comment.id;
+      final replyToId = target?.comment.id;
+      // Free-form text goes last: the two ids ahead of it are either a uuid
+      // or the literal "null", neither of which can contain the separator,
+      // so no other composition joins to the same signature.
+      final signature = '$parentCommentId|$replyToId|$text';
+      if (_pendingSignature != signature) {
+        _pendingToken = const Uuid().v4();
+        _pendingSignature = signature;
+      }
       await ref
           .read(feedRepositoryProvider)
           .addComment(
+            clientToken: _pendingToken!,
             postId: widget.postId,
             authorId: userId,
             text: text,
-            parentCommentId: target == null
-                ? null
-                : target.comment.parentCommentId ?? target.comment.id,
-            replyToId: target?.comment.id,
+            parentCommentId: parentCommentId,
+            replyToId: replyToId,
           );
+      _pendingToken = null;
+      _pendingSignature = null;
       _textController.clear();
       if (mounted) setState(() => _replyTarget = null);
       await _load();

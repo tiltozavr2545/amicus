@@ -206,6 +206,25 @@ String? keysetFilter(Post? cursor) {
   return 'created_at.lt.$ts,and(created_at.eq.$ts,id.lt.${cursor.id})';
 }
 
+/// Storage path for a post's photo.
+///
+/// Two things are load-bearing here. The first two segments are what the
+/// storage policies match on — `posts/<author uuid>/…` — so reshaping this
+/// silently breaks upload (the INSERT policy pins segment 2 to `auth.uid()`)
+/// or visibility (the SELECT policy reads the author out of that segment).
+///
+/// The filename is the submission's [clientToken] rather than a timestamp, so
+/// every retry of the same submission addresses the same object. Naming it per
+/// attempt meant a retry uploaded a *second* file while the row — resolved by
+/// `ON CONFLICT DO NOTHING` — kept pointing at the first, and since deletePost
+/// only removes the path stored on the row, each extra upload leaked into the
+/// bucket permanently.
+String postImagePath({
+  required String authorId,
+  required String clientToken,
+  required String imageExt,
+}) => 'posts/$authorId/$clientToken.$imageExt';
+
 class FeedRepository {
   FeedRepository(this._client);
 
@@ -239,20 +258,24 @@ class FeedRepository {
     // reacted is not: the reactions table only exposes the caller's own rows,
     // so totals come from a server-side function that returns numbers plus the
     // caller's own reaction — never other users' ids.
-    final summaryRows =
-        await _client
-                .rpc('reaction_summary', params: {'p_post_ids': postIds})
-                .timeout(networkTimeout)
-            as List<dynamic>;
+    //
     // Counts every comment including replies, but not tombstones (a deleted
     // comment's row survives only to keep its branch readable and holds no
     // text). Server-side: the comments SELECT policy already gates exactly
     // these rows, so `comment_summary` needs no visibility logic of its own.
-    final commentSummaryRows =
-        await _client
-                .rpc('comment_summary', params: {'p_post_ids': postIds})
-                .timeout(networkTimeout)
-            as List<dynamic>;
+    //
+    // Neither RPC depends on the other's result, so they run concurrently
+    // instead of costing the page an extra round trip.
+    final results = await Future.wait([
+      _client
+          .rpc('reaction_summary', params: {'p_post_ids': postIds})
+          .timeout(networkTimeout),
+      _client
+          .rpc('comment_summary', params: {'p_post_ids': postIds})
+          .timeout(networkTimeout),
+    ]);
+    final summaryRows = results[0] as List<dynamic>;
+    final commentSummaryRows = results[1] as List<dynamic>;
 
     final likeCounts = <String, int>{};
     final neutralCounts = <String, int>{};
@@ -298,7 +321,18 @@ class FeedRepository {
     );
   }
 
+  /// [clientToken] identifies this *submission* — the caller mints one uuid per
+  /// composed post and reuses it for every retry of that same content.
+  ///
+  /// `.timeout()` doesn't cancel the underlying request, it only stops waiting,
+  /// so a slow-but-live connection can commit the insert after the screen has
+  /// already reported failure and offered a retry. The unique
+  /// `(author_id, client_token)` index turns that retry into a no-op instead of
+  /// a second post. The conflict target is deliberately not `id`: scoping it to
+  /// the author means a collision can only ever be with the caller's own row,
+  /// so this can't be used to probe whether someone else's post exists.
   Future<void> createPost({
+    required String clientToken,
     required String authorId,
     String? text,
     Uint8List? imageBytes,
@@ -306,20 +340,37 @@ class FeedRepository {
   }) async {
     String? imagePath;
     if (imageBytes != null) {
-      imagePath =
-          'posts/$authorId/${DateTime.now().microsecondsSinceEpoch}.$imageExt';
-      await _client.storage
-          .from(_bucket)
-          .uploadBinary(imagePath, imageBytes)
-          .timeout(networkTimeout);
+      imagePath = postImagePath(
+        authorId: authorId,
+        clientToken: clientToken,
+        imageExt: imageExt ?? 'jpg',
+      );
+      try {
+        await _client.storage
+            .from(_bucket)
+            .uploadBinary(imagePath, imageBytes)
+            .timeout(networkTimeout);
+      } on StorageException catch (e) {
+        // 409: a previous attempt at this same submission already put these
+        // exact bytes at this exact path. There is no UPDATE policy on
+        // storage.objects for post photos (only SELECT/INSERT/DELETE), so
+        // overwriting via `upsert: true` would be refused by RLS — and there is
+        // nothing to overwrite anyway, the content is identical.
+        if (e.statusCode != '409') rethrow;
+      }
     }
     await _client
         .from('posts')
-        .insert({
-          'author_id': authorId,
-          if (text != null && text.isNotEmpty) 'text': text,
-          if (imagePath != null) 'image_path': imagePath,
-        })
+        .upsert(
+          {
+            'client_token': clientToken,
+            'author_id': authorId,
+            if (text != null && text.isNotEmpty) 'text': text,
+            if (imagePath != null) 'image_path': imagePath,
+          },
+          onConflict: 'author_id,client_token',
+          ignoreDuplicates: true,
+        )
         .timeout(networkTimeout);
   }
 
@@ -373,7 +424,11 @@ class FeedRepository {
   /// Adds a comment, or a reply when [parentCommentId] is given (always the
   /// thread root — nesting is one level deep). [replyToId] only records who the
   /// reply addresses, for the `in reply to: <name>` label.
+  ///
+  /// [clientToken] identifies this submission and is reused across retries of
+  /// the same content — see the matching note on [createPost].
   Future<void> addComment({
+    required String clientToken,
     required String postId,
     required String authorId,
     required String text,
@@ -382,13 +437,18 @@ class FeedRepository {
   }) async {
     await _client
         .from('comments')
-        .insert({
-          'post_id': postId,
-          'author_id': authorId,
-          'text': text,
-          'parent_comment_id': parentCommentId,
-          'reply_to_id': replyToId,
-        })
+        .upsert(
+          {
+            'client_token': clientToken,
+            'post_id': postId,
+            'author_id': authorId,
+            'text': text,
+            'parent_comment_id': parentCommentId,
+            'reply_to_id': replyToId,
+          },
+          onConflict: 'author_id,client_token',
+          ignoreDuplicates: true,
+        )
         .timeout(networkTimeout);
   }
 
