@@ -16,7 +16,7 @@ class FeedScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Amicus'),
-        actions: const [SettingsButton(), ThemeToggleSwitch()],
+        actions: const [ThemeToggleSwitch(), SettingsButton()],
       ),
       body: PostListView(
         emptyState: (context) => Column(

@@ -361,8 +361,8 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
               MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
             ),
           ),
-          const SettingsButton(),
           const ThemeToggleSwitch(),
+          const SettingsButton(),
         ],
       ),
       body: ListView(

@@ -135,5 +135,6 @@
   "notifyDigestLabel": "Уведомления о накопившихся постах остальных людей",
   "notifyInactiveLabel": "Уведомления о долгой неактивности",
   "failedToLoadSettingsError": "Не удалось загрузить настройки. Попробуйте ещё раз.",
-  "failedToSaveSettingsError": "Не удалось сохранить. Попробуйте ещё раз."
+  "failedToSaveSettingsError": "Не удалось сохранить. Попробуйте ещё раз.",
+  "appVersionLabel": "Версия {version} ({build})"
 }

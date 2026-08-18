@@ -419,4 +419,9 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToSaveSettingsError =>
       'Не удалось сохранить. Попробуйте ещё раз.';
+
+  @override
+  String appVersionLabel(String version, String build) {
+    return 'Версия $version ($build)';
+  }
 }

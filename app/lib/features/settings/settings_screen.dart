@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
@@ -10,6 +11,13 @@ final _notificationPreferencesProvider =
       final userId = ref.watch(currentUserIdProvider)!;
       return ref.watch(notificationPreferencesRepositoryProvider).fetch(userId);
     });
+
+/// Reads the version/build baked in at build time (`pubspec.yaml`'s
+/// `version:`, via the platform's own app metadata) rather than hardcoding
+/// it here, so this label can't go stale the way a literal string would.
+final _packageInfoProvider = FutureProvider.autoDispose<PackageInfo>((ref) {
+  return PackageInfo.fromPlatform();
+});
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -53,6 +61,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final prefsAsync = ref.watch(_notificationPreferencesProvider);
+    final packageInfoAsync = ref.watch(_packageInfoProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
@@ -101,6 +110,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onChanged: (value) =>
                     _toggle((p) => p.copyWith(inactiveWeek: value)),
               ),
+              if (packageInfoAsync.hasValue) ...[
+                const Divider(height: 32),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Text(
+                    l10n.appVersionLabel(
+                      packageInfoAsync.value!.version,
+                      packageInfoAsync.value!.buildNumber,
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
             ],
           );
         },

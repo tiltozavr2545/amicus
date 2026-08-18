@@ -165,5 +165,12 @@
   "notifyDigestLabel": "Digest of posts from everyone else",
   "notifyInactiveLabel": "Reminders after a quiet week",
   "failedToLoadSettingsError": "Failed to load settings. Please try again.",
-  "failedToSaveSettingsError": "Failed to save. Please try again."
+  "failedToSaveSettingsError": "Failed to save. Please try again.",
+  "appVersionLabel": "Version {version} ({build})",
+  "@appVersionLabel": {
+    "placeholders": {
+      "version": { "type": "String" },
+      "build": { "type": "String" }
+    }
+  }
 }

@@ -781,6 +781,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to save. Please try again.'**
   String get failedToSaveSettingsError;
+
+  /// No description provided for @appVersionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} ({build})'**
+  String appVersionLabel(String version, String build);
 }
 
 class _AppLocalizationsDelegate

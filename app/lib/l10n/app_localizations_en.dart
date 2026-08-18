@@ -409,4 +409,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get failedToSaveSettingsError => 'Failed to save. Please try again.';
+
+  @override
+  String appVersionLabel(String version, String build) {
+    return 'Version $version ($build)';
+  }
 }

@@ -129,8 +129,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       appBar: AppBar(
         title: Text(l10n.profileTitle),
         actions: [
-          const SettingsButton(),
           const ThemeToggleSwitch(),
+          const SettingsButton(),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: l10n.signOutTooltip,
