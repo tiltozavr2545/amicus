@@ -11,6 +11,7 @@ import 'features/auth/sign_up_screen.dart';
 import 'features/connections/connections_screen.dart';
 import 'features/feed/feed_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/settings/settings_screen.dart';
 import 'features/shell/main_shell_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -75,6 +76,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
       ),
     ],
   );

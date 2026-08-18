@@ -386,4 +386,37 @@ class AppLocalizationsRu extends AppLocalizations {
   String connectionSummary(String duration, String date) {
     return '$duration\nс $date';
   }
+
+  @override
+  String get settingsTooltip => 'Настройки';
+
+  @override
+  String get settingsTitle => 'Настройки';
+
+  @override
+  String get notificationsSectionTitle => 'Уведомления';
+
+  @override
+  String get notifyAmicusLabel => 'Уведомления от Amicus';
+
+  @override
+  String get notifyFavoritesLabel => 'Уведомления от постов избранных друзей';
+
+  @override
+  String get notifyCommentsLabel => 'Уведомления от оставленных комментариев';
+
+  @override
+  String get notifyDigestLabel =>
+      'Уведомления о накопившихся постах остальных людей';
+
+  @override
+  String get notifyInactiveLabel => 'Уведомления о долгой неактивности';
+
+  @override
+  String get failedToLoadSettingsError =>
+      'Не удалось загрузить настройки. Попробуйте ещё раз.';
+
+  @override
+  String get failedToSaveSettingsError =>
+      'Не удалось сохранить. Попробуйте ещё раз.';
 }
