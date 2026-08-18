@@ -75,6 +75,7 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           set -eu
           for secret_name in \
@@ -84,7 +85,8 @@ jobs:
             ANDROID_KEY_PASSWORD \
             PLAY_SERVICE_ACCOUNT_JSON \
             SUPABASE_URL \
-            SUPABASE_ANON_KEY; do
+            SUPABASE_ANON_KEY \
+            GOOGLE_SERVICES_JSON; do
             eval "secret_value=\${$secret_name-}"
             if [ -z "$secret_value" ]; then
               echo "::error title=Missing deployment secret::$secret_name is not configured"
@@ -114,6 +116,19 @@ jobs:
           keyAlias=$ANDROID_KEY_ALIAS
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
+
+      - name: Write google-services.json
+        # Required by the Google Services Gradle plugin (android/app/build.gradle.kts)
+        # for FCM push notifications — gitignored locally (android/.gitignore),
+        # same reasoning as key.properties: the Firebase console is the
+        # source of truth, not git.
+        working-directory: ${{ github.workspace }}
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -eu
+          umask 077
+          printf '%s' "$GOOGLE_SERVICES_JSON" > app/android/app/google-services.json
 
       - name: Build signed Android App Bundle
         env:
@@ -146,4 +161,6 @@ jobs:
       - name: Remove signing files
         if: always()
         working-directory: ${{ github.workspace }}
-        run: rm -f app/android/key.properties app/android/app/upload-keystore.jks
+        run: |
+          rm -f app/android/key.properties app/android/app/upload-keystore.jks
+          rm -f app/android/app/google-services.json
