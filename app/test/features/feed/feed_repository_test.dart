@@ -215,6 +215,48 @@ void main() {
     });
   });
 
+  // The storage policies match on the first two path segments, and the retry
+  // story depends on the third, so both halves of this string are load-bearing
+  // in a way nothing else in the app would notice if it changed.
+  group('postImagePath', () {
+    test('puts the author uuid in the segment the storage policy reads', () {
+      final path = postImagePath(
+        authorId: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+        clientToken: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+        imageExt: 'jpg',
+      );
+
+      final segments = path.split('/');
+      expect(segments.first, 'posts');
+      expect(segments[1], 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa');
+      expect(segments, hasLength(3));
+    });
+
+    test('is stable across retries of one submission', () {
+      String pathFor(String token) => postImagePath(
+        authorId: 'author-1',
+        clientToken: token,
+        imageExt: 'jpg',
+      );
+
+      // Same submission retried: the object is rewritten, not duplicated.
+      expect(pathFor('token-a'), pathFor('token-a'));
+      // A different submission must not collide with it.
+      expect(pathFor('token-a'), isNot(pathFor('token-b')));
+    });
+
+    test('carries the file extension through', () {
+      expect(
+        postImagePath(
+          authorId: 'author-1',
+          clientToken: 'token-a',
+          imageExt: 'png',
+        ),
+        endsWith('.png'),
+      );
+    });
+  });
+
   group('Comment.fromRow', () {
     test('parses a comment row', () {
       final comment = Comment.fromRow({

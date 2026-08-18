@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
@@ -22,6 +23,18 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   String? _imageExt;
   bool _isPosting = false;
   String? _errorMessage;
+
+  /// Idempotency key for the submission in flight, and the content it was
+  /// minted for.
+  ///
+  /// Kept across retries so a resend after a timeout can't create a second post
+  /// (see [FeedRepository.createPost]), but tied to the *content*: the server
+  /// answers a repeat token by doing nothing, so reusing one after the user
+  /// edited the text or swapped the photo would silently keep the old version
+  /// while the screen closed as if the edit had been published.
+  String? _pendingToken;
+  String? _pendingText;
+  Uint8List? _pendingImage;
 
   @override
   void dispose() {
@@ -56,10 +69,21 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       _errorMessage = null;
     });
     try {
-      final userId = ref.read(supabaseClientProvider).auth.currentUser!.id;
+      final userId = ref.read(currentUserIdProvider)!;
+      // `identical` rather than `==`: _pickImage assigns a fresh Uint8List per
+      // pick, and comparing megabytes of pixels on every submit would be a
+      // pointless cost when the reference already answers "same photo?".
+      if (_pendingToken == null ||
+          _pendingText != text ||
+          !identical(_pendingImage, _imageBytes)) {
+        _pendingToken = const Uuid().v4();
+        _pendingText = text;
+        _pendingImage = _imageBytes;
+      }
       await ref
           .read(feedRepositoryProvider)
           .createPost(
+            clientToken: _pendingToken!,
             authorId: userId,
             text: text,
             imageBytes: _imageBytes,
