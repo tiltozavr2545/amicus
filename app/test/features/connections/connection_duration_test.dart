@@ -189,23 +189,23 @@ void main() {
     );
   });
 
-  test('summary appends the connection date', () {
+  test('summary appends the connection date on its own line', () {
     expect(
       formatConnectionSummary(en, DateTime(2026, 7, 10), now: now),
-      'Known for 2 days — since 10 Jul 2026',
+      'Known for 2 days\nsince 10 Jul 2026',
     );
     expect(
       formatConnectionSummary(en, DateTime(2025, 1, 5), now: now),
-      'Known for 1 year — since 5 Jan 2025',
+      'Known for 1 year\nsince 5 Jan 2025',
     );
 
     expect(
       formatConnectionSummary(ru, DateTime(2026, 7, 10), now: now),
-      'Знакомы 2 дня — с 10 июл. 2026',
+      'Знакомы 2 дня\nс 10 июл. 2026',
     );
     expect(
       formatConnectionSummary(ru, DateTime(2025, 1, 5), now: now),
-      'Знакомы 1 год — с 5 янв. 2025',
+      'Знакомы 1 год\nс 5 янв. 2025',
     );
   });
 }

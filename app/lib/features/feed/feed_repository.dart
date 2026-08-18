@@ -232,13 +232,19 @@ class FeedRepository {
 
   /// Fetches one page of the feed (newest first), starting strictly after
   /// [cursor] (the last post of the previous page; null for the first page).
+  /// When [authorId] is set, only that author's posts are returned — used by
+  /// the profile screen's "my posts" list, layered on top of the same RLS
+  /// visibility rather than replacing it.
   /// A signed URL is resolved for each post's photo (the `media` bucket is
   /// private, so a plain public URL wouldn't be servable), plus
   /// reaction/comment counts.
-  Future<List<Post>> fetchPage({Post? cursor}) async {
+  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
     var query = _client
         .from('posts')
         .select('*, author:users(name, dislikes_disabled)');
+    if (authorId != null) {
+      query = query.eq('author_id', authorId);
+    }
     final filter = keysetFilter(cursor);
     if (filter != null) {
       query = query.or(filter);
