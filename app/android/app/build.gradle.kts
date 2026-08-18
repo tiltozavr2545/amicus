@@ -5,6 +5,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 // Release signing config lives outside the repo (android/key.properties is
@@ -38,7 +39,10 @@ android {
 
     defaultConfig {
         applicationId = "com.github.tiltozavr2545.amicus"
-        minSdk = flutter.minSdkVersion
+        // Pinned above flutter.minSdkVersion (21): firebase_messaging's
+        // manifest declares minSdk 23 (Android 6.0, 2015) and the merge fails
+        // below that — confirmed by trying flutter.minSdkVersion first.
+        minSdk = 23
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName

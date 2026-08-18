@@ -12,3 +12,9 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Firebase config for this build — project-specific, not a secret per se
+# (it's bundled into the shipped APK either way), but kept out of git the same
+# way key.properties is: no reason to commit a file whose only source of truth
+# is the Firebase console.
+app/google-services.json

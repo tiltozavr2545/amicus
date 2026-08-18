@@ -148,6 +148,12 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String get favoriteFriendTooltip => 'В избранное';
+
+  @override
+  String get unfavoriteFriendTooltip => 'Убрать из избранного';
+
+  @override
   String get muteFriendTooltip => 'Заглушить';
 
   @override

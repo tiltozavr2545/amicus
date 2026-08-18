@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -17,6 +18,11 @@ Future<void> main() async {
   for (final locale in AppLocalizations.supportedLocales) {
     await initializeDateFormatting(locale.languageCode);
   }
+  // No explicit FirebaseOptions: on Android, absent an override, firebase_core
+  // reads the native app config the Gradle plugin generated from
+  // android/app/google-services.json at build time. Android-only app (see
+  // CLAUDE.md), so there's no other platform config to provide.
+  await Firebase.initializeApp();
   await Supabase.initialize(
     url: _supabaseUrl,
     publishableKey: _supabaseAnonKey,

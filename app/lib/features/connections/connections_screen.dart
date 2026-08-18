@@ -62,6 +62,26 @@ class _FriendListItem extends ConsumerWidget {
     }
   }
 
+  // Favoriting doesn't change what the feed is allowed to show — unlike
+  // mute/block, it's purely personal bookkeeping for notifications — so
+  // there's nothing for the feed tab to catch up on, and bumping it would
+  // just be a pointless reload.
+  Future<void> _runFavoriteToggle(
+    BuildContext context,
+    WidgetRef ref,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+      ref.invalidate(friendsProvider);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context)!.unexpectedError)),
+      );
+    }
+  }
+
   Future<void> _confirmAndRun(
     BuildContext context,
     WidgetRef ref, {
@@ -106,6 +126,36 @@ class _FriendListItem extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          IconButton(
+            icon: Icon(friend.isFavorite ? Icons.star : Icons.star_border),
+            color: friend.isFavorite
+                ? Theme.of(context).colorScheme.primary
+                : null,
+            tooltip: friend.isFavorite
+                ? l10n.unfavoriteFriendTooltip
+                : l10n.favoriteFriendTooltip,
+            onPressed: () {
+              if (friend.isFavorite) {
+                _runFavoriteToggle(
+                  context,
+                  ref,
+                  () => repo.unfavoriteUser(
+                    userId: currentUserId,
+                    favoriteId: friend.userId,
+                  ),
+                );
+              } else {
+                _runFavoriteToggle(
+                  context,
+                  ref,
+                  () => repo.favoriteUser(
+                    userId: currentUserId,
+                    favoriteId: friend.userId,
+                  ),
+                );
+              }
+            },
+          ),
           IconButton(
             icon: Icon(friend.isMuted ? Icons.volume_off : Icons.volume_up),
             tooltip: friend.isMuted

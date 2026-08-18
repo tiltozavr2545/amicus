@@ -88,6 +88,29 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   Future<List<BlockedUser>> fetchBlockedUsers(String currentUserId) async =>
       blockedUsers;
 
+  int favoriteCalls = 0;
+  int unfavoriteCalls = 0;
+  String? lastFavoritedId;
+  String? lastUnfavoritedId;
+
+  @override
+  Future<void> favoriteUser({
+    required String userId,
+    required String favoriteId,
+  }) async {
+    favoriteCalls++;
+    lastFavoritedId = favoriteId;
+  }
+
+  @override
+  Future<void> unfavoriteUser({
+    required String userId,
+    required String favoriteId,
+  }) async {
+    unfavoriteCalls++;
+    lastUnfavoritedId = favoriteId;
+  }
+
   /// Backing store for the round-trip test below: unblocking has to be visible
   /// to a *later* fetchFriends, the way it is on the server.
   List<BlockedUser> blockedUsers = [];
