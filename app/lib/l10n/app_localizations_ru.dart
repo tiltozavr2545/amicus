@@ -240,6 +240,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get addConnectionsButton => 'Добавить знакомых';
 
   @override
+  String get myPostsTitle => 'Мои посты';
+
+  @override
+  String get noOwnPostsYetMessage => 'Вы ещё не публиковали посты';
+
+  @override
   String get likeTooltip => 'Нравится';
 
   @override

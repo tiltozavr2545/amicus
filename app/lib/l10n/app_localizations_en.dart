@@ -238,6 +238,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addConnectionsButton => 'Add connections';
 
   @override
+  String get myPostsTitle => 'My posts';
+
+  @override
+  String get noOwnPostsYetMessage => 'You haven\'t posted anything yet';
+
+  @override
   String get likeTooltip => 'Like';
 
   @override

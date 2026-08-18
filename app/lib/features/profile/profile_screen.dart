@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
+import '../feed/post_list_view.dart';
 import 'profile_repository.dart';
 
 final _profileProvider = FutureProvider.autoDispose<Profile>((ref) {
@@ -102,44 +103,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           final avatarBytes = profile.avatarPath == null
               ? null
               : ref.watch(avatarBytesProvider(profile.avatarPath!)).value;
-          return Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: _isUploadingAvatar
-                      ? null
-                      : () => _pickAndUploadAvatar(userId!),
-                  child: CircleAvatar(
-                    radius: 48,
-                    backgroundImage: avatarBytes != null
-                        ? MemoryImage(avatarBytes)
-                        : null,
-                    child: _isUploadingAvatar
-                        ? const CircularProgressIndicator()
-                        : avatarBytes == null
-                        ? const Icon(Icons.camera_alt, size: 32)
-                        : null,
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: _isUploadingAvatar
+                          ? null
+                          : () => _pickAndUploadAvatar(userId!),
+                      child: CircleAvatar(
+                        radius: 48,
+                        backgroundImage: avatarBytes != null
+                            ? MemoryImage(avatarBytes)
+                            : null,
+                        child: _isUploadingAvatar
+                            ? const CircularProgressIndicator()
+                            : avatarBytes == null
+                            ? const Icon(Icons.camera_alt, size: 32)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(labelText: l10n.nameLabel),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _isSaving ? null : () => _saveName(userId!),
+                      child: _isSaving
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(l10n.saveButton),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    l10n.myPostsTitle,
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: l10n.nameLabel),
+              ),
+              Expanded(
+                child: PostListView(
+                  authorId: userId,
+                  emptyState: (context) => Text(l10n.noOwnPostsYetMessage),
                 ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _isSaving ? null : () => _saveName(userId!),
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.saveButton),
-                ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),

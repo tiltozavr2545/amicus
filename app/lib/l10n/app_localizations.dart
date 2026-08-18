@@ -512,6 +512,18 @@ abstract class AppLocalizations {
   /// **'Add connections'**
   String get addConnectionsButton;
 
+  /// No description provided for @myPostsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My posts'**
+  String get myPostsTitle;
+
+  /// No description provided for @noOwnPostsYetMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You haven\'t posted anything yet'**
+  String get noOwnPostsYetMessage;
+
   /// No description provided for @likeTooltip.
   ///
   /// In en, this message translates to:

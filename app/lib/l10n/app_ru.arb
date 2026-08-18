@@ -81,6 +81,8 @@
   "failedToDeletePostError": "Не удалось удалить пост. Попробуйте ещё раз.",
   "noPostsYetMessage": "Пока нет постов от знакомых. Добавь знакомых или напиши первым.",
   "addConnectionsButton": "Добавить знакомых",
+  "myPostsTitle": "Мои посты",
+  "noOwnPostsYetMessage": "Вы ещё не публиковали посты",
   "likeTooltip": "Нравится",
   "neutralTooltip": "Нейтрально",
   "dislikeTooltip": "Не нравится",

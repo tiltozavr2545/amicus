@@ -96,6 +96,8 @@
   "failedToDeletePostError": "Failed to delete post. Please try again.",
   "noPostsYetMessage": "No posts from connections yet. Add connections or write the first one.",
   "addConnectionsButton": "Add connections",
+  "myPostsTitle": "My posts",
+  "noOwnPostsYetMessage": "You haven't posted anything yet",
   "likeTooltip": "Like",
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
