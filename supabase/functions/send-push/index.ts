@@ -29,10 +29,10 @@ const APP_TITLE = 'Amicus';
 // for itself, so one template set covers both without a separate copy.
 const TEXTS: Record<string, string[]> = {
   new_post: [
-    'Новый пост от {authorName} — загляните в ленту',
-    '{authorName}: в ленте новый пост',
-    'У {authorName} свежий пост, не пропустите',
-    'Новости от {authorName} уже в вашей ленте',
+    'Новый пост от {author_name} — загляните в ленту',
+    '{author_name}: в ленте новый пост',
+    'У {author_name} свежий пост, не пропустите',
+    'Новости от {author_name} уже в вашей ленте',
   ],
   inactive_week: [
     'Заскучали без вас — напишите что-нибудь новое',
