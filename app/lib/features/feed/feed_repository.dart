@@ -101,6 +101,43 @@ class Post {
       commentCount: commentCount ?? this.commentCount,
     );
   }
+
+  /// Serializes for [FeedCache] — a local snapshot of the last-seen feed, not
+  /// a wire format, so it's free to just mirror the fields directly rather
+  /// than matching [fromRow]'s row shape.
+  Map<String, dynamic> toCacheJson() => {
+    'id': id,
+    'author_id': authorId,
+    'author_name': authorName,
+    'created_at': createdAt.toIso8601String(),
+    'author_dislikes_disabled': authorDislikesDisabled,
+    'text': text,
+    'image_path': imagePath,
+    'image_url': imageUrl,
+    'like_count': likeCount,
+    'neutral_count': neutralCount,
+    'dislike_count': dislikeCount,
+    'my_reaction': myReaction?.dbValue,
+    'comment_count': commentCount,
+  };
+
+  factory Post.fromCacheJson(Map<String, dynamic> json) => Post(
+    id: json['id'] as String,
+    authorId: json['author_id'] as String,
+    authorName: json['author_name'] as String,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    authorDislikesDisabled: json['author_dislikes_disabled'] as bool? ?? false,
+    text: json['text'] as String?,
+    imagePath: json['image_path'] as String?,
+    imageUrl: json['image_url'] as String?,
+    likeCount: json['like_count'] as int? ?? 0,
+    neutralCount: json['neutral_count'] as int? ?? 0,
+    dislikeCount: json['dislike_count'] as int? ?? 0,
+    myReaction: json['my_reaction'] != null
+        ? ReactionType.fromDb(json['my_reaction'] as String)
+        : null,
+    commentCount: json['comment_count'] as int? ?? 0,
+  );
 }
 
 /// Returns [post] with its counters and `myReaction` moved from whatever the
