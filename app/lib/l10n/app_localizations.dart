@@ -140,6 +140,36 @@ abstract class AppLocalizations {
   /// **'Enter your name'**
   String get nameRequiredError;
 
+  /// No description provided for @invalidCredentialsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Incorrect email or password.'**
+  String get invalidCredentialsError;
+
+  /// No description provided for @emailNotConfirmedError.
+  ///
+  /// In en, this message translates to:
+  /// **'Please confirm your email before signing in.'**
+  String get emailNotConfirmedError;
+
+  /// No description provided for @weakPasswordError.
+  ///
+  /// In en, this message translates to:
+  /// **'This password is too weak. Try a longer one.'**
+  String get weakPasswordError;
+
+  /// No description provided for @authRateLimitedError.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Please wait a bit and try again.'**
+  String get authRateLimitedError;
+
+  /// No description provided for @accountDisabledError.
+  ///
+  /// In en, this message translates to:
+  /// **'This account has been disabled.'**
+  String get accountDisabledError;
+
   /// No description provided for @signUpTitle.
   ///
   /// In en, this message translates to:
@@ -571,6 +601,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to load profile. Please try again.'**
   String get failedToLoadProfileError;
+
+  /// No description provided for @failedToSaveNameError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save name. Please try again.'**
+  String get failedToSaveNameError;
+
+  /// No description provided for @failedToUploadAvatarError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to upload photo. Please try again.'**
+  String get failedToUploadAvatarError;
 
   /// No description provided for @commentsTitle.
   ///

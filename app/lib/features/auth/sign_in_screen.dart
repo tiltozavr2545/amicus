@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/auth_error_message.dart';
 import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
@@ -42,7 +43,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           )
           .timeout(networkTimeout);
     } on AuthException catch (e) {
-      setState(() => _errorMessage = e.message);
+      setState(
+        () =>
+            _errorMessage = authErrorMessage(AppLocalizations.of(context)!, e),
+      );
     } catch (e) {
       setState(
         () => _errorMessage = AppLocalizations.of(context)!.unexpectedError,

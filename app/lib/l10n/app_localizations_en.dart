@@ -30,6 +30,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nameRequiredError => 'Enter your name';
 
   @override
+  String get invalidCredentialsError => 'Incorrect email or password.';
+
+  @override
+  String get emailNotConfirmedError =>
+      'Please confirm your email before signing in.';
+
+  @override
+  String get weakPasswordError =>
+      'This password is too weak. Try a longer one.';
+
+  @override
+  String get authRateLimitedError =>
+      'Too many attempts. Please wait a bit and try again.';
+
+  @override
+  String get accountDisabledError => 'This account has been disabled.';
+
+  @override
   String get signUpTitle => 'Sign up';
 
   @override
@@ -267,6 +285,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get failedToLoadProfileError =>
       'Failed to load profile. Please try again.';
+
+  @override
+  String get failedToSaveNameError => 'Failed to save name. Please try again.';
+
+  @override
+  String get failedToUploadAvatarError =>
+      'Failed to upload photo. Please try again.';
 
   @override
   String get commentsTitle => 'Comments';
