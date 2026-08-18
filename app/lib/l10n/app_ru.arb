@@ -83,6 +83,8 @@
   "addConnectionsButton": "Добавить знакомых",
   "myPostsTitle": "Мои посты",
   "noOwnPostsYetMessage": "Вы ещё не публиковали посты",
+  "postsTitle": "Посты",
+  "noAuthorPostsYetMessage": "У этого пользователя пока нет постов",
   "likeTooltip": "Нравится",
   "neutralTooltip": "Нейтрально",
   "dislikeTooltip": "Не нравится",
@@ -115,5 +117,5 @@
   "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",
   "connectionKnownMonths": "Знакомы {months, plural, one{{months} месяц} few{{months} месяца} many{{months} месяцев} other{{months} месяца}}",
   "connectionKnownYears": "Знакомы {years, plural, one{{years} год} few{{years} года} many{{years} лет} other{{years} года}}",
-  "connectionSummary": "{duration} — с {date}"
+  "connectionSummary": "{duration}\nс {date}"
 }

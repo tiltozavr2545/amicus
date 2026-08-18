@@ -246,6 +246,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get noOwnPostsYetMessage => 'Вы ещё не публиковали посты';
 
   @override
+  String get postsTitle => 'Посты';
+
+  @override
+  String get noAuthorPostsYetMessage => 'У этого пользователя пока нет постов';
+
+  @override
   String get likeTooltip => 'Нравится';
 
   @override
@@ -354,6 +360,6 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String connectionSummary(String duration, String date) {
-    return '$duration — с $date';
+    return '$duration\nс $date';
   }
 }

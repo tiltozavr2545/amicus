@@ -524,6 +524,18 @@ abstract class AppLocalizations {
   /// **'You haven\'t posted anything yet'**
   String get noOwnPostsYetMessage;
 
+  /// No description provided for @postsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Posts'**
+  String get postsTitle;
+
+  /// No description provided for @noAuthorPostsYetMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This user hasn\'t posted anything yet'**
+  String get noAuthorPostsYetMessage;
+
   /// No description provided for @likeTooltip.
   ///
   /// In en, this message translates to:
@@ -665,7 +677,7 @@ abstract class AppLocalizations {
   /// No description provided for @connectionSummary.
   ///
   /// In en, this message translates to:
-  /// **'{duration} — since {date}'**
+  /// **'{duration}\nsince {date}'**
   String connectionSummary(String duration, String date);
 }
 

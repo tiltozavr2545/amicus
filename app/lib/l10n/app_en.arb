@@ -98,6 +98,8 @@
   "addConnectionsButton": "Add connections",
   "myPostsTitle": "My posts",
   "noOwnPostsYetMessage": "You haven't posted anything yet",
+  "postsTitle": "Posts",
+  "noAuthorPostsYetMessage": "This user hasn't posted anything yet",
   "likeTooltip": "Like",
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
@@ -139,7 +141,7 @@
   "@connectionKnownYears": {
     "placeholders": { "years": { "type": "int" } }
   },
-  "connectionSummary": "{duration} — since {date}",
+  "connectionSummary": "{duration}\nsince {date}",
   "@connectionSummary": {
     "placeholders": {
       "duration": { "type": "String" },

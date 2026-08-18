@@ -244,6 +244,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noOwnPostsYetMessage => 'You haven\'t posted anything yet';
 
   @override
+  String get postsTitle => 'Posts';
+
+  @override
+  String get noAuthorPostsYetMessage => 'This user hasn\'t posted anything yet';
+
+  @override
   String get likeTooltip => 'Like';
 
   @override
@@ -345,6 +351,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String connectionSummary(String duration, String date) {
-    return '$duration — since $date';
+    return '$duration\nsince $date';
   }
 }

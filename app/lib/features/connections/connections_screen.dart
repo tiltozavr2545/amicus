@@ -11,6 +11,7 @@ import '../profile/profile_repository.dart';
 import 'blocked_users_screen.dart';
 import 'connection_duration.dart';
 import 'connections_repository.dart';
+import 'friend_profile_screen.dart';
 
 class FriendAvatar extends ConsumerWidget {
   const FriendAvatar({super.key, required this.avatarPath});
@@ -120,7 +121,18 @@ class _FriendListItem extends ConsumerWidget {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: FriendAvatar(avatarPath: friend.avatarPath),
+      leading: GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => FriendProfileScreen(
+              friendId: friend.userId,
+              friendName: friend.name,
+              avatarPath: friend.avatarPath,
+            ),
+          ),
+        ),
+        child: FriendAvatar(avatarPath: friend.avatarPath),
+      ),
       title: Text(friend.name),
       subtitle: Text(formatConnectionSummary(l10n, friend.connectedAt)),
       trailing: Row(
