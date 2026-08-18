@@ -46,6 +46,18 @@ const TEXTS: Record<string, string[]> = {
     'Пока вас не было, знакомые опубликовали {count} постов',
     'Лента обновилась: {count} новых постов от знакомых',
   ],
+  post_comment: [
+    '{author_name} прокомментировал(а) ваш пост',
+    'Новый комментарий от {author_name} под вашим постом',
+    '{author_name} оставил(а) комментарий к вашему посту',
+    'Ваш пост прокомментировал(а) {author_name}',
+  ],
+  comment_reply: [
+    '{author_name} ответил(а) на ваш комментарий',
+    'Новый ответ от {author_name} на ваш комментарий',
+    '{author_name} прокомментировал(а) в ответ вам',
+    'Вам ответил(а) {author_name}',
+  ],
 };
 
 function pickText(kind: string, payload: Record<string, unknown>): string {
