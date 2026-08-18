@@ -9,6 +9,11 @@
   "nameLabel": "Имя",
   "passwordLabel": "Пароль",
   "nameRequiredError": "Введи имя",
+  "invalidCredentialsError": "Неверный email или пароль.",
+  "emailNotConfirmedError": "Подтвердите email, прежде чем входить.",
+  "weakPasswordError": "Слишком простой пароль. Попробуйте длиннее.",
+  "authRateLimitedError": "Слишком много попыток. Подождите немного и повторите.",
+  "accountDisabledError": "Этот аккаунт отключён.",
 
   "signUpTitle": "Регистрация",
   "signUpButton": "Зарегистрироваться",
@@ -92,6 +97,8 @@
   "signOutTooltip": "Выйти",
   "darkThemeToggleTooltip": "Переключить тёмную тему",
   "failedToLoadProfileError": "Не удалось загрузить профиль. Попробуйте ещё раз.",
+  "failedToSaveNameError": "Не удалось сохранить имя. Попробуйте ещё раз.",
+  "failedToUploadAvatarError": "Не удалось загрузить фото. Попробуйте ещё раз.",
 
   "commentsTitle": "Комментарии",
   "deleteCommentTitle": "Удалить комментарий?",

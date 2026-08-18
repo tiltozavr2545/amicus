@@ -9,6 +9,11 @@
   "nameLabel": "Name",
   "passwordLabel": "Password",
   "nameRequiredError": "Enter your name",
+  "invalidCredentialsError": "Incorrect email or password.",
+  "emailNotConfirmedError": "Please confirm your email before signing in.",
+  "weakPasswordError": "This password is too weak. Try a longer one.",
+  "authRateLimitedError": "Too many attempts. Please wait a bit and try again.",
+  "accountDisabledError": "This account has been disabled.",
 
   "signUpTitle": "Sign up",
   "signUpButton": "Sign up",
@@ -107,6 +112,8 @@
   "signOutTooltip": "Sign out",
   "darkThemeToggleTooltip": "Toggle dark theme",
   "failedToLoadProfileError": "Failed to load profile. Please try again.",
+  "failedToSaveNameError": "Failed to save name. Please try again.",
+  "failedToUploadAvatarError": "Failed to upload photo. Please try again.",
 
   "commentsTitle": "Comments",
   "deleteCommentTitle": "Delete comment?",

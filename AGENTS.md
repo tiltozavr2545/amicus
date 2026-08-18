@@ -12,6 +12,7 @@
 | MVP-план | [docs/project-brief.md](docs/project-brief.md) |
 | отложенное (1.0/2.0+), открытые вопросы, аудиты | [docs/future-development.md](docs/future-development.md) |
 | пошаговый план, CI/деплой | [docs/implementation-plan.md](docs/implementation-plan.md) |
+| схема БД, правило видимости, storage-политики | [docs/data-model.md](docs/data-model.md) |
 
 ## Проект
 
@@ -38,8 +39,7 @@ iOS отложена целиком (нужен Xcode). Дальнейшая р�
 ## Стек
 
 Flutter/Dart + Supabase (PostgreSQL, Auth, Storage, RLS). Riverpod, go_router,
-`flutter_localizations` + ARB. На будущее (не сейчас) рассматривался свой
-backend на ASP.NET Core.
+`flutter_localizations` + ARB.
 
 ## Ограничения среды
 
@@ -73,41 +73,12 @@ backend на ASP.NET Core.
 - **CLAUDE.md — побайтовый близнец этого файла** (отличаются только заголовок и
   «для Codex»/«для Claude»). Менять оба.
 
-## Схема и правило видимости
-
-Таблицы: `users`, `connections`, `invite_links`, `posts`, `reactions`,
-`comments`, `muted_users`, `blocked_users`.
-
-**Одно правило видимости на весь проект** — `is_author_visible(uuid)`: я сам,
-либо Connection, которого я не замьютил и с которым нет блока ни в одну сторону.
-Его спрашивают SELECT-политика `posts`, `reaction_summary()`, обе политики
-`comments` (через `is_author_of_comment_visible()`) и storage-политика на фото
-постов. **Менять только в этой функции.** Раньше правило было размножено на
-четыре копии, две отстали от mute/block и стали дырами — см. 0.11.0 в CHANGELOG.
-
-В политиках оно используется как `author_id in (select visible_author_ids())`, а
-не как построчный вызов — см. «Грабли».
-
-Комментарии: вложенность **ровно одноуровневая**. `parent_comment_id` — корень
-ветки, `reply_to_id` — адресат (только для метки «в ответ»), `deleted_at` —
-заглушка. Удаление идёт через RPC `delete_own_comment()`: с ответами —
-заглушка, без — реальный delete, решает сервер. DELETE- и UPDATE-политик на
-`comments` намеренно нет: редактирование комментариев — не фича.
-
-Серверные колонки прибиты в INSERT-политиках `posts`/`comments`:
-`created_at = now()`, `deleted_at is null`.
-
-`activate_invite_link()` кидает стабильные SQLSTATE — `PT404` (не найден),
-`PT409` (использован), `PT422` (свой собственный); клиент мапит их в строки из
-ARB и никогда не показывает `e.message`.
-
-Storage: бакет `media` приватный, signed URL живут 24 ч. `posts/<uid>/…` — по
-`is_author_visible`. `avatars/<uid>/…` — себе и Connections, **блок их не
-сужает**: заблокированный остаётся в списке знакомых и на экране
-«Заблокированные», где блок и снимают, а оба экрана рисуют аватарку.
-
 ## Грабли
 
+- **Правило видимости жило в четырёх копиях, две отстали от mute/block и стали
+  дырами** — см. 0.11.0 в CHANGELOG. Сведено в одну `is_author_visible(uuid)`,
+  подробности схемы и её потребителей — [docs/data-model.md](docs/data-model.md).
+  Менять правило только там, не заводить вторую копию.
 - **RLS применяется и к подзапросам внутри политики.** Подзапрос к
   `blocked_users` сам фильтруется политикой `blocked_users`, поэтому ветка «меня
   заблокировали» молча отваливалась. Отсюда весь паттерн `security definer` +
@@ -136,14 +107,3 @@ Storage: бакет `media` приватный, signed URL живут 24 ч. `po
 - **Проверка на устройстве**: английскую локаль включать пер-приложенчески
   (`adb shell cmd locale set-app-locales <pkg> --locales en-US`), а не системной
   настройкой — не трогает телефон пользователя и откатывается пустым значением.
-
-## Границы MVP и что дальше
-
-MVP (0.1) — регистрация/вход, профиль, invite-ссылки → Connection, общая лента,
-реакции, комментарии. Отложено: комнаты целиком, QR-сканирование,
-push-уведомления о комментариях/реакциях (push о постах уже есть, см.
-CHANGELOG 0.12.0), модерация/жалобы, web-версия, свой backend, iOS.
-
-Нерешённые вопросы (кто добавляет в комнату, судьба комнаты при удалении
-создателя, разрыв Connection, приватность списка контактов) — в
-future-development.md. Решать по мере того, как доходит очередь, не заранее.

@@ -30,6 +30,22 @@ class AppLocalizationsRu extends AppLocalizations {
   String get nameRequiredError => 'Введи имя';
 
   @override
+  String get invalidCredentialsError => 'Неверный email или пароль.';
+
+  @override
+  String get emailNotConfirmedError => 'Подтвердите email, прежде чем входить.';
+
+  @override
+  String get weakPasswordError => 'Слишком простой пароль. Попробуйте длиннее.';
+
+  @override
+  String get authRateLimitedError =>
+      'Слишком много попыток. Подождите немного и повторите.';
+
+  @override
+  String get accountDisabledError => 'Этот аккаунт отключён.';
+
+  @override
   String get signUpTitle => 'Регистрация';
 
   @override
@@ -269,6 +285,14 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToLoadProfileError =>
       'Не удалось загрузить профиль. Попробуйте ещё раз.';
+
+  @override
+  String get failedToSaveNameError =>
+      'Не удалось сохранить имя. Попробуйте ещё раз.';
+
+  @override
+  String get failedToUploadAvatarError =>
+      'Не удалось загрузить фото. Попробуйте ещё раз.';
 
   @override
   String get commentsTitle => 'Комментарии';

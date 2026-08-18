@@ -311,6 +311,10 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
         )!.nowConnectedWithMessage(connection.ownerName);
       });
       ref.invalidate(friendsProvider);
+      // A new Connection changes what the feed is allowed to show, same as
+      // mute/block in _run() above — the feed tab's cached IndexedStack state
+      // won't pick up the new friend's posts on its own.
+      ref.read(feedRefreshTickProvider.notifier).bump();
     } on PostgrestException catch (e) {
       // Switch on the SQLSTATE, never on e.message: the same exception type
       // also carries statement timeouts and constraint violations, whose raw

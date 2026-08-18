@@ -7,6 +7,7 @@ import '../../shared/file_extension.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
+import '../notifications/push_notifications_repository.dart';
 import 'profile_repository.dart';
 
 final _profileProvider = FutureProvider.autoDispose<Profile>((ref) {
@@ -32,14 +33,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
+  /// Shared error feedback for every write path on this screen. Takes a
+  /// message *builder*, not a resolved string: after an `await`, the
+  /// `AppLocalizations.of(context)` lookup itself is only safe once
+  /// `context.mounted` has been checked, so it has to happen in here too —
+  /// resolving the string at the call site (before this runs) would read
+  /// context that may already be gone.
+  void _showError(
+    BuildContext context,
+    String Function(AppLocalizations) message,
+  ) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message(AppLocalizations.of(context)!))),
+    );
+  }
+
   Future<void> _saveName(String userId) async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context)!.nameRequiredError),
-        ),
-      );
+      _showError(context, (l10n) => l10n.nameRequiredError);
       return;
     }
     setState(() => _isSaving = true);
@@ -48,6 +61,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .read(profileRepositoryProvider)
           .updateName(userId: userId, name: name);
       ref.invalidate(_profileProvider);
+    } catch (e) {
+      // _showError checks context.mounted itself before touching context —
+      // the analyzer can't see across that call, only into this function.
+      // ignore: use_build_context_synchronously
+      _showError(context, (l10n) => l10n.failedToSaveNameError);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -69,8 +87,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .read(profileRepositoryProvider)
           .uploadAvatar(userId: userId, bytes: bytes, fileExt: ext);
       ref.invalidate(_profileProvider);
+    } catch (e) {
+      // ignore: use_build_context_synchronously
+      _showError(context, (l10n) => l10n.failedToUploadAvatarError);
     } finally {
       if (mounted) setState(() => _isUploadingAvatar = false);
+    }
+  }
+
+  /// Drops this device's push token for the current user before signing out
+  /// — while the session is still valid, since the delete is RLS-gated on
+  /// `auth.uid()` — so a different user signing in on the same device
+  /// afterward doesn't keep receiving pushes meant for whoever just left.
+  Future<void> _signOut(BuildContext context) async {
+    final userId = ref.read(currentUserIdProvider);
+    if (userId != null) {
+      try {
+        await ref
+            .read(pushNotificationsRepositoryProvider)
+            .unregisterDevice(userId: userId);
+      } catch (_) {
+        // Best-effort: a network hiccup here shouldn't block sign-out.
+      }
+    }
+    try {
+      await ref.read(supabaseClientProvider).auth.signOut();
+    } catch (e) {
+      // ignore: use_build_context_synchronously
+      _showError(context, (l10n) => l10n.unexpectedError);
     }
   }
 
@@ -88,7 +132,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: l10n.signOutTooltip,
-            onPressed: () => ref.read(supabaseClientProvider).auth.signOut(),
+            onPressed: () => _signOut(context),
           ),
         ],
       ),
