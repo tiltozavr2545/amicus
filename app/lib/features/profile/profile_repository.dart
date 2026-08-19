@@ -22,7 +22,55 @@ class Profile {
   }
 }
 
+/// One photo in a user's profile gallery (up to 80 — see
+/// `profile_photos` in the migration). [position] orders the gallery; the
+/// lowest [position] is what `users.avatar_path` mirrors (kept in sync by a
+/// DB trigger), so it's also what every other screen's small avatar shows.
+class ProfilePhoto {
+  const ProfilePhoto({
+    required this.id,
+    required this.position,
+    required this.storagePath,
+  });
+
+  final String id;
+  final int position;
+  final String storagePath;
+
+  factory ProfilePhoto.fromRow(Map<String, dynamic> row) => ProfilePhoto(
+    id: row['id'] as String,
+    position: (row['position'] as num).toInt(),
+    storagePath: row['storage_path'] as String,
+  );
+}
+
+/// One picked-but-not-yet-uploaded profile photo, held by the profile
+/// screen's local state while [ProfileRepository.addPhotos] uploads it.
+class PendingPhoto {
+  const PendingPhoto({
+    required this.photoClientToken,
+    required this.bytes,
+    required this.ext,
+  });
+
+  final String photoClientToken;
+  final Uint8List bytes;
+  final String ext;
+}
+
 const _bucket = 'media';
+
+/// Storage path for one profile photo. Reuses the `avatars/<uid>/…` prefix
+/// the existing avatar storage policies already scope SELECT/INSERT/
+/// UPDATE/DELETE to (20260707222025), so adding the gallery needed no new
+/// storage policy. [photoClientToken] is minted per photo at pick time, not
+/// per upload attempt — a retry addresses the same object instead of leaking
+/// a duplicate into the bucket, same reasoning as [postMediaPath].
+String profilePhotoPath({
+  required String userId,
+  required String photoClientToken,
+  required String ext,
+}) => 'avatars/$userId/$photoClientToken.$ext';
 
 class ProfileRepository {
   ProfileRepository(this._client);
@@ -50,49 +98,111 @@ class ProfileRepository {
         .timeout(networkTimeout);
   }
 
-  /// Uploads [bytes] as the user's avatar and returns the new storage path.
-  ///
-  /// The filename carries a timestamp so every upload writes to a *new* path.
-  /// That makes the path itself a version key: a re-uploaded photo produces a
-  /// different `avatar_path`, so [avatarBytesProvider] (keyed by path) can be
-  /// kept alive across navigation without ever serving a stale image. The
-  /// previous file is removed best-effort to avoid orphaned objects.
-  Future<String> uploadAvatar({
-    required String userId,
-    required Uint8List bytes,
-    required String fileExt,
-  }) async {
-    final existing = await _client
-        .from('users')
-        .select('avatar_path')
-        .eq('id', userId)
-        .single()
+  /// Fetches a user's profile photo gallery, ordered for display.
+  Future<List<ProfilePhoto>> fetchPhotos(String userId) async {
+    final rows = await _client
+        .from('profile_photos')
+        .select()
+        .eq('user_id', userId)
+        .order('position', ascending: true)
         .timeout(networkTimeout);
-    final previousPath = existing['avatar_path'] as String?;
+    return rows.map(ProfilePhoto.fromRow).toList();
+  }
 
-    final path =
-        'avatars/$userId/avatar_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+  /// Uploads [items] and appends them to the end of the gallery, after
+  /// whatever [existing] photos are already there. `users.avatar_path` is
+  /// updated automatically by a DB trigger, not here — see
+  /// `sync_avatar_path_from_profile_photos()` in the migration.
+  Future<void> addPhotos({
+    required String userId,
+    required List<PendingPhoto> items,
+    required List<ProfilePhoto> existing,
+  }) async {
+    if (items.isEmpty) return;
+    for (final item in items) {
+      await _client.storage
+          .from(_bucket)
+          .uploadBinary(
+            profilePhotoPath(
+              userId: userId,
+              photoClientToken: item.photoClientToken,
+              ext: item.ext,
+            ),
+            item.bytes,
+          )
+          .timeout(networkTimeout);
+    }
+    final nextPosition = existing.isEmpty
+        ? 0
+        : existing.map((p) => p.position).reduce((a, b) => a > b ? a : b) + 1;
+    final rows = [
+      for (var i = 0; i < items.length; i++)
+        {
+          'user_id': userId,
+          'position': nextPosition + i,
+          'storage_path': profilePhotoPath(
+            userId: userId,
+            photoClientToken: items[i].photoClientToken,
+            ext: items[i].ext,
+          ),
+        },
+    ];
+    await _client
+        .from('profile_photos')
+        .upsert(
+          rows,
+          onConflict: 'user_id,storage_path',
+          ignoreDuplicates: true,
+        )
+        .timeout(networkTimeout);
+  }
+
+  /// Applies a new display order for the whole gallery: delete+insert every
+  /// row rather than update-in-place, same pattern (and same reason — no
+  /// UPDATE policy) as [FeedRepository.updatePost]'s media reorder. The
+  /// storage objects themselves are untouched.
+  Future<void> reorderPhotos({
+    required String userId,
+    required List<ProfilePhoto> order,
+  }) async {
+    if (order.isEmpty) return;
+    await _client
+        .from('profile_photos')
+        .delete()
+        .inFilter('id', order.map((p) => p.id).toList())
+        .timeout(networkTimeout);
+    final rows = [
+      for (var i = 0; i < order.length; i++)
+        {
+          'user_id': userId,
+          'position': i,
+          'storage_path': order[i].storagePath,
+        },
+    ];
+    await _client
+        .from('profile_photos')
+        .upsert(
+          rows,
+          onConflict: 'user_id,storage_path',
+          ignoreDuplicates: true,
+        )
+        .timeout(networkTimeout);
+  }
+
+  /// Removes [photos] from the gallery: their storage objects, then their
+  /// rows. `users.avatar_path` is re-synced automatically by the same DB
+  /// trigger that handles [addPhotos]/[reorderPhotos].
+  Future<void> deletePhotos({required List<ProfilePhoto> photos}) async {
+    if (photos.isEmpty) return;
     await _client.storage
         .from(_bucket)
-        .uploadBinary(path, bytes)
+        .remove(photos.map((p) => p.storagePath).toList())
         .timeout(networkTimeout);
     await _client
-        .from('users')
-        .update({'avatar_path': path})
-        .eq('id', userId)
+        .from('profile_photos')
+        .delete()
+        .inFilter('id', photos.map((p) => p.id).toList())
         .timeout(networkTimeout);
-
-    if (previousPath != null && previousPath != path) {
-      try {
-        await _client.storage
-            .from(_bucket)
-            .remove([previousPath])
-            .timeout(networkTimeout);
-      } catch (_) {
-        // Best-effort cleanup; a leftover old avatar file is harmless.
-      }
-    }
-    return path;
   }
 
   /// The `media` bucket is private (RLS-controlled); the SDK's storage
@@ -111,9 +221,10 @@ final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
 /// (own profile, friends list, ...) share the same cached result.
 ///
 /// The successful result is kept alive across navigation so revisiting a screen
-/// doesn't re-download unchanged avatars. This is safe because [uploadAvatar]
-/// writes a fresh path per upload, so a changed photo is a different cache key
-/// rather than a stale hit. Errors are not kept alive, so they retry naturally.
+/// doesn't re-download unchanged avatars. This is safe because every profile
+/// photo is uploaded under its own client-minted path (see
+/// [profilePhotoPath]), so a changed photo is a different cache key rather
+/// than a stale hit. Errors are not kept alive, so they retry naturally.
 final avatarBytesProvider = FutureProvider.autoDispose
     .family<Uint8List, String>((ref, path) async {
       final bytes = await ref

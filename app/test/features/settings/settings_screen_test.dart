@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
+import 'package:amicus/features/settings/account_repository.dart';
 import 'package:amicus/features/settings/notification_preferences_repository.dart';
 import 'package:amicus/features/settings/settings_screen.dart';
 import 'package:amicus/l10n/app_localizations.dart';
@@ -26,11 +27,39 @@ class _FakeNotificationPreferencesRepository
   }
 }
 
-Widget _wrap(_FakeNotificationPreferencesRepository repo) {
+class _FakeAccountRepository implements AccountRepository {
+  bool signOutThrows = false;
+  bool deleteAccountThrows = false;
+  int signOutCalls = 0;
+  int deleteAccountCalls = 0;
+  String? lastUserId;
+
+  @override
+  Future<void> signOut(String userId) async {
+    signOutCalls++;
+    lastUserId = userId;
+    if (signOutThrows) throw Exception('network error');
+  }
+
+  @override
+  Future<void> deleteAccount(String userId) async {
+    deleteAccountCalls++;
+    lastUserId = userId;
+    if (deleteAccountThrows) throw Exception('network error');
+  }
+}
+
+Widget _wrap(
+  _FakeNotificationPreferencesRepository repo, {
+  _FakeAccountRepository? accountRepo,
+}) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       notificationPreferencesRepositoryProvider.overrideWithValue(repo),
+      accountRepositoryProvider.overrideWithValue(
+        accountRepo ?? _FakeAccountRepository(),
+      ),
     ],
     child: const MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -97,5 +126,125 @@ void main() {
     // Rolled back to on, despite the optimistic flip to off.
     expect(tile.value, true);
     expect(find.text('Failed to save. Please try again.'), findsOneWidget);
+  });
+
+  testWidgets('Sign out asks for confirmation; cancelling does nothing', (
+    tester,
+  ) async {
+    final accountRepo = _FakeAccountRepository();
+    await tester.pumpWidget(
+      _wrap(_FakeNotificationPreferencesRepository(), accountRepo: accountRepo),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(accountRepo.signOutCalls, 0);
+  });
+
+  testWidgets('Confirming sign out calls the repository with the user id', (
+    tester,
+  ) async {
+    final accountRepo = _FakeAccountRepository();
+    await tester.pumpWidget(
+      _wrap(_FakeNotificationPreferencesRepository(), accountRepo: accountRepo),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    // Two matches now: the list tile behind the dialog and the dialog's own
+    // confirm button, both labelled "Sign out" — the confirm action is the
+    // last one.
+    await tester.tap(find.text('Sign out').last);
+    await tester.pumpAndSettle();
+
+    expect(accountRepo.signOutCalls, 1);
+    expect(accountRepo.lastUserId, 'test-user');
+  });
+
+  testWidgets('A failed sign out shows a snackbar', (tester) async {
+    final accountRepo = _FakeAccountRepository()..signOutThrows = true;
+    await tester.pumpWidget(
+      _wrap(_FakeNotificationPreferencesRepository(), accountRepo: accountRepo),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Failed to sign out. Please try again.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Confirming delete account calls the repository with the user id',
+    (tester) async {
+      final accountRepo = _FakeAccountRepository();
+      await tester.pumpWidget(
+        _wrap(
+          _FakeNotificationPreferencesRepository(),
+          accountRepo: accountRepo,
+        ),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete account?'), findsOneWidget);
+
+      // The dialog's confirm button reuses the generic "Delete" label, not
+      // "Delete account" — only one match, unlike the sign-out case above.
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(accountRepo.deleteAccountCalls, 1);
+      expect(accountRepo.lastUserId, 'test-user');
+    },
+  );
+
+  testWidgets('Cancelling delete account does nothing', (tester) async {
+    final accountRepo = _FakeAccountRepository();
+    await tester.pumpWidget(
+      _wrap(_FakeNotificationPreferencesRepository(), accountRepo: accountRepo),
+    );
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(accountRepo.deleteAccountCalls, 0);
+  });
+
+  testWidgets('A failed account deletion shows a snackbar', (tester) async {
+    final accountRepo = _FakeAccountRepository()..deleteAccountThrows = true;
+    await tester.pumpWidget(
+      _wrap(_FakeNotificationPreferencesRepository(), accountRepo: accountRepo),
+    );
+    await tester.pump();
+
+    await tester.ensureVisible(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Failed to delete account. Please try again.'),
+      findsOneWidget,
+    );
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'l10n/app_localizations.dart';
+import 'l10n/locale_provider.dart';
 import 'router.dart';
 import 'theme/theme_mode_provider.dart';
 
@@ -26,14 +27,17 @@ class KrugApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider);
     return MaterialApp.router(
       title: 'Amicus',
       theme: _lightTheme,
       darkTheme: _darkTheme,
       themeMode: themeMode,
-      // No explicit `locale:` — Flutter picks the first supported locale
-      // that matches the device's locale list, falling back to the first
-      // entry (en) otherwise. See AppLocalizations.supportedLocales.
+      // null (the default, until Settings sets an explicit override) makes
+      // Flutter pick the first supported locale that matches the device's
+      // locale list, falling back to the first entry (en) otherwise. See
+      // AppLocalizations.supportedLocales.
+      locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: router,

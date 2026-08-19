@@ -115,11 +115,22 @@
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
 
-  "signOutTooltip": "Sign out",
   "darkThemeToggleTooltip": "Toggle dark theme",
   "failedToLoadProfileError": "Failed to load profile. Please try again.",
   "failedToSaveNameError": "Failed to save name. Please try again.",
-  "failedToUploadAvatarError": "Failed to upload photo. Please try again.",
+
+  "addPhotoButton": "Add photo",
+  "reorderPhotosButton": "Reorder",
+  "deletePhotoButton": "Delete photo",
+  "reorderPhotosTitle": "Photo order",
+  "deletePhotosTitle": "Delete photos",
+  "photoLimitMessage": "You can add up to 80 photos",
+  "failedToLoadPhotosError": "Failed to load photos. Please try again.",
+  "failedToAddPhotosError": "Failed to add photos. Please try again.",
+  "failedToReorderPhotosError": "Failed to reorder photos. Please try again.",
+  "failedToDeletePhotosError": "Failed to delete photos. Please try again.",
+  "deletePhotosConfirmTitle": "Delete selected photos?",
+  "deletePhotosConfirmContent": "The selected photos will be permanently deleted.",
 
   "commentsTitle": "Comments",
   "deleteCommentTitle": "Delete comment?",
@@ -178,5 +189,18 @@
       "version": { "type": "String" },
       "build": { "type": "String" }
     }
-  }
+  },
+
+  "languageSectionTitle": "Language",
+  "languageSystemLabel": "System default",
+
+  "accountSectionTitle": "Account",
+  "signOutButton": "Sign out",
+  "signOutDialogTitle": "Sign out?",
+  "signOutDialogContent": "You'll need to sign in again to use the app.",
+  "failedToSignOutError": "Failed to sign out. Please try again.",
+  "deleteAccountLabel": "Delete account",
+  "deleteAccountDialogTitle": "Delete account?",
+  "deleteAccountDialogContent": "This is permanent: your profile, posts, comments, and connections will all be deleted. This can't be undone.",
+  "failedToDeleteAccountError": "Failed to delete account. Please try again."
 }

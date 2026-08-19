@@ -5,8 +5,9 @@
 миграции в `supabase/migrations/`, затем `git log`.
 
 Таблицы: `users`, `connections`, `invite_links`, `posts`, `post_media`,
-`reactions`, `comments`, `muted_users`, `blocked_users`, `favorite_users`,
-`device_tokens`, `notification_outbox`, `pending_post_counts`.
+`profile_photos`, `reactions`, `comments`, `muted_users`, `blocked_users`,
+`favorite_users`, `device_tokens`, `notification_outbox`,
+`pending_post_counts`.
 
 ## Правило видимости
 
@@ -65,6 +66,21 @@ storage при reorder не трогается, строка с той же `sto
 `poster_path` — только для video, JPEG первого кадра, сгенерированный на
 клиенте при выборе файла.
 
+## Фото профиля
+
+До 80 фото на пользователя — `profile_photos(user_id, position, storage_path)`,
+одна строка на фото, тот же неплотный `position` и delete+insert-reorder, что
+и у `post_media`. Видимость — **себе или Connection, без учёта mute/block** —
+то же правило, что у самой аватарки в Storage (см. «Storage» ниже), а не
+`is_author_visible()`: блок не должен прятать аватар со экрана
+«Заблокированные», где блок и снимают. `users.avatar_path` остаётся
+единственным полем, которое читает весь остальной клиент (лента, список
+знакомых, `friend_profile_screen`) — вместо того, чтобы переписывать эти места
+под галерею, триггер `sync_avatar_path_from_profile_photos()` держит его в
+синхроне с фото наименьшей `position` на каждой мутации `profile_photos`.
+Лимит 80 — backstop-триггер `enforce_profile_photos_limit()`, тот же паттерн,
+что у `post_media`. Миграция `20260819240000_add_profile_photos.sql`.
+
 `posts.text` редактируем через узкую UPDATE-политику (`grant update (text)`,
 20260819210000) — единственная колонка `posts`, доступная на UPDATE.
 `author_id`/`created_at`/`id`/`client_token` недостижимы через этот путь.
@@ -96,7 +112,9 @@ ARB и никогда не показывает `e.message`.
 Бакет `media` приватный, signed URL живут 24 ч. `posts/<uid>/…` — по
 `is_author_visible`. `avatars/<uid>/…` — себе и Connections, **блок их не
 сужает**: заблокированный остаётся в списке знакомых и на экране
-«Заблокированные», где блок и снимают, а оба экрана рисуют аватарку.
+«Заблокированные», где блок и снимают, а оба экрана рисуют аватарку. Фото
+профиля (`profile_photos`) — те же объекты под тем же префиксом
+`avatars/<uid>/…`, отдельной storage-политики не потребовалось.
 
 Путь для медиа поста: `posts/<author_id>/<post_client_token>/<media_client_token>.<ext>`
 — первые два сегмента не изменились с версии с одиночным фото, поэтому

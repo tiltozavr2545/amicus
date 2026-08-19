@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
-import '../notifications/push_notifications_repository.dart';
 import '../settings/settings_button.dart';
+import 'profile_photos_screen.dart';
 import 'profile_repository.dart';
+
+const _maxProfilePhotos = 80;
 
 final _profileProvider = FutureProvider.autoDispose<Profile>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   return ref.watch(profileRepositoryProvider).fetchProfile(userId!);
+});
+
+final _profilePhotosProvider = FutureProvider.autoDispose<List<ProfilePhoto>>((
+  ref,
+) {
+  final userId = ref.watch(currentUserIdProvider);
+  return ref.watch(profileRepositoryProvider).fetchPhotos(userId!);
 });
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -26,7 +36,15 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _nameController = TextEditingController();
   bool _isSaving = false;
-  bool _isUploadingAvatar = false;
+  bool _isAddingPhotos = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Repaints the Save button's visibility (shown only once the field
+    // differs from the loaded profile) as the user types.
+    _nameController.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -72,71 +90,91 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _pickAndUploadAvatar(String userId) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-    );
-    if (picked == null) return;
+  Future<void> _addPhotos(String userId, List<ProfilePhoto> existing) async {
+    final l10n = AppLocalizations.of(context)!;
+    final remaining = _maxProfilePhotos - existing.length;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.photoLimitMessage)));
+      return;
+    }
 
-    setState(() => _isUploadingAvatar = true);
+    final picked = await ImagePicker().pickMultiImage(
+      maxWidth: 1600,
+      limit: remaining,
+    );
+    if (picked.isEmpty) return;
+
+    setState(() => _isAddingPhotos = true);
     try {
-      final bytes = await picked.readAsBytes();
-      final ext = fileExtension(picked.name);
+      final items = [
+        for (final file in picked.take(remaining))
+          PendingPhoto(
+            photoClientToken: const Uuid().v4(),
+            bytes: await file.readAsBytes(),
+            ext: fileExtension(file.name),
+          ),
+      ];
       await ref
           .read(profileRepositoryProvider)
-          .uploadAvatar(userId: userId, bytes: bytes, fileExt: ext);
+          .addPhotos(userId: userId, items: items, existing: existing);
       ref.invalidate(_profileProvider);
+      ref.invalidate(_profilePhotosProvider);
     } catch (e) {
       // ignore: use_build_context_synchronously
-      _showError(context, (l10n) => l10n.failedToUploadAvatarError);
+      _showError(context, (l10n) => l10n.failedToAddPhotosError);
     } finally {
-      if (mounted) setState(() => _isUploadingAvatar = false);
+      if (mounted) setState(() => _isAddingPhotos = false);
     }
   }
 
-  /// Drops this device's push token for the current user before signing out
-  /// — while the session is still valid, since the delete is RLS-gated on
-  /// `auth.uid()` — so a different user signing in on the same device
-  /// afterward doesn't keep receiving pushes meant for whoever just left.
-  Future<void> _signOut(BuildContext context) async {
-    final userId = ref.read(currentUserIdProvider);
-    if (userId != null) {
-      try {
-        await ref
-            .read(pushNotificationsRepositoryProvider)
-            .unregisterDevice(userId: userId);
-      } catch (_) {
-        // Best-effort: a network hiccup here shouldn't block sign-out.
-      }
+  Future<void> _openReorder(String userId, List<ProfilePhoto> photos) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ProfilePhotoReorderScreen(userId: userId, photos: photos),
+      ),
+    );
+    if (changed == true) {
+      ref.invalidate(_profileProvider);
+      ref.invalidate(_profilePhotosProvider);
     }
-    try {
-      await ref.read(supabaseClientProvider).auth.signOut();
-    } catch (e) {
-      // ignore: use_build_context_synchronously
-      _showError(context, (l10n) => l10n.unexpectedError);
+  }
+
+  Future<void> _openDelete(List<ProfilePhoto> photos) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ProfilePhotoDeleteScreen(photos: photos),
+      ),
+    );
+    if (changed == true) {
+      ref.invalidate(_profileProvider);
+      ref.invalidate(_profilePhotosProvider);
     }
+  }
+
+  void _openViewer(List<ProfilePhoto> photos) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final userId = ref.watch(currentUserIdProvider);
     final profileAsync = ref.watch(_profileProvider);
+    final photosAsync = ref.watch(_profilePhotosProvider);
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.profileTitle),
-        actions: [
-          const ThemeToggleSwitch(),
-          const SettingsButton(),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: l10n.signOutTooltip,
-            onPressed: () => _signOut(context),
-          ),
-        ],
+        actions: [const ThemeToggleSwitch(), const SettingsButton()],
       ),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -149,68 +187,155 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           final avatarBytes = profile.avatarPath == null
               ? null
               : ref.watch(avatarBytesProvider(profile.avatarPath!)).value;
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                child: Column(
+          // Buttons that mutate the gallery need the *current* list (to
+          // compute next positions, or to know what's selectable) — holding
+          // them off until the list has actually loaded avoids an add/reorder
+          // racing ahead of a fetch still in flight and computing positions
+          // against a stale (empty) view of the gallery.
+          final photosLoaded = photosAsync.hasValue;
+          final photos = photosAsync.value ?? const <ProfilePhoto>[];
+          final nameChanged = _nameController.text.trim() != profile.name;
+
+          final header = Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    GestureDetector(
-                      onTap: _isUploadingAvatar
-                          ? null
-                          : () => _pickAndUploadAvatar(userId!),
-                      child: CircleAvatar(
-                        radius: 48,
-                        backgroundImage: avatarBytes != null
-                            ? MemoryImage(avatarBytes)
-                            : null,
-                        child: _isUploadingAvatar
-                            ? const CircularProgressIndicator()
-                            : avatarBytes == null
-                            ? const Icon(Icons.camera_alt, size: 32)
-                            : null,
+                    // Each half of the row is exactly W/2 wide, so centering
+                    // a child within its half puts that child's own center at
+                    // exactly a quarter of the *whole* row's width from that
+                    // half's outer edge — W/4 from the left for the avatar,
+                    // W/4 from the right for the buttons — regardless of
+                    // either child's actual size.
+                    Expanded(
+                      child: Center(
+                        child: GestureDetector(
+                          onTap: photos.isEmpty
+                              ? null
+                              : () => _openViewer(photos),
+                          child: CircleAvatar(
+                            radius: 72,
+                            backgroundImage: avatarBytes != null
+                                ? MemoryImage(avatarBytes)
+                                : null,
+                            child: avatarBytes == null
+                                ? const Icon(Icons.person, size: 58)
+                                : null,
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: _nameController,
-                      decoration: InputDecoration(labelText: l10n.nameLabel),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _isSaving ? null : () => _saveName(userId!),
-                      child: _isSaving
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(l10n.saveButton),
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _PhotoActionButton(
+                              icon: Icons.add_photo_alternate_outlined,
+                              label: l10n.addPhotoButton,
+                              loading: _isAddingPhotos,
+                              onPressed:
+                                  !photosLoaded ||
+                                      _isAddingPhotos ||
+                                      photos.length >= _maxProfilePhotos
+                                  ? null
+                                  : () => _addPhotos(userId!, photos),
+                            ),
+                            _PhotoActionButton(
+                              icon: Icons.swap_vert,
+                              label: l10n.reorderPhotosButton,
+                              onPressed: !photosLoaded || photos.length < 2
+                                  ? null
+                                  : () => _openReorder(userId!, photos),
+                            ),
+                            _PhotoActionButton(
+                              icon: Icons.delete_outline,
+                              label: l10n.deletePhotoButton,
+                              onPressed: !photosLoaded || photos.isEmpty
+                                  ? null
+                                  : () => _openDelete(photos),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const Divider(height: 32),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Align(
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _nameController,
+                  decoration: InputDecoration(labelText: l10n.nameLabel),
+                ),
+                if (nameChanged) ...[
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _isSaving ? null : () => _saveName(userId!),
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(l10n.saveButton),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+                Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     l10n.myPostsTitle,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-              ),
-              Expanded(
-                child: PostListView(
-                  authorId: userId,
-                  emptyState: (context) => Text(l10n.noOwnPostsYetMessage),
-                ),
-              ),
-            ],
+              ],
+            ),
+          );
+
+          return PostListView(
+            authorId: userId,
+            header: header,
+            emptyState: (context) => Text(l10n.noOwnPostsYetMessage),
           );
         },
       ),
+    );
+  }
+}
+
+class _PhotoActionButton extends StatelessWidget {
+  const _PhotoActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        textStyle: const TextStyle(fontSize: 16),
+      ),
+      icon: loading
+          ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon, size: 24),
+      label: Text(label),
     );
   }
 }

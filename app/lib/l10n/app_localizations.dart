@@ -620,12 +620,6 @@ abstract class AppLocalizations {
   /// **'Dislike'**
   String get dislikeTooltip;
 
-  /// No description provided for @signOutTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign out'**
-  String get signOutTooltip;
-
   /// No description provided for @darkThemeToggleTooltip.
   ///
   /// In en, this message translates to:
@@ -644,11 +638,77 @@ abstract class AppLocalizations {
   /// **'Failed to save name. Please try again.'**
   String get failedToSaveNameError;
 
-  /// No description provided for @failedToUploadAvatarError.
+  /// No description provided for @addPhotoButton.
   ///
   /// In en, this message translates to:
-  /// **'Failed to upload photo. Please try again.'**
-  String get failedToUploadAvatarError;
+  /// **'Add photo'**
+  String get addPhotoButton;
+
+  /// No description provided for @reorderPhotosButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder'**
+  String get reorderPhotosButton;
+
+  /// No description provided for @deletePhotoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete photo'**
+  String get deletePhotoButton;
+
+  /// No description provided for @reorderPhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo order'**
+  String get reorderPhotosTitle;
+
+  /// No description provided for @deletePhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete photos'**
+  String get deletePhotosTitle;
+
+  /// No description provided for @photoLimitMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add up to 80 photos'**
+  String get photoLimitMessage;
+
+  /// No description provided for @failedToLoadPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load photos. Please try again.'**
+  String get failedToLoadPhotosError;
+
+  /// No description provided for @failedToAddPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to add photos. Please try again.'**
+  String get failedToAddPhotosError;
+
+  /// No description provided for @failedToReorderPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to reorder photos. Please try again.'**
+  String get failedToReorderPhotosError;
+
+  /// No description provided for @failedToDeletePhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete photos. Please try again.'**
+  String get failedToDeletePhotosError;
+
+  /// No description provided for @deletePhotosConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete selected photos?'**
+  String get deletePhotosConfirmTitle;
+
+  /// No description provided for @deletePhotosConfirmContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected photos will be permanently deleted.'**
+  String get deletePhotosConfirmContent;
 
   /// No description provided for @commentsTitle.
   ///
@@ -823,6 +883,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Version {version} ({build})'**
   String appVersionLabel(String version, String build);
+
+  /// No description provided for @languageSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get languageSectionTitle;
+
+  /// No description provided for @languageSystemLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get languageSystemLabel;
+
+  /// No description provided for @accountSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSectionTitle;
+
+  /// No description provided for @signOutButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get signOutButton;
+
+  /// No description provided for @signOutDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get signOutDialogTitle;
+
+  /// No description provided for @signOutDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll need to sign in again to use the app.'**
+  String get signOutDialogContent;
+
+  /// No description provided for @failedToSignOutError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to sign out. Please try again.'**
+  String get failedToSignOutError;
+
+  /// No description provided for @deleteAccountLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get deleteAccountLabel;
+
+  /// No description provided for @deleteAccountDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get deleteAccountDialogTitle;
+
+  /// No description provided for @deleteAccountDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'This is permanent: your profile, posts, comments, and connections will all be deleted. This can\'t be undone.'**
+  String get deleteAccountDialogContent;
+
+  /// No description provided for @failedToDeleteAccountError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete account. Please try again.'**
+  String get failedToDeleteAccountError;
 }
 
 class _AppLocalizationsDelegate

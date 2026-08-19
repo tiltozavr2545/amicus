@@ -296,9 +296,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get dislikeTooltip => 'Не нравится';
 
   @override
-  String get signOutTooltip => 'Выйти';
-
-  @override
   String get darkThemeToggleTooltip => 'Переключить тёмную тему';
 
   @override
@@ -310,8 +307,45 @@ class AppLocalizationsRu extends AppLocalizations {
       'Не удалось сохранить имя. Попробуйте ещё раз.';
 
   @override
-  String get failedToUploadAvatarError =>
+  String get addPhotoButton => 'Добавить фото';
+
+  @override
+  String get reorderPhotosButton => 'Порядок фото';
+
+  @override
+  String get deletePhotoButton => 'Удалить фото';
+
+  @override
+  String get reorderPhotosTitle => 'Порядок фото';
+
+  @override
+  String get deletePhotosTitle => 'Удаление фото';
+
+  @override
+  String get photoLimitMessage => 'Можно добавить до 80 фото';
+
+  @override
+  String get failedToLoadPhotosError =>
       'Не удалось загрузить фото. Попробуйте ещё раз.';
+
+  @override
+  String get failedToAddPhotosError =>
+      'Не удалось добавить фото. Попробуйте ещё раз.';
+
+  @override
+  String get failedToReorderPhotosError =>
+      'Не удалось изменить порядок. Попробуйте ещё раз.';
+
+  @override
+  String get failedToDeletePhotosError =>
+      'Не удалось удалить фото. Попробуйте ещё раз.';
+
+  @override
+  String get deletePhotosConfirmTitle => 'Удалить выбранные фото?';
+
+  @override
+  String get deletePhotosConfirmContent =>
+      'Выбранные фото будут удалены без возможности восстановления.';
 
   @override
   String get commentsTitle => 'Комментарии';
@@ -443,4 +477,40 @@ class AppLocalizationsRu extends AppLocalizations {
   String appVersionLabel(String version, String build) {
     return 'Версия $version ($build)';
   }
+
+  @override
+  String get languageSectionTitle => 'Язык';
+
+  @override
+  String get languageSystemLabel => 'Как в системе';
+
+  @override
+  String get accountSectionTitle => 'Аккаунт';
+
+  @override
+  String get signOutButton => 'Выйти';
+
+  @override
+  String get signOutDialogTitle => 'Выйти?';
+
+  @override
+  String get signOutDialogContent =>
+      'Чтобы снова пользоваться приложением, понадобится войти заново.';
+
+  @override
+  String get failedToSignOutError => 'Не удалось выйти. Попробуйте ещё раз.';
+
+  @override
+  String get deleteAccountLabel => 'Удалить аккаунт';
+
+  @override
+  String get deleteAccountDialogTitle => 'Удалить аккаунт?';
+
+  @override
+  String get deleteAccountDialogContent =>
+      'Это необратимо: профиль, посты, комментарии и знакомства будут удалены навсегда. Отменить не получится.';
+
+  @override
+  String get failedToDeleteAccountError =>
+      'Не удалось удалить аккаунт. Попробуйте ещё раз.';
 }
