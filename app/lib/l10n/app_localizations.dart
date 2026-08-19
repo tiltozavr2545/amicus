@@ -638,11 +638,77 @@ abstract class AppLocalizations {
   /// **'Failed to save name. Please try again.'**
   String get failedToSaveNameError;
 
-  /// No description provided for @failedToUploadAvatarError.
+  /// No description provided for @addPhotoButton.
   ///
   /// In en, this message translates to:
-  /// **'Failed to upload photo. Please try again.'**
-  String get failedToUploadAvatarError;
+  /// **'Add photo'**
+  String get addPhotoButton;
+
+  /// No description provided for @reorderPhotosButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder'**
+  String get reorderPhotosButton;
+
+  /// No description provided for @deletePhotoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete photo'**
+  String get deletePhotoButton;
+
+  /// No description provided for @reorderPhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo order'**
+  String get reorderPhotosTitle;
+
+  /// No description provided for @deletePhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete photos'**
+  String get deletePhotosTitle;
+
+  /// No description provided for @photoLimitMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add up to 80 photos'**
+  String get photoLimitMessage;
+
+  /// No description provided for @failedToLoadPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load photos. Please try again.'**
+  String get failedToLoadPhotosError;
+
+  /// No description provided for @failedToAddPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to add photos. Please try again.'**
+  String get failedToAddPhotosError;
+
+  /// No description provided for @failedToReorderPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to reorder photos. Please try again.'**
+  String get failedToReorderPhotosError;
+
+  /// No description provided for @failedToDeletePhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete photos. Please try again.'**
+  String get failedToDeletePhotosError;
+
+  /// No description provided for @deletePhotosConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete selected photos?'**
+  String get deletePhotosConfirmTitle;
+
+  /// No description provided for @deletePhotosConfirmContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected photos will be permanently deleted.'**
+  String get deletePhotosConfirmContent;
 
   /// No description provided for @commentsTitle.
   ///

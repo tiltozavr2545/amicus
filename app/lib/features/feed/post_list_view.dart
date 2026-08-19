@@ -17,7 +17,7 @@ import 'feed_repository.dart';
 /// author. Shared by [FeedScreen] (all connections, [authorId] null) and the
 /// profile screen's "my posts" section ([authorId] the current user).
 class PostListView extends ConsumerStatefulWidget {
-  const PostListView({super.key, this.authorId, this.emptyState});
+  const PostListView({super.key, this.authorId, this.emptyState, this.header});
 
   /// When set, only posts by this author are shown. When null, shows the
   /// full feed (subject to RLS visibility rules).
@@ -26,6 +26,12 @@ class PostListView extends ConsumerStatefulWidget {
   /// Rendered instead of the default "no posts" message when the list is
   /// empty and there is no error.
   final WidgetBuilder? emptyState;
+
+  /// Scrolled together with the posts as this list's first item, rather than
+  /// sitting in a separate scrollable above it — the profile screen uses this
+  /// for its avatar/name section, so that content scrolls out of the way
+  /// instead of permanently eating screen height above the post list.
+  final Widget? header;
 
   @override
   ConsumerState<PostListView> createState() => _PostListViewState();
@@ -271,20 +277,23 @@ class _PostListViewState extends ConsumerState<PostListView> {
     });
     final l10n = AppLocalizations.of(context)!;
 
+    final header = widget.header;
     return RefreshIndicator(
       onRefresh: _refresh,
       child: _posts.isEmpty && !_isLoading
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
               children: [
+                if (header != null) header,
                 if (_errorMessage != null)
                   Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Text(_errorMessage!),
                   )
                 else
                   Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.symmetric(vertical: 24),
                     child:
                         widget.emptyState?.call(context) ??
                         Column(children: [Text(l10n.noPostsYetMessage)]),
@@ -295,9 +304,13 @@ class _PostListViewState extends ConsumerState<PostListView> {
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
-              itemCount: _posts.length + 1,
+              itemCount: _posts.length + 1 + (header != null ? 1 : 0),
               separatorBuilder: (context, index) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
+                if (header != null) {
+                  if (index == 0) return header;
+                  index -= 1;
+                }
                 if (index == _posts.length) {
                   return _hasMore
                       ? const Center(

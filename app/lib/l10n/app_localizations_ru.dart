@@ -307,8 +307,45 @@ class AppLocalizationsRu extends AppLocalizations {
       'Не удалось сохранить имя. Попробуйте ещё раз.';
 
   @override
-  String get failedToUploadAvatarError =>
+  String get addPhotoButton => 'Добавить фото';
+
+  @override
+  String get reorderPhotosButton => 'Порядок фото';
+
+  @override
+  String get deletePhotoButton => 'Удалить фото';
+
+  @override
+  String get reorderPhotosTitle => 'Порядок фото';
+
+  @override
+  String get deletePhotosTitle => 'Удаление фото';
+
+  @override
+  String get photoLimitMessage => 'Можно добавить до 80 фото';
+
+  @override
+  String get failedToLoadPhotosError =>
       'Не удалось загрузить фото. Попробуйте ещё раз.';
+
+  @override
+  String get failedToAddPhotosError =>
+      'Не удалось добавить фото. Попробуйте ещё раз.';
+
+  @override
+  String get failedToReorderPhotosError =>
+      'Не удалось изменить порядок. Попробуйте ещё раз.';
+
+  @override
+  String get failedToDeletePhotosError =>
+      'Не удалось удалить фото. Попробуйте ещё раз.';
+
+  @override
+  String get deletePhotosConfirmTitle => 'Удалить выбранные фото?';
+
+  @override
+  String get deletePhotosConfirmContent =>
+      'Выбранные фото будут удалены без возможности восстановления.';
 
   @override
   String get commentsTitle => 'Комментарии';

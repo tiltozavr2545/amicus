@@ -306,8 +306,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get failedToSaveNameError => 'Failed to save name. Please try again.';
 
   @override
-  String get failedToUploadAvatarError =>
-      'Failed to upload photo. Please try again.';
+  String get addPhotoButton => 'Add photo';
+
+  @override
+  String get reorderPhotosButton => 'Reorder';
+
+  @override
+  String get deletePhotoButton => 'Delete photo';
+
+  @override
+  String get reorderPhotosTitle => 'Photo order';
+
+  @override
+  String get deletePhotosTitle => 'Delete photos';
+
+  @override
+  String get photoLimitMessage => 'You can add up to 80 photos';
+
+  @override
+  String get failedToLoadPhotosError =>
+      'Failed to load photos. Please try again.';
+
+  @override
+  String get failedToAddPhotosError =>
+      'Failed to add photos. Please try again.';
+
+  @override
+  String get failedToReorderPhotosError =>
+      'Failed to reorder photos. Please try again.';
+
+  @override
+  String get failedToDeletePhotosError =>
+      'Failed to delete photos. Please try again.';
+
+  @override
+  String get deletePhotosConfirmTitle => 'Delete selected photos?';
+
+  @override
+  String get deletePhotosConfirmContent =>
+      'The selected photos will be permanently deleted.';
 
   @override
   String get commentsTitle => 'Comments';
