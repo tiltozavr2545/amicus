@@ -191,6 +191,9 @@
     }
   },
 
+  "languageSectionTitle": "Language",
+  "languageSystemLabel": "System default",
+
   "accountSectionTitle": "Account",
   "signOutButton": "Sign out",
   "signOutDialogTitle": "Sign out?",

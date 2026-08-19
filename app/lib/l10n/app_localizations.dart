@@ -884,6 +884,18 @@ abstract class AppLocalizations {
   /// **'Version {version} ({build})'**
   String appVersionLabel(String version, String build);
 
+  /// No description provided for @languageSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get languageSectionTitle;
+
+  /// No description provided for @languageSystemLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get languageSystemLabel;
+
   /// No description provided for @accountSectionTitle.
   ///
   /// In en, this message translates to:

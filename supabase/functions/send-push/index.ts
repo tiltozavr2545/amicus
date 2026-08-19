@@ -27,41 +27,85 @@ const APP_TITLE = 'Amicus';
 // `new_post` covers both the system account and favorited Connections — the
 // account's own display name ("Amicus") already satisfies "say who posted"
 // for itself, so one template set covers both without a separate copy.
-const TEXTS: Record<string, string[]> = {
-  new_post: [
-    'Новый пост от {author_name} — загляните в ленту',
-    '{author_name}: в ленте новый пост',
-    'У {author_name} свежий пост, не пропустите',
-    'Новости от {author_name} уже в вашей ленте',
-  ],
-  inactive_week: [
-    'Заскучали без вас — напишите что-нибудь новое',
-    'Неделя без постов! Ваши знакомые ждут новостей',
-    'Как прошла неделя? Расскажите в новом посте',
-    'Тишина в вашей ленте уже неделю — самое время написать пост',
-  ],
-  digest: [
-    'В ленте уже {count} новых постов — загляните, что пропустили',
-    '{count} новых постов ждут вас в ленте',
-    'Пока вас не было, знакомые опубликовали {count} постов',
-    'Лента обновилась: {count} новых постов от знакомых',
-  ],
-  post_comment: [
-    '{author_name} прокомментировал(а) ваш пост',
-    'Новый комментарий от {author_name} под вашим постом',
-    '{author_name} оставил(а) комментарий к вашему посту',
-    'Ваш пост прокомментировал(а) {author_name}',
-  ],
-  comment_reply: [
-    '{author_name} ответил(а) на ваш комментарий',
-    'Новый ответ от {author_name} на ваш комментарий',
-    '{author_name} прокомментировал(а) в ответ вам',
-    'Вам ответил(а) {author_name}',
-  ],
+//
+// Keyed by locale first, matching the two locales device_tokens.locale is
+// constrained to (see migration 20260820110000) and the app's own
+// AppLocalizations.supportedLocales — everything downstream (pickText) picks
+// a token's locale row before picking a kind, so an unrecognized locale can
+// only come from a stale token predating that constraint, not a live one.
+const TEXTS: Record<string, Record<string, string[]>> = {
+  ru: {
+    new_post: [
+      'Новый пост от {author_name} — загляните в ленту',
+      '{author_name}: в ленте новый пост',
+      'У {author_name} свежий пост, не пропустите',
+      'Новости от {author_name} уже в вашей ленте',
+    ],
+    inactive_week: [
+      'Заскучали без вас — напишите что-нибудь новое',
+      'Неделя без постов! Ваши знакомые ждут новостей',
+      'Как прошла неделя? Расскажите в новом посте',
+      'Тишина в вашей ленте уже неделю — самое время написать пост',
+    ],
+    digest: [
+      'В ленте уже {count} новых постов — загляните, что пропустили',
+      '{count} новых постов ждут вас в ленте',
+      'Пока вас не было, знакомые опубликовали {count} постов',
+      'Лента обновилась: {count} новых постов от знакомых',
+    ],
+    post_comment: [
+      '{author_name} прокомментировал(а) ваш пост',
+      'Новый комментарий от {author_name} под вашим постом',
+      '{author_name} оставил(а) комментарий к вашему посту',
+      'Ваш пост прокомментировал(а) {author_name}',
+    ],
+    comment_reply: [
+      '{author_name} ответил(а) на ваш комментарий',
+      'Новый ответ от {author_name} на ваш комментарий',
+      '{author_name} прокомментировал(а) в ответ вам',
+      'Вам ответил(а) {author_name}',
+    ],
+  },
+  en: {
+    new_post: [
+      'New post from {author_name} — check out the feed',
+      '{author_name} just posted something new',
+      '{author_name} has a fresh post, don’t miss it',
+      'News from {author_name} is in your feed',
+    ],
+    inactive_week: [
+      'We’ve missed you — write something new',
+      'A week without a post! Your connections are waiting to hear from you',
+      'How was your week? Tell us in a new post',
+      'It’s been quiet in your feed for a week — good time to post',
+    ],
+    digest: [
+      '{count} new posts are waiting in your feed',
+      '{count} new posts you might have missed',
+      'While you were away, your connections posted {count} times',
+      'Your feed updated: {count} new posts from connections',
+    ],
+    post_comment: [
+      '{author_name} commented on your post',
+      'New comment from {author_name} on your post',
+      '{author_name} left a comment on your post',
+      '{author_name} commented on your post',
+    ],
+    comment_reply: [
+      '{author_name} replied to your comment',
+      'New reply from {author_name} to your comment',
+      '{author_name} replied to you',
+      '{author_name} answered your comment',
+    ],
+  },
 };
 
-function pickText(kind: string, payload: Record<string, unknown>): string {
-  const variants = TEXTS[kind];
+function pickText(
+  locale: string,
+  kind: string,
+  payload: Record<string, unknown>,
+): string {
+  const variants = (TEXTS[locale] ?? TEXTS.ru)[kind];
   const template = variants[Math.floor(Math.random() * variants.length)];
   return template.replace(/\{(\w+)\}/g, (_, key) => String(payload[key] ?? ''));
 }
@@ -174,16 +218,16 @@ Deno.serve(async () => {
   const userIds = [...new Set(rows.map((r) => r.user_id as string))];
   const { data: tokenRows, error: tokenError } = await supabase
     .from('device_tokens')
-    .select('user_id, fcm_token')
+    .select('user_id, fcm_token, locale')
     .in('user_id', userIds);
   if (tokenError) {
     return new Response(JSON.stringify({ error: tokenError.message }), { status: 500 });
   }
 
-  const tokensByUser = new Map<string, string[]>();
+  const tokensByUser = new Map<string, { token: string; locale: string }[]>();
   for (const t of tokenRows ?? []) {
     const list = tokensByUser.get(t.user_id) ?? [];
-    list.push(t.fcm_token);
+    list.push({ token: t.fcm_token, locale: t.locale });
     tokensByUser.set(t.user_id, list);
   }
 
@@ -193,8 +237,12 @@ Deno.serve(async () => {
 
   for (const row of rows) {
     const tokens = tokensByUser.get(row.user_id as string) ?? [];
-    const body = pickText(row.kind as string, (row.payload as Record<string, unknown>) ?? {});
-    for (const token of tokens) {
+    for (const { token, locale } of tokens) {
+      const body = pickText(
+        locale,
+        row.kind as string,
+        (row.payload as Record<string, unknown>) ?? {},
+      );
       const result = await sendToToken(token, body);
       if (result === 'ok') sentCount++;
       if (result === 'stale') staleTokens.add(token);

@@ -469,6 +469,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get languageSectionTitle => 'Language';
+
+  @override
+  String get languageSystemLabel => 'System default';
+
+  @override
   String get accountSectionTitle => 'Account';
 
   @override

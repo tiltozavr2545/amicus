@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../l10n/locale_provider.dart';
 import '../auth/auth_providers.dart';
 import 'account_repository.dart';
 import 'notification_preferences_repository.dart';
@@ -199,6 +200,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 value: prefs.inactiveWeek,
                 onChanged: (value) =>
                     _toggle((p) => p.copyWith(inactiveWeek: value)),
+              ),
+              const Divider(height: 32),
+              ListTile(
+                title: Text(
+                  l10n.languageSectionTitle,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                trailing: DropdownButton<Locale?>(
+                  value: ref.watch(localeProvider),
+                  underline: const SizedBox.shrink(),
+                  onChanged: (value) =>
+                      ref.read(localeProvider.notifier).setLocale(value),
+                  items: [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(l10n.languageSystemLabel),
+                    ),
+                    const DropdownMenuItem(
+                      value: Locale('en'),
+                      child: Text('English'),
+                    ),
+                    const DropdownMenuItem(
+                      value: Locale('ru'),
+                      child: Text('Русский'),
+                    ),
+                  ],
+                ),
               ),
               const Divider(height: 32),
               Padding(

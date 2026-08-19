@@ -479,6 +479,12 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String get languageSectionTitle => 'Язык';
+
+  @override
+  String get languageSystemLabel => 'Как в системе';
+
+  @override
   String get accountSectionTitle => 'Аккаунт';
 
   @override

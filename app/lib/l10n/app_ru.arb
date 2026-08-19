@@ -155,6 +155,9 @@
   "failedToSaveSettingsError": "Не удалось сохранить. Попробуйте ещё раз.",
   "appVersionLabel": "Версия {version} ({build})",
 
+  "languageSectionTitle": "Язык",
+  "languageSystemLabel": "Как в системе",
+
   "accountSectionTitle": "Аккаунт",
   "signOutButton": "Выйти",
   "signOutDialogTitle": "Выйти?",

@@ -195,6 +195,8 @@ void main() {
       );
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Delete account'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Delete account'));
       await tester.pumpAndSettle();
       expect(find.text('Delete account?'), findsOneWidget);
@@ -216,6 +218,8 @@ void main() {
     );
     await tester.pump();
 
+    await tester.ensureVisible(find.text('Delete account'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Delete account'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
@@ -231,6 +235,8 @@ void main() {
     );
     await tester.pump();
 
+    await tester.ensureVisible(find.text('Delete account'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Delete account'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete'));
