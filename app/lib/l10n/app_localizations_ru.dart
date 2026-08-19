@@ -296,9 +296,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get dislikeTooltip => 'Не нравится';
 
   @override
-  String get signOutTooltip => 'Выйти';
-
-  @override
   String get darkThemeToggleTooltip => 'Переключить тёмную тему';
 
   @override
@@ -443,4 +440,34 @@ class AppLocalizationsRu extends AppLocalizations {
   String appVersionLabel(String version, String build) {
     return 'Версия $version ($build)';
   }
+
+  @override
+  String get accountSectionTitle => 'Аккаунт';
+
+  @override
+  String get signOutButton => 'Выйти';
+
+  @override
+  String get signOutDialogTitle => 'Выйти?';
+
+  @override
+  String get signOutDialogContent =>
+      'Чтобы снова пользоваться приложением, понадобится войти заново.';
+
+  @override
+  String get failedToSignOutError => 'Не удалось выйти. Попробуйте ещё раз.';
+
+  @override
+  String get deleteAccountLabel => 'Удалить аккаунт';
+
+  @override
+  String get deleteAccountDialogTitle => 'Удалить аккаунт?';
+
+  @override
+  String get deleteAccountDialogContent =>
+      'Это необратимо: профиль, посты, комментарии и знакомства будут удалены навсегда. Отменить не получится.';
+
+  @override
+  String get failedToDeleteAccountError =>
+      'Не удалось удалить аккаунт. Попробуйте ещё раз.';
 }

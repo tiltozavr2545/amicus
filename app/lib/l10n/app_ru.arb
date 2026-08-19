@@ -100,7 +100,6 @@
   "neutralTooltip": "Нейтрально",
   "dislikeTooltip": "Не нравится",
 
-  "signOutTooltip": "Выйти",
   "darkThemeToggleTooltip": "Переключить тёмную тему",
   "failedToLoadProfileError": "Не удалось загрузить профиль. Попробуйте ещё раз.",
   "failedToSaveNameError": "Не удалось сохранить имя. Попробуйте ещё раз.",
@@ -142,5 +141,15 @@
   "notifyInactiveLabel": "Уведомления о долгой неактивности",
   "failedToLoadSettingsError": "Не удалось загрузить настройки. Попробуйте ещё раз.",
   "failedToSaveSettingsError": "Не удалось сохранить. Попробуйте ещё раз.",
-  "appVersionLabel": "Версия {version} ({build})"
+  "appVersionLabel": "Версия {version} ({build})",
+
+  "accountSectionTitle": "Аккаунт",
+  "signOutButton": "Выйти",
+  "signOutDialogTitle": "Выйти?",
+  "signOutDialogContent": "Чтобы снова пользоваться приложением, понадобится войти заново.",
+  "failedToSignOutError": "Не удалось выйти. Попробуйте ещё раз.",
+  "deleteAccountLabel": "Удалить аккаунт",
+  "deleteAccountDialogTitle": "Удалить аккаунт?",
+  "deleteAccountDialogContent": "Это необратимо: профиль, посты, комментарии и знакомства будут удалены навсегда. Отменить не получится.",
+  "failedToDeleteAccountError": "Не удалось удалить аккаунт. Попробуйте ещё раз."
 }

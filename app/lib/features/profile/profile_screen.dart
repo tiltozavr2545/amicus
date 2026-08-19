@@ -7,7 +7,6 @@ import '../../shared/file_extension.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
-import '../notifications/push_notifications_repository.dart';
 import '../settings/settings_button.dart';
 import 'profile_repository.dart';
 
@@ -96,29 +95,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  /// Drops this device's push token for the current user before signing out
-  /// — while the session is still valid, since the delete is RLS-gated on
-  /// `auth.uid()` — so a different user signing in on the same device
-  /// afterward doesn't keep receiving pushes meant for whoever just left.
-  Future<void> _signOut(BuildContext context) async {
-    final userId = ref.read(currentUserIdProvider);
-    if (userId != null) {
-      try {
-        await ref
-            .read(pushNotificationsRepositoryProvider)
-            .unregisterDevice(userId: userId);
-      } catch (_) {
-        // Best-effort: a network hiccup here shouldn't block sign-out.
-      }
-    }
-    try {
-      await ref.read(supabaseClientProvider).auth.signOut();
-    } catch (e) {
-      // ignore: use_build_context_synchronously
-      _showError(context, (l10n) => l10n.unexpectedError);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final userId = ref.watch(currentUserIdProvider);
@@ -128,15 +104,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.profileTitle),
-        actions: [
-          const ThemeToggleSwitch(),
-          const SettingsButton(),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: l10n.signOutTooltip,
-            onPressed: () => _signOut(context),
-          ),
-        ],
+        actions: [const ThemeToggleSwitch(), const SettingsButton()],
       ),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

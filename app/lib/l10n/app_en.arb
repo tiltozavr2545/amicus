@@ -115,7 +115,6 @@
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
 
-  "signOutTooltip": "Sign out",
   "darkThemeToggleTooltip": "Toggle dark theme",
   "failedToLoadProfileError": "Failed to load profile. Please try again.",
   "failedToSaveNameError": "Failed to save name. Please try again.",
@@ -178,5 +177,15 @@
       "version": { "type": "String" },
       "build": { "type": "String" }
     }
-  }
+  },
+
+  "accountSectionTitle": "Account",
+  "signOutButton": "Sign out",
+  "signOutDialogTitle": "Sign out?",
+  "signOutDialogContent": "You'll need to sign in again to use the app.",
+  "failedToSignOutError": "Failed to sign out. Please try again.",
+  "deleteAccountLabel": "Delete account",
+  "deleteAccountDialogTitle": "Delete account?",
+  "deleteAccountDialogContent": "This is permanent: your profile, posts, comments, and connections will all be deleted. This can't be undone.",
+  "failedToDeleteAccountError": "Failed to delete account. Please try again."
 }

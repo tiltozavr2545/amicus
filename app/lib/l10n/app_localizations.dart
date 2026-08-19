@@ -620,12 +620,6 @@ abstract class AppLocalizations {
   /// **'Dislike'**
   String get dislikeTooltip;
 
-  /// No description provided for @signOutTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign out'**
-  String get signOutTooltip;
-
   /// No description provided for @darkThemeToggleTooltip.
   ///
   /// In en, this message translates to:
@@ -823,6 +817,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Version {version} ({build})'**
   String appVersionLabel(String version, String build);
+
+  /// No description provided for @accountSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSectionTitle;
+
+  /// No description provided for @signOutButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get signOutButton;
+
+  /// No description provided for @signOutDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get signOutDialogTitle;
+
+  /// No description provided for @signOutDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll need to sign in again to use the app.'**
+  String get signOutDialogContent;
+
+  /// No description provided for @failedToSignOutError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to sign out. Please try again.'**
+  String get failedToSignOutError;
+
+  /// No description provided for @deleteAccountLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get deleteAccountLabel;
+
+  /// No description provided for @deleteAccountDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get deleteAccountDialogTitle;
+
+  /// No description provided for @deleteAccountDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'This is permanent: your profile, posts, comments, and connections will all be deleted. This can\'t be undone.'**
+  String get deleteAccountDialogContent;
+
+  /// No description provided for @failedToDeleteAccountError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete account. Please try again.'**
+  String get failedToDeleteAccountError;
 }
 
 class _AppLocalizationsDelegate

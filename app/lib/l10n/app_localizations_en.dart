@@ -296,9 +296,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dislikeTooltip => 'Dislike';
 
   @override
-  String get signOutTooltip => 'Sign out';
-
-  @override
   String get darkThemeToggleTooltip => 'Toggle dark theme';
 
   @override
@@ -433,4 +430,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String appVersionLabel(String version, String build) {
     return 'Version $version ($build)';
   }
+
+  @override
+  String get accountSectionTitle => 'Account';
+
+  @override
+  String get signOutButton => 'Sign out';
+
+  @override
+  String get signOutDialogTitle => 'Sign out?';
+
+  @override
+  String get signOutDialogContent =>
+      'You\'ll need to sign in again to use the app.';
+
+  @override
+  String get failedToSignOutError => 'Failed to sign out. Please try again.';
+
+  @override
+  String get deleteAccountLabel => 'Delete account';
+
+  @override
+  String get deleteAccountDialogTitle => 'Delete account?';
+
+  @override
+  String get deleteAccountDialogContent =>
+      'This is permanent: your profile, posts, comments, and connections will all be deleted. This can\'t be undone.';
+
+  @override
+  String get failedToDeleteAccountError =>
+      'Failed to delete account. Please try again.';
 }
