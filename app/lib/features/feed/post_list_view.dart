@@ -4,10 +4,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
 import 'comments_screen.dart';
+import 'create_post_screen.dart';
 import 'feed_cache.dart';
 import 'feed_repository.dart';
 
@@ -202,9 +204,14 @@ class _PostListViewState extends ConsumerState<PostListView> {
     if (confirmed != true) return;
 
     try {
+      final mediaPaths = [
+        for (final media in post.media) media.storagePath,
+        for (final media in post.media)
+          if (media.posterPath != null) media.posterPath!,
+      ];
       await ref
           .read(feedRepositoryProvider)
-          .deletePost(postId: post.id, imagePath: post.imagePath);
+          .deletePost(postId: post.id, mediaStoragePaths: mediaPaths);
       // Remove by id, not the captured index: the list may have shifted (a
       // refresh, another delete) while the request was in flight.
       if (mounted) setState(() => _posts.removeWhere((p) => p.id == post.id));
@@ -214,6 +221,19 @@ class _PostListViewState extends ConsumerState<PostListView> {
           context,
         ).showSnackBar(SnackBar(content: Text(l10n.failedToDeletePostError)));
       }
+    }
+  }
+
+  Future<void> _editPost(int index) async {
+    final post = _posts[index];
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => CreatePostScreen(existingPost: post)),
+    );
+    // The post's text/media may have changed — simplest correct thing is to
+    // let the same refresh path a newly created post already triggers pick
+    // the edited version back up, rather than reconstructing it locally.
+    if (saved == true) {
+      ref.read(feedRefreshTickProvider.notifier).bump();
     }
   }
 
@@ -243,8 +263,9 @@ class _PostListViewState extends ConsumerState<PostListView> {
 
   @override
   Widget build(BuildContext context) {
-    // A post created from the bottom-nav "new post" tab, or a mute/block
-    // change, bumps this counter so any open list refreshes itself.
+    // A post created from the bottom-nav "new post" tab, an edit saved from a
+    // post's own menu, or a mute/block change, bumps this counter so any open
+    // list refreshes itself.
     ref.listen<int>(feedRefreshTickProvider, (previous, next) {
       if (previous != null) _refresh();
     });
@@ -293,6 +314,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
                   post: post,
                   isOwnPost: post.authorId == currentUserId,
                   onReact: (type) => _react(index, type),
+                  onEdit: () => _editPost(index),
                   onDelete: () => _deletePost(index),
                   onOpenComments: () => Navigator.of(context).push(
                     MaterialPageRoute(
@@ -311,6 +333,7 @@ class _PostCard extends StatelessWidget {
     required this.post,
     required this.isOwnPost,
     required this.onReact,
+    required this.onEdit,
     required this.onDelete,
     required this.onOpenComments,
   });
@@ -318,6 +341,7 @@ class _PostCard extends StatelessWidget {
   final Post post;
   final bool isOwnPost;
   final ValueChanged<ReactionType> onReact;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onOpenComments;
 
@@ -343,6 +367,10 @@ class _PostCard extends StatelessWidget {
                     icon: const Icon(Icons.more_vert),
                     itemBuilder: (context) => [
                       PopupMenuItem(
+                        onTap: onEdit,
+                        child: Text(l10n.editButton),
+                      ),
+                      PopupMenuItem(
                         onTap: onDelete,
                         child: Text(l10n.deleteButton),
                       ),
@@ -361,24 +389,11 @@ class _PostCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(post.text!),
             ],
-            if (post.imageUrl != null) ...[
+            if (post.media.isNotEmpty) ...[
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                  imageUrl: post.imageUrl!,
-                  // The URL is a signed Storage link that gets re-signed
-                  // (different query string) on every fetch, which would
-                  // otherwise cache-bust on every app restart even though the
-                  // underlying photo hasn't changed. Keying on the storage
-                  // path instead — stable for the life of the post today,
-                  // and the thing that would actually change if post editing
-                  // ever lets a photo be replaced — means a previously seen
-                  // photo paints from disk instantly instead of behind a
-                  // fresh download.
-                  cacheKey: post.imagePath,
-                  fit: BoxFit.cover,
-                ),
+                child: _MediaCarousel(media: post.media),
               ),
             ],
             const SizedBox(height: 4),
@@ -428,6 +443,374 @@ class _PostCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A post's up-to-20 photos/videos, swiped horizontally one at a time
+/// (Instagram-style), with a position counter when there's more than one.
+///
+/// Only the first item arrives with a resolved signed URL (see
+/// [FeedRepository.fetchPage] — resolving all 20 for every post on every page
+/// load would be wasteful for slides most viewers never swipe to), so this
+/// widget resolves each further slide lazily, right before it's shown.
+class _MediaCarousel extends ConsumerStatefulWidget {
+  const _MediaCarousel({required this.media});
+
+  final List<PostMedia> media;
+
+  @override
+  ConsumerState<_MediaCarousel> createState() => _MediaCarouselState();
+}
+
+class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
+  late final _pageController = PageController();
+  late List<PostMedia> _items = widget.media;
+  final _resolving = <int>{};
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve(0);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _resolve(int index) async {
+    if (index < 0 || index >= _items.length) return;
+    final item = _items[index];
+    final needsUrl = item.url == null;
+    final needsPosterUrl = item.posterPath != null && item.posterUrl == null;
+    if (!needsUrl && !needsPosterUrl) return;
+    if (!_resolving.add(index)) return;
+    final repo = ref.read(feedRepositoryProvider);
+    try {
+      final url = needsUrl
+          ? await repo.resolveMediaUrl(item.storagePath)
+          : item.url;
+      final posterPath = item.posterPath;
+      final posterUrl = needsPosterUrl
+          ? await repo.resolveMediaUrl(posterPath!)
+          : item.posterUrl;
+      if (!mounted) return;
+      setState(() {
+        _items = List.of(_items)
+          ..[index] = item.copyWith(url: url, posterUrl: posterUrl);
+      });
+    } finally {
+      _resolving.remove(index);
+    }
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _currentIndex = index);
+    _resolve(index);
+  }
+
+  void _openFullscreen(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            _FullscreenMediaViewer(media: _items, initialIndex: index),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A lone photo/video is shown at its own natural size — no forced box, no
+    // crop, exactly like a single-photo post always has been. A fixed frame
+    // only becomes necessary once there's more than one slide to swipe
+    // between (see below).
+    if (_items.length == 1) {
+      return _MediaSlide(
+        item: _items[0],
+        fit: BoxFit.cover,
+        constrainHeight: false,
+        onTapImage: () => _openFullscreen(0),
+      );
+    }
+
+    // With several items of possibly different aspect ratios, the carousel
+    // needs one fixed frame so the card's height doesn't jump as the user
+    // swipes — otherwise every slide change would reflow the whole feed list
+    // under it. 4:5 mirrors the box Instagram settled on for the same
+    // problem. `cover` inside that fixed frame does crop the preview, but a
+    // tap always opens the untouched original via [_openFullscreen].
+    return AspectRatio(
+      aspectRatio: 4 / 5,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _items.length,
+              onPageChanged: _onPageChanged,
+              itemBuilder: (context, index) => _MediaSlide(
+                item: _items[index],
+                fit: BoxFit.cover,
+                constrainHeight: true,
+                onTapImage: () => _openFullscreen(index),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_currentIndex + 1}/${_items.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-screen, pinch-zoomable, swipeable view of every media item on a post
+/// — opened by tapping a photo, so a carousel's `cover`-cropped preview never
+/// costs the viewer the actual, untouched photo. Videos inside it reuse
+/// [_MediaSlide]'s own tap-to-play behaviour rather than getting a zoom
+/// gesture, which wouldn't mean anything for a video anyway.
+class _FullscreenMediaViewer extends ConsumerStatefulWidget {
+  const _FullscreenMediaViewer({
+    required this.media,
+    required this.initialIndex,
+  });
+
+  final List<PostMedia> media;
+  final int initialIndex;
+
+  @override
+  ConsumerState<_FullscreenMediaViewer> createState() =>
+      _FullscreenMediaViewerState();
+}
+
+class _FullscreenMediaViewerState
+    extends ConsumerState<_FullscreenMediaViewer> {
+  late final _pageController = PageController(initialPage: widget.initialIndex);
+  late List<PostMedia> _items = widget.media;
+  final _resolving = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve(widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _resolve(int index) async {
+    if (index < 0 || index >= _items.length) return;
+    final item = _items[index];
+    final needsUrl = item.url == null;
+    final needsPosterUrl = item.posterPath != null && item.posterUrl == null;
+    if (!needsUrl && !needsPosterUrl) return;
+    if (!_resolving.add(index)) return;
+    final repo = ref.read(feedRepositoryProvider);
+    try {
+      final url = needsUrl
+          ? await repo.resolveMediaUrl(item.storagePath)
+          : item.url;
+      final posterPath = item.posterPath;
+      final posterUrl = needsPosterUrl
+          ? await repo.resolveMediaUrl(posterPath!)
+          : item.posterUrl;
+      if (!mounted) return;
+      setState(() {
+        _items = List.of(_items)
+          ..[index] = item.copyWith(url: url, posterUrl: posterUrl);
+      });
+    } finally {
+      _resolving.remove(index);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: _items.length,
+        onPageChanged: _resolve,
+        itemBuilder: (context, index) {
+          final item = _items[index];
+          if (item.mediaType == MediaType.video) {
+            return Center(
+              child: _MediaSlide(
+                item: item,
+                fit: BoxFit.contain,
+                constrainHeight: false,
+              ),
+            );
+          }
+          return item.url == null
+              ? const Center(child: CircularProgressIndicator())
+              : InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: Center(
+                    child: CachedNetworkImage(
+                      imageUrl: item.url!,
+                      cacheKey: item.storagePath,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                );
+        },
+      ),
+    );
+  }
+}
+
+/// One slide of [_MediaCarousel]: a plain image, or a video that starts out as
+/// a poster with a play affordance and only becomes an actual
+/// [VideoPlayerController] once tapped — never autoplaying while scrolled
+/// into view, per the feed's tap-to-play behaviour. Its own [State] so the
+/// controller is created (and disposed, when the user swipes away and this
+/// widget leaves the tree) per slide rather than per post.
+class _MediaSlide extends StatefulWidget {
+  const _MediaSlide({
+    required this.item,
+    required this.fit,
+    required this.constrainHeight,
+    this.onTapImage,
+  });
+
+  final PostMedia item;
+  final BoxFit fit;
+
+  /// Whether this slide sits inside a fixed-height frame (the multi-item
+  /// carousel, or the fullscreen viewer's own bounded page) — an image only
+  /// needs `width: double.infinity` for the fixed-frame case; left off
+  /// otherwise so it can size itself to its own natural aspect ratio instead
+  /// of stretching to fill an unrelated width.
+  final bool constrainHeight;
+
+  /// Opens the fullscreen viewer. Null (or ignored, for video — tapping a
+  /// video slide always means play/pause, never zoom) when there's nothing
+  /// to expand to.
+  final VoidCallback? onTapImage;
+
+  @override
+  State<_MediaSlide> createState() => _MediaSlideState();
+}
+
+class _MediaSlideState extends State<_MediaSlide> {
+  VideoPlayerController? _controller;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _play() async {
+    final url = widget.item.url;
+    if (url == null) return;
+    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    await controller.initialize();
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _controller = controller);
+    await controller.play();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    if (item.mediaType == MediaType.image) {
+      final image = item.url == null
+          ? const Center(child: CircularProgressIndicator())
+          : CachedNetworkImage(
+              imageUrl: item.url!,
+              // The URL is a signed Storage link that gets re-signed
+              // (different query string) on every fetch, which would
+              // otherwise cache-bust every time even though the underlying
+              // photo hasn't changed. Keying on the storage path instead —
+              // stable for the object's whole lifetime — means a
+              // previously seen photo paints from disk instantly.
+              cacheKey: item.storagePath,
+              fit: widget.fit,
+              width: widget.constrainHeight ? double.infinity : null,
+            );
+      final onTapImage = widget.onTapImage;
+      return onTapImage == null
+          ? image
+          : GestureDetector(onTap: onTapImage, child: image);
+    }
+
+    final controller = _controller;
+    if (controller != null) {
+      return GestureDetector(
+        onTap: () => setState(() {
+          controller.value.isPlaying ? controller.pause() : controller.play();
+        }),
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: controller.value.aspectRatio,
+            child: VideoPlayer(controller),
+          ),
+        ),
+      );
+    }
+
+    final poster = Stack(
+      fit: StackFit.expand,
+      children: [
+        if (item.posterUrl != null)
+          CachedNetworkImage(
+            imageUrl: item.posterUrl!,
+            cacheKey: item.posterPath,
+            fit: BoxFit.cover,
+          )
+        else
+          const ColoredBox(color: Colors.black12),
+        Center(
+          child: IconButton(
+            iconSize: 56,
+            color: Colors.white,
+            icon: const Icon(Icons.play_circle_fill),
+            tooltip: AppLocalizations.of(context)!.playVideoTooltip,
+            onPressed: item.url == null ? null : _play,
+          ),
+        ),
+      ],
+    );
+    // `StackFit.expand` needs a parent that hands it a bounded, finite size —
+    // true inside the carousel's fixed frame, but not for a lone video post
+    // sitting straight in the feed's unconstrained-height column. There's no
+    // real aspect ratio to fall back on before the video itself is decoded
+    // (only the poster image, whose intrinsic size isn't known synchronously
+    // either), so a lone video poster settles for the same 4:5 box the
+    // multi-item carousel already uses, rather than crashing the layout.
+    return widget.constrainHeight
+        ? poster
+        : AspectRatio(aspectRatio: 4 / 5, child: poster);
   }
 }
 

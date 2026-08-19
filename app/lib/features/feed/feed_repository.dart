@@ -19,9 +19,88 @@ enum ReactionType {
   String get dbValue => name;
 }
 
+/// What kind of file a [PostMedia] slot holds. Stored in `post_media.media_type`
+/// as the enum's [name] (`image` / `video`).
+enum MediaType {
+  image,
+  video;
+
+  static MediaType fromDb(String value) => MediaType.values.byName(value);
+
+  String get dbValue => name;
+}
+
 /// Sentinel so [Post.copyWith] can tell "leave myReaction unchanged" apart
 /// from "clear it to null" — a plain nullable parameter can't express both.
 const Object _unchanged = Object();
+
+/// One photo or video attached to a post. A post can have up to 20, ordered by
+/// [position] (a display order, not necessarily a dense 0..N-1 sequence — see
+/// the comment on `post_media` in the migration).
+class PostMedia {
+  const PostMedia({
+    required this.id,
+    required this.position,
+    required this.mediaType,
+    required this.storagePath,
+    this.posterPath,
+    this.url,
+    this.posterUrl,
+  });
+
+  final String id;
+  final int position;
+  final MediaType mediaType;
+  final String storagePath;
+
+  /// Path of the video's poster frame (generated client-side at pick time).
+  /// Always null for [MediaType.image].
+  final String? posterPath;
+
+  /// Resolved signed URL for [storagePath], or null until fetched — the feed
+  /// only eagerly resolves each post's first slide (see [FeedRepository.fetchPage]);
+  /// the rest are resolved lazily as the user swipes.
+  final String? url;
+  final String? posterUrl;
+
+  factory PostMedia.fromRow(Map<String, dynamic> row) => PostMedia(
+    id: row['id'] as String,
+    position: (row['position'] as num).toInt(),
+    mediaType: MediaType.fromDb(row['media_type'] as String),
+    storagePath: row['storage_path'] as String,
+    posterPath: row['poster_path'] as String?,
+  );
+
+  PostMedia copyWith({String? url, String? posterUrl}) => PostMedia(
+    id: id,
+    position: position,
+    mediaType: mediaType,
+    storagePath: storagePath,
+    posterPath: posterPath,
+    url: url ?? this.url,
+    posterUrl: posterUrl ?? this.posterUrl,
+  );
+
+  Map<String, dynamic> toCacheJson() => {
+    'id': id,
+    'position': position,
+    'media_type': mediaType.dbValue,
+    'storage_path': storagePath,
+    'poster_path': posterPath,
+    'url': url,
+    'poster_url': posterUrl,
+  };
+
+  factory PostMedia.fromCacheJson(Map<String, dynamic> json) => PostMedia(
+    id: json['id'] as String,
+    position: (json['position'] as num).toInt(),
+    mediaType: MediaType.fromDb(json['media_type'] as String),
+    storagePath: json['storage_path'] as String,
+    posterPath: json['poster_path'] as String?,
+    url: json['url'] as String?,
+    posterUrl: json['poster_url'] as String?,
+  );
+}
 
 class Post {
   const Post({
@@ -29,10 +108,10 @@ class Post {
     required this.authorId,
     required this.authorName,
     required this.createdAt,
+    this.clientToken,
     this.authorDislikesDisabled = false,
     this.text,
-    this.imagePath,
-    this.imageUrl,
+    this.media = const [],
     this.likeCount = 0,
     this.neutralCount = 0,
     this.dislikeCount = 0,
@@ -45,13 +124,23 @@ class Post {
   final String authorName;
   final DateTime createdAt;
 
+  /// The idempotency token this post's row was created with. Null only for
+  /// posts created before `client_token` existed (20260818120000) — the
+  /// column is nullable for exactly that reason. Used as the storage path
+  /// prefix for any *new* media added while editing; a legacy null is handled
+  /// by minting a fresh token for the edit session (see the composer screen),
+  /// never by assuming this is non-null.
+  final String? clientToken;
+
   /// The author opted out of negative reactions: the dislike button is hidden
   /// under their posts (and the database rejects a dislike on them). Sourced
   /// from the author's profile, so nothing in this code names a specific user.
   final bool authorDislikesDisabled;
   final String? text;
-  final String? imagePath;
-  final String? imageUrl;
+
+  /// Up to 20 photos/videos, ordered for the feed's swipe carousel. Empty for
+  /// a text-only post.
+  final List<PostMedia> media;
   final int likeCount;
   final int neutralCount;
   final int dislikeCount;
@@ -61,22 +150,29 @@ class Post {
   final int commentCount;
 
   factory Post.fromRow(Map<String, dynamic> row) {
+    final mediaRows =
+        ((row['media'] as List<dynamic>?) ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(PostMedia.fromRow)
+            .toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
     return Post(
       id: row['id'] as String,
       authorId: row['author_id'] as String,
       authorName: (row['author'] as Map<String, dynamic>)['name'] as String,
       createdAt: parseTimestamp(row['created_at'] as String),
+      clientToken: row['client_token'] as String?,
       authorDislikesDisabled:
           (row['author'] as Map<String, dynamic>)['dislikes_disabled']
               as bool? ??
           false,
       text: row['text'] as String?,
-      imagePath: row['image_path'] as String?,
+      media: mediaRows,
     );
   }
 
   Post copyWith({
-    String? imageUrl,
+    List<PostMedia>? media,
     int? likeCount,
     int? neutralCount,
     int? dislikeCount,
@@ -88,10 +184,10 @@ class Post {
       authorId: authorId,
       authorName: authorName,
       createdAt: createdAt,
+      clientToken: clientToken,
       authorDislikesDisabled: authorDislikesDisabled,
       text: text,
-      imagePath: imagePath,
-      imageUrl: imageUrl ?? this.imageUrl,
+      media: media ?? this.media,
       likeCount: likeCount ?? this.likeCount,
       neutralCount: neutralCount ?? this.neutralCount,
       dislikeCount: dislikeCount ?? this.dislikeCount,
@@ -110,10 +206,10 @@ class Post {
     'author_id': authorId,
     'author_name': authorName,
     'created_at': createdAt.toIso8601String(),
+    'client_token': clientToken,
     'author_dislikes_disabled': authorDislikesDisabled,
     'text': text,
-    'image_path': imagePath,
-    'image_url': imageUrl,
+    'media': media.map((m) => m.toCacheJson()).toList(),
     'like_count': likeCount,
     'neutral_count': neutralCount,
     'dislike_count': dislikeCount,
@@ -126,10 +222,17 @@ class Post {
     authorId: json['author_id'] as String,
     authorName: json['author_name'] as String,
     createdAt: DateTime.parse(json['created_at'] as String),
+    clientToken: json['client_token'] as String?,
     authorDislikesDisabled: json['author_dislikes_disabled'] as bool? ?? false,
     text: json['text'] as String?,
-    imagePath: json['image_path'] as String?,
-    imageUrl: json['image_url'] as String?,
+    // A cache written by an older app version has no `media` key (it had
+    // `image_path`/`image_url` instead) — default to no photo rather than
+    // throwing and losing the whole cached page over one stale field.
+    media:
+        (json['media'] as List<dynamic>?)
+            ?.map((m) => PostMedia.fromCacheJson(m as Map<String, dynamic>))
+            .toList() ??
+        const [],
     likeCount: json['like_count'] as int? ?? 0,
     neutralCount: json['neutral_count'] as int? ?? 0,
     dislikeCount: json['dislike_count'] as int? ?? 0,
@@ -225,8 +328,55 @@ class Comment {
   }
 }
 
+/// One picked-but-not-yet-uploaded photo or video, held by the composer
+/// screen's local state. Distinct from [PostMedia] (a *server* row): this
+/// models a pending upload, before it has a `post_media` id at all.
+class PendingMedia {
+  const PendingMedia({
+    required this.mediaClientToken,
+    required this.mediaType,
+    required this.bytes,
+    required this.ext,
+    this.posterBytes,
+  });
+
+  /// Minted client-side at pick time, not at submit time — stable across
+  /// retries of the same publish/save attempt, and what makes the item's
+  /// storage path (and the retry-idempotency built on it) deterministic.
+  final String mediaClientToken;
+  final MediaType mediaType;
+  final Uint8List bytes;
+  final String ext;
+
+  /// JPEG poster frame, generated client-side at pick time. Required for
+  /// video, always null for image.
+  final Uint8List? posterBytes;
+}
+
+/// One slot in the composer's final, ordered media list while editing an
+/// existing post: either an already-uploaded item kept from the original post,
+/// or a freshly picked one to upload. [FeedRepository.updatePost] diffs this
+/// list against the post's original media to know what to delete/upload/keep.
+sealed class ComposerMediaItem {
+  const ComposerMediaItem();
+}
+
+class KeptMedia extends ComposerMediaItem {
+  const KeptMedia(this.media);
+  final PostMedia media;
+}
+
+class NewMedia extends ComposerMediaItem {
+  const NewMedia(this.pending);
+  final PendingMedia pending;
+}
+
 const _bucket = 'media';
 const pageSize = 20;
+
+/// How long a signed URL for a post's media stays valid before it needs
+/// re-resolving.
+const _signedUrlTtl = 60 * 60 * 24;
 
 /// Builds the PostgREST keyset filter for the page strictly *older* than
 /// [cursor], newest-first. Returns null for the first page (no cursor).
@@ -243,24 +393,34 @@ String? keysetFilter(Post? cursor) {
   return 'created_at.lt.$ts,and(created_at.eq.$ts,id.lt.${cursor.id})';
 }
 
-/// Storage path for a post's photo.
+/// Storage path for one media item of a post.
 ///
-/// Two things are load-bearing here. The first two segments are what the
+/// Three things are load-bearing here. The first two segments are what the
 /// storage policies match on — `posts/<author uuid>/…` — so reshaping this
 /// silently breaks upload (the INSERT policy pins segment 2 to `auth.uid()`)
 /// or visibility (the SELECT policy reads the author out of that segment).
-///
-/// The filename is the submission's [clientToken] rather than a timestamp, so
-/// every retry of the same submission addresses the same object. Naming it per
-/// attempt meant a retry uploaded a *second* file while the row — resolved by
-/// `ON CONFLICT DO NOTHING` — kept pointing at the first, and since deletePost
-/// only removes the path stored on the row, each extra upload leaked into the
-/// bucket permanently.
-String postImagePath({
+/// The third segment, [postClientToken], groups every media item of one post
+/// under a single prefix, which is what lets [FeedRepository.deletePost]'s
+/// caller hand over a flat list of paths instead of tracking each one
+/// separately. The filename is [mediaClientToken] — minted per item at pick
+/// time, not per attempt — so retrying a specific item's upload addresses the
+/// same object instead of leaking a duplicate into the bucket. It is
+/// deliberately *not* the item's display [PostMedia.position]: position can
+/// change on reorder, but the storage object's identity must not — reorder is
+/// therefore always a `post_media` row change, never a Storage operation.
+String postMediaPath({
   required String authorId,
-  required String clientToken,
-  required String imageExt,
-}) => 'posts/$authorId/$clientToken.$imageExt';
+  required String postClientToken,
+  required String mediaClientToken,
+  required String ext,
+}) => 'posts/$authorId/$postClientToken/$mediaClientToken.$ext';
+
+/// Path of a video's poster frame — same prefix as its video, own file.
+String postMediaPosterPath({
+  required String authorId,
+  required String postClientToken,
+  required String mediaClientToken,
+}) => 'posts/$authorId/$postClientToken/${mediaClientToken}_poster.jpg';
 
 class FeedRepository {
   FeedRepository(this._client);
@@ -272,13 +432,20 @@ class FeedRepository {
   /// When [authorId] is set, only that author's posts are returned — used by
   /// the profile screen's "my posts" list, layered on top of the same RLS
   /// visibility rather than replacing it.
-  /// A signed URL is resolved for each post's photo (the `media` bucket is
-  /// private, so a plain public URL wouldn't be servable), plus
-  /// reaction/comment counts.
+  ///
+  /// Each post's *first* media slide gets a signed URL resolved eagerly here
+  /// (the `media` bucket is private, so a plain public URL wouldn't be
+  /// servable) — the rest of a multi-media post's slides are resolved lazily
+  /// via [resolveMediaUrl] as the user actually swipes to them, since a post
+  /// can carry up to 20 items and resolving all of them for every post on
+  /// every page would multiply this call's cost by up to 20x for slides most
+  /// users never see.
   Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
     var query = _client
         .from('posts')
-        .select('*, author:users(name, dislikes_disabled)');
+        .select(
+          '*, author:users(name, dislikes_disabled), media:post_media(*)',
+        );
     if (authorId != null) {
       query = query.eq('author_id', authorId);
     }
@@ -289,6 +456,7 @@ class FeedRepository {
     final rows = await query
         .order('created_at', ascending: false)
         .order('id', ascending: false)
+        .order('position', referencedTable: 'post_media', ascending: true)
         .limit(pageSize)
         .timeout(networkTimeout);
 
@@ -351,57 +519,142 @@ class FeedRepository {
         )
         .toList();
 
-    return Future.wait(
-      List.generate(posts.length, (i) async {
-        final path = rows[i]['image_path'] as String?;
-        if (path == null) return posts[i];
-        final url = await _client.storage
-            .from(_bucket)
-            .createSignedUrl(path, 60 * 60 * 24)
-            .timeout(networkTimeout);
-        return posts[i].copyWith(imageUrl: url);
-      }),
-    );
+    // Batch-resolve every post's first slide (plus its poster, if that first
+    // slide is a video) in one round trip rather than one `createSignedUrl`
+    // call per post — the storage API signs a whole list of paths at once.
+    final firstSlidePaths = <String>[];
+    for (final post in posts) {
+      if (post.media.isEmpty) continue;
+      final first = post.media.first;
+      firstSlidePaths.add(first.storagePath);
+      final poster = first.posterPath;
+      if (poster != null) firstSlidePaths.add(poster);
+    }
+    if (firstSlidePaths.isEmpty) return posts;
+
+    final signResults = await _client.storage
+        .from(_bucket)
+        .createSignedUrlsResult(firstSlidePaths, _signedUrlTtl)
+        .timeout(networkTimeout);
+    final signedByPath = <String, String>{
+      for (final r in signResults)
+        if (r is SignedUrlSuccess) r.path: r.signedUrl,
+    };
+
+    return posts.map((post) {
+      if (post.media.isEmpty) return post;
+      final first = post.media.first;
+      final resolvedFirst = first.copyWith(
+        url: signedByPath[first.storagePath],
+        posterUrl: first.posterPath != null
+            ? signedByPath[first.posterPath!]
+            : null,
+      );
+      return post.copyWith(media: [resolvedFirst, ...post.media.skip(1)]);
+    }).toList();
   }
 
+  /// Resolves a signed URL for one media item — used to lazily fetch a
+  /// carousel slide beyond the first as the user swipes to it, rather than
+  /// eagerly resolving all up to 20 items in [fetchPage].
+  Future<String> resolveMediaUrl(String storagePath) => _client.storage
+      .from(_bucket)
+      .createSignedUrl(storagePath, _signedUrlTtl)
+      .timeout(networkTimeout);
+
+  Future<void> _uploadTolerant(String path, Uint8List bytes) async {
+    try {
+      await _client.storage
+          .from(_bucket)
+          .uploadBinary(path, bytes)
+          .timeout(networkTimeout);
+    } on StorageException catch (e) {
+      // 409: a previous attempt at this same item already put these exact
+      // bytes at this exact path (see [postMediaPath]). There is no UPDATE
+      // policy on storage.objects for post media (only SELECT/INSERT/DELETE),
+      // so overwriting via `upsert: true` would be refused by RLS — and there
+      // is nothing to overwrite anyway, the content is identical.
+      if (e.statusCode != '409') rethrow;
+    }
+  }
+
+  Future<void> _uploadMediaItem({
+    required String authorId,
+    required String postClientToken,
+    required PendingMedia item,
+  }) async {
+    await _uploadTolerant(
+      postMediaPath(
+        authorId: authorId,
+        postClientToken: postClientToken,
+        mediaClientToken: item.mediaClientToken,
+        ext: item.ext,
+      ),
+      item.bytes,
+    );
+    final posterBytes = item.posterBytes;
+    if (posterBytes != null) {
+      await _uploadTolerant(
+        postMediaPosterPath(
+          authorId: authorId,
+          postClientToken: postClientToken,
+          mediaClientToken: item.mediaClientToken,
+        ),
+        posterBytes,
+      );
+    }
+  }
+
+  Map<String, dynamic> _pendingMediaRow({
+    required String postId,
+    required String authorId,
+    required String postClientToken,
+    required int position,
+    required PendingMedia item,
+  }) => {
+    'post_id': postId,
+    'position': position,
+    'media_type': item.mediaType.dbValue,
+    'storage_path': postMediaPath(
+      authorId: authorId,
+      postClientToken: postClientToken,
+      mediaClientToken: item.mediaClientToken,
+      ext: item.ext,
+    ),
+    if (item.posterBytes != null)
+      'poster_path': postMediaPosterPath(
+        authorId: authorId,
+        postClientToken: postClientToken,
+        mediaClientToken: item.mediaClientToken,
+      ),
+  };
+
   /// [clientToken] identifies this *submission* — the caller mints one uuid per
-  /// composed post and reuses it for every retry of that same content.
+  /// composed post and reuses it for every retry of that same content, and it
+  /// also doubles as the storage-path prefix shared by every one of [media]'s
+  /// items (see [postMediaPath]).
   ///
   /// `.timeout()` doesn't cancel the underlying request, it only stops waiting,
   /// so a slow-but-live connection can commit the insert after the screen has
   /// already reported failure and offered a retry. The unique
   /// `(author_id, client_token)` index turns that retry into a no-op instead of
-  /// a second post. The conflict target is deliberately not `id`: scoping it to
-  /// the author means a collision can only ever be with the caller's own row,
-  /// so this can't be used to probe whether someone else's post exists.
+  /// a second post, and each media item's own retry-tolerant upload (409) plus
+  /// `post_media`'s `(post_id, storage_path)` unique index make the whole
+  /// multi-file submission safe to retry as a unit.
   Future<void> createPost({
     required String clientToken,
     required String authorId,
     String? text,
-    Uint8List? imageBytes,
-    String? imageExt,
+    List<PendingMedia> media = const [],
   }) async {
-    String? imagePath;
-    if (imageBytes != null) {
-      imagePath = postImagePath(
+    for (final item in media) {
+      await _uploadMediaItem(
         authorId: authorId,
-        clientToken: clientToken,
-        imageExt: imageExt ?? 'jpg',
+        postClientToken: clientToken,
+        item: item,
       );
-      try {
-        await _client.storage
-            .from(_bucket)
-            .uploadBinary(imagePath, imageBytes)
-            .timeout(networkTimeout);
-      } on StorageException catch (e) {
-        // 409: a previous attempt at this same submission already put these
-        // exact bytes at this exact path. There is no UPDATE policy on
-        // storage.objects for post photos (only SELECT/INSERT/DELETE), so
-        // overwriting via `upsert: true` would be refused by RLS — and there is
-        // nothing to overwrite anyway, the content is identical.
-        if (e.statusCode != '409') rethrow;
-      }
     }
+
     await _client
         .from('posts')
         .upsert(
@@ -409,11 +662,149 @@ class FeedRepository {
             'client_token': clientToken,
             'author_id': authorId,
             if (text != null && text.isNotEmpty) 'text': text,
-            if (imagePath != null) 'image_path': imagePath,
           },
           onConflict: 'author_id,client_token',
           ignoreDuplicates: true,
         )
+        .timeout(networkTimeout);
+
+    if (media.isEmpty) return;
+
+    // `ignoreDuplicates` upserts return nothing for a conflicting (i.e.
+    // already-landed-on-a-previous-attempt) row, so the id has to be read
+    // back separately regardless of whether this call just inserted the post
+    // or a retry found it already there.
+    final postRow = await _client
+        .from('posts')
+        .select('id')
+        .eq('author_id', authorId)
+        .eq('client_token', clientToken)
+        .single()
+        .timeout(networkTimeout);
+    final postId = postRow['id'] as String;
+
+    final rows = [
+      for (var i = 0; i < media.length; i++)
+        _pendingMediaRow(
+          postId: postId,
+          authorId: authorId,
+          postClientToken: clientToken,
+          position: i,
+          item: media[i],
+        ),
+    ];
+    await _client
+        .from('post_media')
+        .upsert(
+          rows,
+          onConflict: 'post_id,storage_path',
+          ignoreDuplicates: true,
+        )
+        .timeout(networkTimeout);
+  }
+
+  /// Saves edits to a post the current user owns: [text] and/or its media.
+  ///
+  /// [originalMedia] is the post's media as last fetched from the server;
+  /// [finalMedia] is the composer's final ordered list — a mix of items kept
+  /// from the original post ([KeptMedia]) and freshly picked ones
+  /// ([NewMedia]). Diffing the two tells this method what to delete/upload:
+  /// anything in [originalMedia] whose id isn't in [finalMedia] is removed
+  /// (storage object + row), every [NewMedia] is uploaded, and every
+  /// surviving [KeptMedia] row is deleted and reinserted at its new position
+  /// — cheap (no storage I/O, the object stays put) and keeps `post_media`
+  /// free of an UPDATE policy, since reordering is then just row churn.
+  ///
+  /// [postClientToken] is the prefix new media is uploaded under — normally
+  /// the post's own [Post.clientToken], but the caller mints a fresh one for
+  /// a legacy post that predates that column (see [Post.clientToken]).
+  Future<void> updatePost({
+    required String postId,
+    required String authorId,
+    required String postClientToken,
+    String? text,
+    required List<PostMedia> originalMedia,
+    required List<ComposerMediaItem> finalMedia,
+  }) async {
+    final keptIds = finalMedia
+        .whereType<KeptMedia>()
+        .map((k) => k.media.id)
+        .toSet();
+    final removed = originalMedia
+        .where((m) => !keptIds.contains(m.id))
+        .toList();
+
+    if (removed.isNotEmpty) {
+      final removedPaths = [
+        for (final m in removed) m.storagePath,
+        for (final m in removed)
+          if (m.posterPath != null) m.posterPath!,
+      ];
+      await _client.storage
+          .from(_bucket)
+          .remove(removedPaths)
+          .timeout(networkTimeout);
+      await _client
+          .from('post_media')
+          .delete()
+          .inFilter('id', removed.map((m) => m.id).toList())
+          .timeout(networkTimeout);
+    }
+
+    for (final item in finalMedia.whereType<NewMedia>()) {
+      await _uploadMediaItem(
+        authorId: authorId,
+        postClientToken: postClientToken,
+        item: item.pending,
+      );
+    }
+
+    final keptSurvivingIds = finalMedia
+        .whereType<KeptMedia>()
+        .map((k) => k.media.id)
+        .toList();
+    if (keptSurvivingIds.isNotEmpty) {
+      await _client
+          .from('post_media')
+          .delete()
+          .inFilter('id', keptSurvivingIds)
+          .timeout(networkTimeout);
+    }
+
+    if (finalMedia.isNotEmpty) {
+      final rows = [
+        for (var i = 0; i < finalMedia.length; i++)
+          switch (finalMedia[i]) {
+            KeptMedia(:final media) => {
+              'post_id': postId,
+              'position': i,
+              'media_type': media.mediaType.dbValue,
+              'storage_path': media.storagePath,
+              if (media.posterPath != null) 'poster_path': media.posterPath,
+            },
+            NewMedia(:final pending) => _pendingMediaRow(
+              postId: postId,
+              authorId: authorId,
+              postClientToken: postClientToken,
+              position: i,
+              item: pending,
+            ),
+          },
+      ];
+      await _client
+          .from('post_media')
+          .upsert(
+            rows,
+            onConflict: 'post_id,storage_path',
+            ignoreDuplicates: true,
+          )
+          .timeout(networkTimeout);
+    }
+
+    await _client
+        .from('posts')
+        .update({'text': (text != null && text.isNotEmpty) ? text : null})
+        .eq('id', postId)
         .timeout(networkTimeout);
   }
 
@@ -496,13 +887,18 @@ class FeedRepository {
   }
 
   /// Deletes a post the current user owns. Comments/reactions cascade via
-  /// their FK to `posts`, but the photo lives in Storage, not Postgres, so
-  /// it's removed separately.
-  Future<void> deletePost({required String postId, String? imagePath}) async {
-    if (imagePath != null) {
+  /// their FK to `posts`, and so does `post_media` — but its media lives in
+  /// Storage, not Postgres, so [mediaStoragePaths] (every media item's
+  /// storage path, plus video poster paths — the caller already has these on
+  /// the loaded [Post.media]) is removed separately, in one batch call.
+  Future<void> deletePost({
+    required String postId,
+    List<String> mediaStoragePaths = const [],
+  }) async {
+    if (mediaStoragePaths.isNotEmpty) {
       await _client.storage
           .from(_bucket)
-          .remove([imagePath])
+          .remove(mediaStoragePaths)
           .timeout(networkTimeout);
     }
     await _client
@@ -529,9 +925,10 @@ final feedRepositoryProvider = Provider<FeedRepository>((ref) {
 
 /// Bumped whenever something outside [FeedScreen] changes what the feed should
 /// show, so it can refresh itself: a post created from the bottom-nav "new
-/// post" tab, and muting/blocking (or unmuting/unblocking) a connection, which
-/// changes which authors RLS lets through. The feed tab keeps its state in the
-/// shell's IndexedStack, so without this it would sit on a stale page.
+/// post" tab, an edit saved from a post's own menu, and muting/blocking (or
+/// unmuting/unblocking) a connection, which changes which authors RLS lets
+/// through. The feed tab keeps its state in the shell's IndexedStack, so
+/// without this it would sit on a stale page.
 class FeedRefreshTick extends Notifier<int> {
   @override
   int build() => 0;

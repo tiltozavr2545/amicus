@@ -69,12 +69,14 @@ class _FakeFeedRepository implements FeedRepository {
     required String clientToken,
     required String authorId,
     String? text,
-    dynamic imageBytes,
-    String? imageExt,
+    List<PendingMedia> media = const [],
   }) async {}
 
   @override
-  Future<void> deletePost({required String postId, String? imagePath}) async {}
+  Future<void> deletePost({
+    required String postId,
+    List<String> mediaStoragePaths = const [],
+  }) async {}
 
   @override
   Future<void> setReaction({

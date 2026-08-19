@@ -220,26 +220,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get publishButton => 'Publish';
 
   @override
+  String get editPostTitle => 'Edit post';
+
+  @override
+  String get editButton => 'Edit';
+
+  @override
   String get whatsNewHint => 'What\'s new?';
 
   @override
-  String get addPhotoButton => 'Add photo';
+  String get addMediaButton => 'Add photo or video';
 
   @override
-  String get replacePhotoButton => 'Replace photo';
+  String get removeMediaTooltip => 'Remove';
 
   @override
-  String get addTextOrPhotoError => 'Add text or a photo';
+  String get playVideoTooltip => 'Play video';
+
+  @override
+  String get mediaLimitMessage => 'You can add up to 20 photos or videos';
+
+  @override
+  String get videoTooLongError => 'Video must be under 60 seconds';
+
+  @override
+  String get addTextOrPhotoError => 'Add text, a photo, or a video';
 
   @override
   String get failedToPublishError => 'Failed to publish. Please try again.';
+
+  @override
+  String get failedToSaveChangesError =>
+      'Failed to save changes. Please try again.';
 
   @override
   String get deletePostTitle => 'Delete post?';
 
   @override
   String get deletePostContent =>
-      'The post, its photo, and comments will be deleted.';
+      'The post, its media, and comments will be deleted.';
 
   @override
   String get failedToLoadFeedError => 'Failed to load feed. Please try again.';

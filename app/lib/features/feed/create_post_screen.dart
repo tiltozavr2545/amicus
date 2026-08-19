@@ -1,40 +1,100 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:reorderables/reorderables.dart';
 import 'package:uuid/uuid.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
 
+const _maxMediaCount = 20;
+const _maxVideoDuration = Duration(seconds: 60);
+const _videoExtensions = {'mp4', 'mov', 'm4v', '3gp', 'webm', 'mkv'};
+
+/// One tile in the composer's media grid: either a photo/video already on
+/// the post being edited ([_ExistingSlot]) or one freshly picked in this
+/// session ([_PickedSlot]). [key] is stable across reorders/rebuilds — it's
+/// what [ReorderableWrap] uses to track which tile moved where.
+sealed class _Slot {
+  const _Slot(this.key);
+  final String key;
+
+  bool get isVideo;
+}
+
+class _ExistingSlot extends _Slot {
+  const _ExistingSlot(super.key, this.media);
+  final PostMedia media;
+
+  @override
+  bool get isVideo => media.mediaType == MediaType.video;
+}
+
+class _PickedSlot extends _Slot {
+  const _PickedSlot(super.key, this.pending, this.previewBytes);
+  final PendingMedia pending;
+
+  /// What the grid tile paints: the picked image's own bytes, or (for video)
+  /// the generated poster frame — a live [VideoPlayerController] per grid
+  /// tile would be needless cost for a preview nobody is meant to play here.
+  final Uint8List previewBytes;
+
+  @override
+  bool get isVideo => pending.mediaType == MediaType.video;
+}
+
+/// Composes a new post, or edits [existingPost] when given — same screen for
+/// both, since publishing and saving edits differ only in which repository
+/// call they end in and a couple of labels.
 class CreatePostScreen extends ConsumerStatefulWidget {
-  const CreatePostScreen({super.key});
+  const CreatePostScreen({super.key, this.existingPost});
+
+  final Post? existingPost;
 
   @override
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
 }
 
 class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
-  final _textController = TextEditingController();
-  Uint8List? _imageBytes;
-  String? _imageExt;
-  bool _isPosting = false;
+  late final _textController = TextEditingController(
+    text: widget.existingPost?.text ?? '',
+  );
+  late final List<_Slot> _slots = [
+    for (final media in widget.existingPost?.media ?? const <PostMedia>[])
+      _ExistingSlot(media.id, media),
+  ];
+
+  bool get _isEditing => widget.existingPost != null;
+
+  bool _isSubmitting = false;
+  bool _isPicking = false;
   String? _errorMessage;
 
-  /// Idempotency key for the submission in flight, and the content it was
-  /// minted for.
+  /// Idempotency key for the submission/edit in flight, and the content
+  /// fingerprint it was minted for.
   ///
-  /// Kept across retries so a resend after a timeout can't create a second post
-  /// (see [FeedRepository.createPost]), but tied to the *content*: the server
-  /// answers a repeat token by doing nothing, so reusing one after the user
-  /// edited the text or swapped the photo would silently keep the old version
-  /// while the screen closed as if the edit had been published.
+  /// Kept across retries so a resend after a timeout can't create (or
+  /// re-apply) a second time — see [FeedRepository.createPost] — but tied to
+  /// *what's being sent*: the server answers a repeat token by doing nothing,
+  /// so reusing one after the text changed or the media list was edited would
+  /// silently keep the old version while the screen closed as if the new one
+  /// had been saved.
   String? _pendingToken;
-  String? _pendingText;
-  Uint8List? _pendingImage;
+  String? _pendingFingerprint;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) _resolveExistingMediaUrls();
+  }
 
   @override
   void dispose() {
@@ -42,61 +102,210 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
+  /// The feed only eagerly resolves a post's *first* slide (see
+  /// [FeedRepository.fetchPage]) — the composer needs every existing item
+  /// previewable at once, so it resolves whatever's still missing right away.
+  Future<void> _resolveExistingMediaUrls() async {
+    final repo = ref.read(feedRepositoryProvider);
+    final resolved = await Future.wait(
+      _slots.map((slot) async {
+        if (slot is! _ExistingSlot) return slot;
+        final media = slot.media;
+        final needsUrl = media.url == null;
+        final needsPosterUrl =
+            media.posterPath != null && media.posterUrl == null;
+        if (!needsUrl && !needsPosterUrl) return slot;
+        final url = needsUrl
+            ? await repo.resolveMediaUrl(media.storagePath)
+            : media.url;
+        final posterUrl = needsPosterUrl
+            ? await repo.resolveMediaUrl(media.posterPath!)
+            : media.posterUrl;
+        return _ExistingSlot(
+          slot.key,
+          media.copyWith(url: url, posterUrl: posterUrl),
+        );
+      }),
     );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
     setState(() {
-      _imageBytes = bytes;
-      _imageExt = fileExtension(picked.name);
+      _slots
+        ..clear()
+        ..addAll(resolved);
+    });
+  }
+
+  String get _fingerprint {
+    final ids = _slots
+        .map(
+          (slot) => switch (slot) {
+            _ExistingSlot(:final media) => 'existing:${media.id}',
+            _PickedSlot(:final pending) => 'picked:${pending.mediaClientToken}',
+          },
+        )
+        .join(',');
+    return '${_textController.text.trim()}|$ids';
+  }
+
+  bool _looksLikeVideo(XFile file) {
+    final mime = file.mimeType;
+    if (mime != null) return mime.startsWith('video/');
+    return _videoExtensions.contains(fileExtension(file.name));
+  }
+
+  Future<void> _pickMedia() async {
+    final l10n = AppLocalizations.of(context)!;
+    final remaining = _maxMediaCount - _slots.length;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.mediaLimitMessage)));
+      return;
+    }
+
+    final picked = await ImagePicker().pickMultipleMedia(
+      maxWidth: 1600,
+      limit: remaining,
+    );
+    if (picked.isEmpty) return;
+
+    setState(() => _isPicking = true);
+    var skippedTooLong = false;
+    final newSlots = <_Slot>[];
+    for (final file in picked.take(remaining)) {
+      final mediaClientToken = const Uuid().v4();
+      if (_looksLikeVideo(file)) {
+        final controller = VideoPlayerController.file(File(file.path));
+        Duration duration;
+        try {
+          await controller.initialize();
+          duration = controller.value.duration;
+        } finally {
+          await controller.dispose();
+        }
+        if (duration > _maxVideoDuration) {
+          skippedTooLong = true;
+          continue;
+        }
+        final posterBytes = await video_thumbnail.VideoThumbnail.thumbnailData(
+          video: file.path,
+          imageFormat: video_thumbnail.ImageFormat.JPEG,
+          maxWidth: 640,
+          quality: 70,
+        );
+        // Couldn't extract a poster frame — skip rather than add a video
+        // slide with nothing to show for it in the feed's tap-to-play poster.
+        if (posterBytes == null) continue;
+        final bytes = await file.readAsBytes();
+        newSlots.add(
+          _PickedSlot(
+            mediaClientToken,
+            PendingMedia(
+              mediaClientToken: mediaClientToken,
+              mediaType: MediaType.video,
+              bytes: bytes,
+              ext: fileExtension(file.name),
+              posterBytes: posterBytes,
+            ),
+            posterBytes,
+          ),
+        );
+      } else {
+        final bytes = await file.readAsBytes();
+        newSlots.add(
+          _PickedSlot(
+            mediaClientToken,
+            PendingMedia(
+              mediaClientToken: mediaClientToken,
+              mediaType: MediaType.image,
+              bytes: bytes,
+              ext: fileExtension(file.name),
+            ),
+            bytes,
+          ),
+        );
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _slots.addAll(newSlots);
+      _isPicking = false;
+    });
+    if (skippedTooLong) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.videoTooLongError)));
+    }
+  }
+
+  void _removeSlot(_Slot slot) => setState(() => _slots.remove(slot));
+
+  void _reorder(int oldIndex, int newIndex) {
+    setState(() {
+      final slot = _slots.removeAt(oldIndex);
+      _slots.insert(newIndex, slot);
     });
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context)!;
     final text = _textController.text.trim();
-    if (text.isEmpty && _imageBytes == null) {
-      setState(
-        () => _errorMessage = AppLocalizations.of(context)!.addTextOrPhotoError,
-      );
+    if (text.isEmpty && _slots.isEmpty) {
+      setState(() => _errorMessage = l10n.addTextOrPhotoError);
       return;
     }
 
     setState(() {
-      _isPosting = true;
+      _isSubmitting = true;
       _errorMessage = null;
     });
     try {
       final userId = ref.read(currentUserIdProvider)!;
-      // `identical` rather than `==`: _pickImage assigns a fresh Uint8List per
-      // pick, and comparing megabytes of pixels on every submit would be a
-      // pointless cost when the reference already answers "same photo?".
-      if (_pendingToken == null ||
-          _pendingText != text ||
-          !identical(_pendingImage, _imageBytes)) {
+      final fingerprint = _fingerprint;
+      if (_pendingToken == null || _pendingFingerprint != fingerprint) {
         _pendingToken = const Uuid().v4();
-        _pendingText = text;
-        _pendingImage = _imageBytes;
+        _pendingFingerprint = fingerprint;
       }
-      await ref
-          .read(feedRepositoryProvider)
-          .createPost(
-            clientToken: _pendingToken!,
-            authorId: userId,
-            text: text,
-            imageBytes: _imageBytes,
-            imageExt: _imageExt,
-          );
+      final repo = ref.read(feedRepositoryProvider);
+      if (_isEditing) {
+        final existingPost = widget.existingPost!;
+        await repo.updatePost(
+          postId: existingPost.id,
+          authorId: userId,
+          // A legacy post from before `client_token` existed has none of its
+          // own to reuse as the upload prefix for newly added media — mint
+          // one for this edit session instead (see [Post.clientToken]).
+          postClientToken: existingPost.clientToken ?? _pendingToken!,
+          text: text,
+          originalMedia: existingPost.media,
+          finalMedia: [
+            for (final slot in _slots)
+              switch (slot) {
+                _ExistingSlot(:final media) => KeptMedia(media),
+                _PickedSlot(:final pending) => NewMedia(pending),
+              },
+          ],
+        );
+      } else {
+        await repo.createPost(
+          clientToken: _pendingToken!,
+          authorId: userId,
+          text: text,
+          media: [
+            for (final slot in _slots)
+              if (slot is _PickedSlot) slot.pending,
+          ],
+        );
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       setState(
-        () =>
-            _errorMessage = AppLocalizations.of(context)!.failedToPublishError,
+        () => _errorMessage = _isEditing
+            ? l10n.failedToSaveChangesError
+            : l10n.failedToPublishError,
       );
     } finally {
-      if (mounted) setState(() => _isPosting = false);
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -105,21 +314,21 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.newPostTitle),
+        title: Text(_isEditing ? l10n.editPostTitle : l10n.newPostTitle),
         actions: [
           TextButton(
-            onPressed: _isPosting ? null : _submit,
-            child: _isPosting
+            onPressed: _isSubmitting ? null : _submit,
+            child: _isSubmitting
                 ? const SizedBox(
                     height: 16,
                     width: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(l10n.publishButton),
+                : Text(_isEditing ? l10n.saveButton : l10n.publishButton),
           ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -134,24 +343,26 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            if (_imageBytes != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  _imageBytes!,
-                  height: 200,
-                  fit: BoxFit.cover,
-                ),
+            if (_slots.isNotEmpty)
+              _MediaGrid(
+                slots: _slots,
+                removeTooltip: l10n.removeMediaTooltip,
+                onRemove: _removeSlot,
+                onReorder: _reorder,
               ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _pickImage,
-              icon: const Icon(Icons.photo_outlined),
-              label: Text(
-                _imageBytes == null
-                    ? l10n.addPhotoButton
-                    : l10n.replacePhotoButton,
-              ),
+              onPressed: _isPicking || _slots.length >= _maxMediaCount
+                  ? null
+                  : _pickMedia,
+              icon: _isPicking
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.photo_outlined),
+              label: Text(l10n.addMediaButton),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
@@ -162,6 +373,126 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MediaGrid extends StatelessWidget {
+  const _MediaGrid({
+    required this.slots,
+    required this.removeTooltip,
+    required this.onRemove,
+    required this.onReorder,
+  });
+
+  final List<_Slot> slots;
+  final String removeTooltip;
+  final ValueChanged<_Slot> onRemove;
+  final void Function(int oldIndex, int newIndex) onReorder;
+
+  @override
+  Widget build(BuildContext context) {
+    return ReorderableWrap(
+      spacing: 8,
+      runSpacing: 8,
+      needsLongPressDraggable: true,
+      onReorder: onReorder,
+      children: [
+        for (final slot in slots)
+          _MediaTile(
+            key: ValueKey(slot.key),
+            slot: slot,
+            removeTooltip: removeTooltip,
+            onRemove: () => onRemove(slot),
+          ),
+      ],
+    );
+  }
+}
+
+class _MediaTile extends StatelessWidget {
+  const _MediaTile({
+    super.key,
+    required this.slot,
+    required this.removeTooltip,
+    required this.onRemove,
+  });
+
+  static const _size = 96.0;
+
+  final _Slot slot;
+  final String removeTooltip;
+  final VoidCallback onRemove;
+
+  Widget _preview(BuildContext context) {
+    final placeholder = Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
+    return switch (slot) {
+      _PickedSlot(:final previewBytes) => Image.memory(
+        previewBytes,
+        fit: BoxFit.cover,
+      ),
+      _ExistingSlot(:final media) =>
+        media.mediaType == MediaType.video
+            ? (media.posterUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: media.posterUrl!,
+                      cacheKey: media.posterPath,
+                      fit: BoxFit.cover,
+                    )
+                  : placeholder)
+            : (media.url != null
+                  ? CachedNetworkImage(
+                      imageUrl: media.url!,
+                      cacheKey: media.storagePath,
+                      fit: BoxFit.cover,
+                    )
+                  : placeholder),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: _preview(context),
+          ),
+          if (slot.isVideo)
+            const Center(
+              child: Icon(
+                Icons.play_circle_fill,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: Tooltip(
+              message: removeTooltip,
+              child: InkWell(
+                onTap: onRemove,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(2),
+                  child: const Icon(Icons.close, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

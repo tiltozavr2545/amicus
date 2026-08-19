@@ -4,9 +4,9 @@
 вместо чтения миграций. **Почему** так — в комментарии соответствующей
 миграции в `supabase/migrations/`, затем `git log`.
 
-Таблицы: `users`, `connections`, `invite_links`, `posts`, `reactions`,
-`comments`, `muted_users`, `blocked_users`, `favorite_users`, `device_tokens`,
-`notification_outbox`, `pending_post_counts`.
+Таблицы: `users`, `connections`, `invite_links`, `posts`, `post_media`,
+`reactions`, `comments`, `muted_users`, `blocked_users`, `favorite_users`,
+`device_tokens`, `notification_outbox`, `pending_post_counts`.
 
 ## Правило видимости
 
@@ -50,6 +50,25 @@ connection-половинками правила в отдельных мест�
 реальный delete, решает сервер. DELETE- и UPDATE-политик на `comments`
 намеренно нет: редактирование комментариев — не фича.
 
+## Медиа поста
+
+До 20 фото/видео на пост — `post_media(post_id, position, media_type,
+storage_path, poster_path)`, одна строка на элемент. `position` — только
+порядок отображения в карусели ленты, не плотная последовательность (при
+редактировании клиент переписывает позиции оставшихся строк разом). Видимость
+наследуется от видимости самого поста — тот же join к `visible_author_ids()`,
+что и у `posts.select`. **UPDATE-политики на `post_media` нет**: замена файла
+и reorder — всегда delete+insert строк, никогда update на месте (объект в
+storage при reorder не трогается, строка с той же `storage_path` просто
+пересоздаётся с новым `id`/`position`). Лимит 20 — backstop-триггер
+`enforce_post_media_limit()` (`BEFORE INSERT`), основной гейт — клиент.
+`poster_path` — только для video, JPEG первого кадра, сгенерированный на
+клиенте при выборе файла.
+
+`posts.text` редактируем через узкую UPDATE-политику (`grant update (text)`,
+20260819210000) — единственная колонка `posts`, доступная на UPDATE.
+`author_id`/`created_at`/`id`/`client_token` недостижимы через этот путь.
+
 ## Серверные колонки
 
 Прибиты в INSERT-политиках `posts`/`comments`: `created_at = now()`,
@@ -78,3 +97,11 @@ ARB и никогда не показывает `e.message`.
 `is_author_visible`. `avatars/<uid>/…` — себе и Connections, **блок их не
 сужает**: заблокированный остаётся в списке знакомых и на экране
 «Заблокированные», где блок и снимают, а оба экрана рисуют аватарку.
+
+Путь для медиа поста: `posts/<author_id>/<post_client_token>/<media_client_token>.<ext>`
+— первые два сегмента не изменились с версии с одиночным фото, поэтому
+storage-политики (SELECT/INSERT/DELETE, матчащие по `(storage.foldername(name))[1..2]`)
+не пришлось трогать при переходе на множественные медиа. Каждый файл — свой
+объект под собственным `media_client_token`; UPDATE-политики нет — замена
+файла всегда идёт как новый upload + delete старого объекта, никогда
+overwrite. Видео-постер лежит рядом как `<media_client_token>_poster.jpg`.
