@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,13 +19,17 @@ class _FakeFeedRepository implements FeedRepository {
   /// Stands in for the server (or the network) refusing the submission.
   bool createThrows = false;
 
+  /// Recorded calls to [updatePost], for the edit-mode tests.
+  int updateCalls = 0;
+  String? lastUpdatedText;
+  List<ComposerMediaItem>? lastFinalMedia;
+
   @override
   Future<void> createPost({
     required String clientToken,
     required String authorId,
     String? text,
-    Uint8List? imageBytes,
-    String? imageExt,
+    List<PendingMedia> media = const [],
   }) async {
     tokens.add(clientToken);
     texts.add(text);
@@ -35,25 +37,45 @@ class _FakeFeedRepository implements FeedRepository {
   }
 
   @override
+  Future<void> updatePost({
+    required String postId,
+    required String authorId,
+    required String postClientToken,
+    String? text,
+    required List<PostMedia> originalMedia,
+    required List<ComposerMediaItem> finalMedia,
+  }) async {
+    updateCalls++;
+    lastUpdatedText = text;
+    lastFinalMedia = finalMedia;
+    if (createThrows) throw Exception('rejected');
+  }
+
+  @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Widget _wrap(_FakeFeedRepository repo) {
+Widget _wrap(_FakeFeedRepository repo, {Post? existingPost}) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
     ],
-    child: const MaterialApp(
+    child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: CreatePostScreen(),
+      home: CreatePostScreen(existingPost: existingPost),
     ),
   );
 }
 
 Future<void> _tapPublish(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(TextButton, 'Publish'));
+  await tester.pump();
+}
+
+Future<void> _tapSave(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(TextButton, 'Save'));
   await tester.pump();
 }
 
@@ -66,7 +88,7 @@ void main() {
 
     await _tapPublish(tester);
 
-    expect(find.text('Add text or a photo'), findsOneWidget);
+    expect(find.text('Add text, a photo, or a video'), findsOneWidget);
     expect(repo.tokens, isEmpty);
   });
 
@@ -77,7 +99,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '   ');
     await _tapPublish(tester);
 
-    expect(find.text('Add text or a photo'), findsOneWidget);
+    expect(find.text('Add text, a photo, or a video'), findsOneWidget);
     expect(repo.tokens, isEmpty);
   });
 
@@ -135,6 +157,79 @@ void main() {
       expect(repo.tokens, hasLength(2));
       expect(repo.tokens[0], isNot(repo.tokens[1]));
       expect(repo.texts.last, 'my corrected post');
+    });
+  });
+
+  group('edit mode', () {
+    Post existingPost({List<PostMedia> media = const []}) => Post(
+      id: 'post-1',
+      authorId: 'test-user',
+      authorName: 'Me',
+      createdAt: DateTime(2026, 1, 1),
+      clientToken: 'post-token',
+      text: 'original text',
+      media: media,
+    );
+
+    testWidgets(
+      'shows the edit title and Save button, prefilled with the post',
+      (tester) async {
+        final repo = _FakeFeedRepository();
+        await tester.pumpWidget(_wrap(repo, existingPost: existingPost()));
+
+        expect(find.text('Edit post'), findsOneWidget);
+        expect(find.widgetWithText(TextButton, 'Save'), findsOneWidget);
+        expect(find.widgetWithText(TextField, 'original text'), findsOneWidget);
+      },
+    );
+
+    testWidgets('saving calls updatePost, not createPost', (tester) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(_wrap(repo, existingPost: existingPost()));
+
+      await tester.enterText(find.byType(TextField), 'edited text');
+      await _tapSave(tester);
+
+      expect(repo.updateCalls, 1);
+      expect(repo.lastUpdatedText, 'edited text');
+      expect(repo.tokens, isEmpty);
+    });
+
+    testWidgets(
+      'a kept photo appears in the grid and survives to the save call',
+      (tester) async {
+        final repo = _FakeFeedRepository();
+        final media = const PostMedia(
+          id: 'm1',
+          position: 0,
+          mediaType: MediaType.image,
+          storagePath: 'posts/test-user/post-token/m1.jpg',
+          url: 'https://example.invalid/signed',
+        );
+        await tester.pumpWidget(
+          _wrap(repo, existingPost: existingPost(media: [media])),
+        );
+        await tester.pump();
+
+        await _tapSave(tester);
+
+        expect(repo.updateCalls, 1);
+        expect(repo.lastFinalMedia, hasLength(1));
+        expect(repo.lastFinalMedia!.single, isA<KeptMedia>());
+        expect((repo.lastFinalMedia!.single as KeptMedia).media.id, 'm1');
+      },
+    );
+
+    testWidgets('a failed save shows a dedicated message', (tester) async {
+      final repo = _FakeFeedRepository()..createThrows = true;
+      await tester.pumpWidget(_wrap(repo, existingPost: existingPost()));
+
+      await _tapSave(tester);
+
+      expect(
+        find.text('Failed to save changes. Please try again.'),
+        findsOneWidget,
+      );
     });
   });
 }

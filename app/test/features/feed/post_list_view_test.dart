@@ -27,14 +27,14 @@ class _FakeFeedRepository implements FeedRepository {
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Post _post(String id, {String? imagePath, String? imageUrl}) => Post(
+Post _post(String id, {List<PostMedia> media = const []}) => Post(
   id: id,
   authorId: 'author-1',
   authorName: 'Alice',
   createdAt: DateTime(2026, 1, 1, 12),
+  clientToken: 'token-of-$id',
   text: 'text of $id',
-  imagePath: imagePath,
-  imageUrl: imageUrl,
+  media: media,
 );
 
 Widget _wrap(_FakeFeedRepository repo) {
@@ -116,8 +116,15 @@ void main() {
         ..pageToReturn = [
           _post(
             'p1',
-            imagePath: 'posts/author-1/token.jpg',
-            imageUrl: 'https://example.invalid/signed?token=abc',
+            media: const [
+              PostMedia(
+                id: 'm1',
+                position: 0,
+                mediaType: MediaType.image,
+                storagePath: 'posts/author-1/token/m1.jpg',
+                url: 'https://example.invalid/signed?token=abc',
+              ),
+            ],
           ),
         ];
       await tester.pumpWidget(_wrap(repo));
@@ -131,8 +138,55 @@ void main() {
       // Two signed URLs for the same photo, minted on two different app
       // launches, must resolve to the same on-disk cache entry — otherwise
       // every restart re-downloads a photo it has already seen.
-      expect(image.cacheKey, 'posts/author-1/token.jpg');
+      expect(image.cacheKey, 'posts/author-1/token/m1.jpg');
       expect(image.imageUrl, 'https://example.invalid/signed?token=abc');
     },
   );
+
+  testWidgets(
+    'a post with several media items shows a position counter, no dots',
+    (tester) async {
+      PostMedia mediaAt(int i) => PostMedia(
+        id: 'm$i',
+        position: i,
+        mediaType: MediaType.image,
+        storagePath: 'posts/author-1/token/m$i.jpg',
+        url: i == 0 ? 'https://example.invalid/signed?m=0' : null,
+      );
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [
+          _post('p1', media: [for (var i = 0; i < 3; i++) mediaAt(i)]),
+        ];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('1/3'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a single-media post shows no position counter', (tester) async {
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [
+        _post(
+          'p1',
+          media: const [
+            PostMedia(
+              id: 'm1',
+              position: 0,
+              mediaType: MediaType.image,
+              storagePath: 'posts/author-1/token/m1.jpg',
+              url: 'https://example.invalid/signed?m=0',
+            ),
+          ],
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('1/1'), findsNothing);
+  });
 }

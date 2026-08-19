@@ -10,18 +10,17 @@ void main() {
   Post post({
     String id = 'post-1',
     String? text = 'Hello',
-    String? imagePath,
-    String? imageUrl,
+    List<PostMedia> media = const [],
     ReactionType? myReaction,
   }) => Post(
     id: id,
     authorId: 'author-1',
     authorName: 'Alice',
     createdAt: DateTime(2026, 1, 1, 12),
+    clientToken: 'client-token-1',
     authorDislikesDisabled: true,
     text: text,
-    imagePath: imagePath,
-    imageUrl: imageUrl,
+    media: media,
     likeCount: 3,
     neutralCount: 1,
     dislikeCount: 0,
@@ -30,10 +29,24 @@ void main() {
   );
 
   group('Post cache round trip', () {
-    test('preserves every field, including a reaction', () {
+    test('preserves every field, including a reaction and its media', () {
       final original = post(
-        imagePath: 'posts/author-1/token.jpg',
-        imageUrl: 'https://example.invalid/signed',
+        media: const [
+          PostMedia(
+            id: 'm1',
+            position: 0,
+            mediaType: MediaType.image,
+            storagePath: 'posts/author-1/token/m1.jpg',
+            url: 'https://example.invalid/signed',
+          ),
+          PostMedia(
+            id: 'm2',
+            position: 1,
+            mediaType: MediaType.video,
+            storagePath: 'posts/author-1/token/m2.mp4',
+            posterPath: 'posts/author-1/token/m2_poster.jpg',
+          ),
+        ],
         myReaction: ReactionType.like,
       );
 
@@ -43,10 +56,14 @@ void main() {
       expect(restored.authorId, original.authorId);
       expect(restored.authorName, original.authorName);
       expect(restored.createdAt, original.createdAt);
+      expect(restored.clientToken, original.clientToken);
       expect(restored.authorDislikesDisabled, original.authorDislikesDisabled);
       expect(restored.text, original.text);
-      expect(restored.imagePath, original.imagePath);
-      expect(restored.imageUrl, original.imageUrl);
+      expect(restored.media, hasLength(2));
+      expect(restored.media[0].storagePath, original.media[0].storagePath);
+      expect(restored.media[0].url, original.media[0].url);
+      expect(restored.media[1].mediaType, MediaType.video);
+      expect(restored.media[1].posterPath, original.media[1].posterPath);
       expect(restored.likeCount, original.likeCount);
       expect(restored.neutralCount, original.neutralCount);
       expect(restored.dislikeCount, original.dislikeCount);
@@ -54,13 +71,23 @@ void main() {
       expect(restored.commentCount, original.commentCount);
     });
 
-    test('round-trips a post with no photo and no reaction', () {
+    test('round-trips a post with no media and no reaction', () {
       final restored = Post.fromCacheJson(post().toCacheJson());
 
-      expect(restored.imagePath, isNull);
-      expect(restored.imageUrl, isNull);
+      expect(restored.media, isEmpty);
       expect(restored.myReaction, isNull);
     });
+
+    test(
+      'a cache entry from before multi-media (no media key) degrades to no photo',
+      () {
+        final legacyJson = post().toCacheJson()..remove('media');
+
+        final restored = Post.fromCacheJson(legacyJson);
+
+        expect(restored.media, isEmpty);
+      },
+    );
   });
 
   group('FeedCache', () {

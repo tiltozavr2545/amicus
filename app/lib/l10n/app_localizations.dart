@@ -476,28 +476,58 @@ abstract class AppLocalizations {
   /// **'Publish'**
   String get publishButton;
 
+  /// No description provided for @editPostTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit post'**
+  String get editPostTitle;
+
+  /// No description provided for @editButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get editButton;
+
   /// No description provided for @whatsNewHint.
   ///
   /// In en, this message translates to:
   /// **'What\'s new?'**
   String get whatsNewHint;
 
-  /// No description provided for @addPhotoButton.
+  /// No description provided for @addMediaButton.
   ///
   /// In en, this message translates to:
-  /// **'Add photo'**
-  String get addPhotoButton;
+  /// **'Add photo or video'**
+  String get addMediaButton;
 
-  /// No description provided for @replacePhotoButton.
+  /// No description provided for @removeMediaTooltip.
   ///
   /// In en, this message translates to:
-  /// **'Replace photo'**
-  String get replacePhotoButton;
+  /// **'Remove'**
+  String get removeMediaTooltip;
+
+  /// No description provided for @playVideoTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Play video'**
+  String get playVideoTooltip;
+
+  /// No description provided for @mediaLimitMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add up to 20 photos or videos'**
+  String get mediaLimitMessage;
+
+  /// No description provided for @videoTooLongError.
+  ///
+  /// In en, this message translates to:
+  /// **'Video must be under 60 seconds'**
+  String get videoTooLongError;
 
   /// No description provided for @addTextOrPhotoError.
   ///
   /// In en, this message translates to:
-  /// **'Add text or a photo'**
+  /// **'Add text, a photo, or a video'**
   String get addTextOrPhotoError;
 
   /// No description provided for @failedToPublishError.
@@ -505,6 +535,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to publish. Please try again.'**
   String get failedToPublishError;
+
+  /// No description provided for @failedToSaveChangesError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save changes. Please try again.'**
+  String get failedToSaveChangesError;
 
   /// No description provided for @deletePostTitle.
   ///
@@ -515,7 +551,7 @@ abstract class AppLocalizations {
   /// No description provided for @deletePostContent.
   ///
   /// In en, this message translates to:
-  /// **'The post, its photo, and comments will be deleted.'**
+  /// **'The post, its media, and comments will be deleted.'**
   String get deletePostContent;
 
   /// No description provided for @failedToLoadFeedError.

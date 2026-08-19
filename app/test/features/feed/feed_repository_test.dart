@@ -15,7 +15,7 @@ void main() {
       expect(post.id, 'post-1');
       expect(post.authorName, 'Alice');
       expect(post.text, 'Hello');
-      expect(post.imageUrl, null);
+      expect(post.media, isEmpty);
       expect(post.likeCount, 0);
       expect(post.neutralCount, 0);
       expect(post.dislikeCount, 0);
@@ -34,6 +34,54 @@ void main() {
 
       expect(post.authorDislikesDisabled, true);
     });
+
+    test('a null client_token (a pre-idempotency-column post) parses fine', () {
+      final post = Post.fromRow({
+        'id': 'post-1',
+        'author_id': 'user-1',
+        'author': {'name': 'Alice'},
+        'text': 'Hello',
+        'created_at': '2026-01-01T12:00:00Z',
+        'client_token': null,
+      });
+
+      expect(post.clientToken, isNull);
+    });
+
+    test(
+      'embedded media rows are sorted by position, out of arrival order',
+      () {
+        final post = Post.fromRow({
+          'id': 'post-1',
+          'author_id': 'user-1',
+          'author': {'name': 'Alice'},
+          'created_at': '2026-01-01T12:00:00Z',
+          'client_token': 'tok-1',
+          'media': [
+            {
+              'id': 'm2',
+              'position': 1,
+              'media_type': 'video',
+              'storage_path': 'posts/user-1/tok-1/mc2.mp4',
+              'poster_path': 'posts/user-1/tok-1/mc2_poster.jpg',
+            },
+            {
+              'id': 'm1',
+              'position': 0,
+              'media_type': 'image',
+              'storage_path': 'posts/user-1/tok-1/mc1.jpg',
+            },
+          ],
+        });
+
+        expect(post.media, hasLength(2));
+        expect(post.media[0].id, 'm1');
+        expect(post.media[0].mediaType, MediaType.image);
+        expect(post.media[1].id, 'm2');
+        expect(post.media[1].mediaType, MediaType.video);
+        expect(post.media[1].posterPath, 'posts/user-1/tok-1/mc2_poster.jpg');
+      },
+    );
   });
 
   group('Post.copyWith', () {
@@ -216,44 +264,90 @@ void main() {
   });
 
   // The storage policies match on the first two path segments, and the retry
-  // story depends on the third, so both halves of this string are load-bearing
-  // in a way nothing else in the app would notice if it changed.
-  group('postImagePath', () {
+  // story depends on the fourth, so all of this string is load-bearing in a
+  // way nothing else in the app would notice if it changed.
+  group('postMediaPath', () {
     test('puts the author uuid in the segment the storage policy reads', () {
-      final path = postImagePath(
+      final path = postMediaPath(
         authorId: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
-        clientToken: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
-        imageExt: 'jpg',
+        postClientToken: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+        mediaClientToken: 'cccccccc-3333-4333-8333-cccccccccccc',
+        ext: 'jpg',
       );
 
       final segments = path.split('/');
       expect(segments.first, 'posts');
       expect(segments[1], 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa');
-      expect(segments, hasLength(3));
+      expect(segments, hasLength(4));
     });
 
-    test('is stable across retries of one submission', () {
-      String pathFor(String token) => postImagePath(
+    test('is stable across retries of the same item', () {
+      String pathFor(String mediaToken) => postMediaPath(
         authorId: 'author-1',
-        clientToken: token,
-        imageExt: 'jpg',
+        postClientToken: 'post-token',
+        mediaClientToken: mediaToken,
+        ext: 'jpg',
       );
 
-      // Same submission retried: the object is rewritten, not duplicated.
-      expect(pathFor('token-a'), pathFor('token-a'));
-      // A different submission must not collide with it.
-      expect(pathFor('token-a'), isNot(pathFor('token-b')));
+      // Same item retried: the object is rewritten, not duplicated.
+      expect(pathFor('media-a'), pathFor('media-a'));
+      // A different item must not collide with it.
+      expect(pathFor('media-a'), isNot(pathFor('media-b')));
+    });
+
+    test('groups every item of one post under the same prefix', () {
+      final a = postMediaPath(
+        authorId: 'author-1',
+        postClientToken: 'post-token',
+        mediaClientToken: 'media-a',
+        ext: 'jpg',
+      );
+      final b = postMediaPath(
+        authorId: 'author-1',
+        postClientToken: 'post-token',
+        mediaClientToken: 'media-b',
+        ext: 'mp4',
+      );
+
+      expect(
+        a.substring(0, a.lastIndexOf('/')),
+        b.substring(0, b.lastIndexOf('/')),
+      );
     });
 
     test('carries the file extension through', () {
       expect(
-        postImagePath(
+        postMediaPath(
           authorId: 'author-1',
-          clientToken: 'token-a',
-          imageExt: 'png',
+          postClientToken: 'post-token',
+          mediaClientToken: 'media-a',
+          ext: 'png',
         ),
         endsWith('.png'),
       );
+    });
+  });
+
+  group('postMediaPosterPath', () {
+    test('shares its prefix with the video it posters, under its own name', () {
+      final videoPath = postMediaPath(
+        authorId: 'author-1',
+        postClientToken: 'post-token',
+        mediaClientToken: 'media-a',
+        ext: 'mp4',
+      );
+      final posterPath = postMediaPosterPath(
+        authorId: 'author-1',
+        postClientToken: 'post-token',
+        mediaClientToken: 'media-a',
+      );
+
+      expect(
+        posterPath.substring(0, posterPath.lastIndexOf('/')),
+        videoPath.substring(0, videoPath.lastIndexOf('/')),
+      );
+      expect(posterPath, isNot(videoPath));
+      expect(posterPath, endsWith('_poster.jpg'));
     });
   });
 

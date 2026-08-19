@@ -218,27 +218,46 @@ class AppLocalizationsRu extends AppLocalizations {
   String get publishButton => 'Опубликовать';
 
   @override
+  String get editPostTitle => 'Редактировать пост';
+
+  @override
+  String get editButton => 'Редактировать';
+
+  @override
   String get whatsNewHint => 'Что нового?';
 
   @override
-  String get addPhotoButton => 'Добавить фото';
+  String get addMediaButton => 'Добавить фото или видео';
 
   @override
-  String get replacePhotoButton => 'Заменить фото';
+  String get removeMediaTooltip => 'Убрать';
 
   @override
-  String get addTextOrPhotoError => 'Добавь текст или фото';
+  String get playVideoTooltip => 'Воспроизвести видео';
+
+  @override
+  String get mediaLimitMessage => 'Можно добавить до 20 фото или видео';
+
+  @override
+  String get videoTooLongError => 'Видео должно быть короче 60 секунд';
+
+  @override
+  String get addTextOrPhotoError => 'Добавь текст, фото или видео';
 
   @override
   String get failedToPublishError =>
       'Не удалось опубликовать. Попробуйте ещё раз.';
 
   @override
+  String get failedToSaveChangesError =>
+      'Не удалось сохранить изменения. Попробуйте ещё раз.';
+
+  @override
   String get deletePostTitle => 'Удалить пост?';
 
   @override
   String get deletePostContent =>
-      'Пост, фото и комментарии к нему будут удалены.';
+      'Пост, медиа и комментарии к нему будут удалены.';
 
   @override
   String get failedToLoadFeedError =>
