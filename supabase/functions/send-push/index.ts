@@ -21,6 +21,11 @@ const SERVICE_ACCOUNT = JSON.parse(Deno.env.get('FCM_SERVICE_ACCOUNT_JSON')!);
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Set as a function secret, and stored in Vault under 'send_push_shared_secret'
+// for the pg_cron job to read. Exists for exactly one purpose: proving a caller
+// is that cron job. See isAuthorized().
+const SEND_PUSH_SECRET = Deno.env.get('SEND_PUSH_SECRET')!;
+
 const APP_TITLE = 'Amicus';
 
 // Four variants per kind so repeat notifications don't read identically.
@@ -173,30 +178,40 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.value;
 }
 
-// Only the pg_cron job in migration 20260818200000 is meant to call this: it
-// reads the service-role key out of Vault and sends it as a bearer token.
-// Nothing else about the request identifies the caller, and the platform's
-// default `verify_jwt` is satisfied by *any* project JWT — including the anon
-// key, which ships inside the APK (--dart-define=SUPABASE_ANON_KEY) and is
-// therefore public by construction. Without this check, anyone who unpacked
-// the app could drain the outbox on demand: every call burns a Google token
-// exchange plus one FCM request per recipient device, and stamps `sent_at` on
-// every row it touched whether or not delivery worked, so the notifications it
-// fails to deliver are simply lost (this is best-effort push, there is no
-// retry queue).
+// Only the pg_cron job in migration 20260818200000 is meant to call this.
 //
-// Compared with a fixed-time loop rather than `===`: a short-circuiting
-// compare leaks the length of the matching prefix to a caller who can time
-// it, which is exactly how a secret this shape gets guessed byte by byte.
+// The platform's own `verify_jwt` gate is satisfied by *any* project JWT —
+// including the anon key, which ships inside the APK
+// (--dart-define=SUPABASE_ANON_KEY) and is therefore public by construction.
+// Without a check of its own, anyone who unpacked the app could drain the
+// outbox on demand: every call burns a Google token exchange plus one FCM
+// request per recipient device, and stamps `sent_at` on every row it touched
+// whether or not delivery worked, so the notifications it fails to deliver are
+// simply lost (this is best-effort push, there is no retry queue).
+//
+// The proof of identity is a dedicated shared secret in its own header, *not*
+// the bearer token. Two reasons, one of which was learned the hard way:
+//
+//   1. The bearer has to stay a valid JWT regardless, because that is what the
+//      `verify_jwt` gate in front of this function checks. It is not ours to
+//      repurpose.
+//   2. Comparing the bearer against `SUPABASE_SERVICE_ROLE_KEY` looks like it
+//      should work and does not. This project has two generations of API keys
+//      live at once (legacy JWTs and the newer `sb_secret_…` form), the cron
+//      job sends the legacy service-role JWT it reads from Vault, and the value
+//      the platform injects into this env var is neither the same format nor
+//      the same length. Every legitimate call came back 401. A secret that
+//      exists only for this handshake cannot drift that way.
+//
+// Compared with a fixed-time loop rather than `===`: a short-circuiting compare
+// leaks the length of the matching prefix to a caller who can time it, which is
+// exactly how a secret this shape gets guessed byte by byte.
 function isAuthorized(req: Request): boolean {
-  const header = req.headers.get('Authorization') ?? '';
-  const prefix = 'Bearer ';
-  if (!header.startsWith(prefix)) return false;
-  const presented = header.slice(prefix.length);
-  if (presented.length !== SERVICE_ROLE_KEY.length) return false;
+  const presented = req.headers.get('x-send-push-secret') ?? '';
+  if (presented.length !== SEND_PUSH_SECRET.length) return false;
   let diff = 0;
   for (let i = 0; i < presented.length; i++) {
-    diff |= presented.charCodeAt(i) ^ SERVICE_ROLE_KEY.charCodeAt(i);
+    diff |= presented.charCodeAt(i) ^ SEND_PUSH_SECRET.charCodeAt(i);
   }
   return diff === 0;
 }
