@@ -44,10 +44,10 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'Новости от {author_name} уже в вашей ленте',
     ],
     app_update: [
-      'Доступно обновление приложения',
-      'Вышло новое обновление — загляните в Amicus',
-      'Amicus обновился — что нового, смотрите в приложении',
-      'Есть новости об обновлении приложения',
+      'Обновите приложение — вышла новая версия',
+      'В Google Play новая версия Amicus — самое время обновиться',
+      'Не пропустите обновление — обновите приложение в Google Play',
+      'Новая версия ждёт в Google Play, обновите приложение',
     ],
     inactive_week: [
       'Заскучали без вас — напишите что-нибудь новое',
@@ -82,10 +82,10 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'News from {author_name} is in your feed',
     ],
     app_update: [
-      'An app update is available',
-      'A new update just landed — check out Amicus',
-      'Amicus was updated — see what’s new in the app',
-      'There’s news about an app update',
+      'Update the app — a new version is out',
+      'A new version just landed on Google Play — update now',
+      'Don’t miss the update — update the app via Google Play',
+      'A new version is waiting on Google Play, go update',
     ],
     inactive_week: [
       'We’ve missed you — write something new',
