@@ -242,6 +242,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get videoTooLongError => 'Видео должно быть короче 60 секунд';
 
   @override
+  String get failedToAddMediaError => 'Некоторые файлы не удалось добавить';
+
+  @override
   String get addTextOrPhotoError => 'Добавь текст, фото или видео';
 
   @override

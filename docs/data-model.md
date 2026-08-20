@@ -7,7 +7,7 @@
 Таблицы: `users`, `connections`, `invite_links`, `posts`, `post_media`,
 `profile_photos`, `reactions`, `comments`, `muted_users`, `blocked_users`,
 `favorite_users`, `device_tokens`, `notification_outbox`,
-`pending_post_counts`.
+`notification_preferences`, `user_activity`.
 
 ## Правило видимости
 
@@ -60,8 +60,13 @@ storage_path, poster_path)`, одна строка на элемент. `positio
 что и у `posts.select`. **UPDATE-политики на `post_media` нет**: замена файла
 и reorder — всегда delete+insert строк, никогда update на месте (объект в
 storage при reorder не трогается, строка с той же `storage_path` просто
-пересоздаётся с новым `id`/`position`). Лимит 20 — backstop-триггер
-`enforce_post_media_limit()` (`BEFORE INSERT`), основной гейт — клиент.
+пересоздаётся с новым `id`/`position`). Обе половины делает
+`set_post_media(post_id, items)` — **одной транзакцией**, и возвращает пути,
+на которые больше никто не ссылается, чтобы клиент удалил объекты уже ПОСЛЕ
+того, как строки переписаны (20260820150000). Двумя запросами PostgREST это
+было двумя транзакциями, и обрыв между ними оставлял пост вообще без медиа.
+Лимит 20 — backstop-триггер `enforce_post_media_limit()` (`BEFORE INSERT`),
+основной гейт — клиент.
 `poster_path` — только для video, JPEG первого кадра, сгенерированный на
 клиенте при выборе файла.
 
@@ -69,8 +74,12 @@ storage при reorder не трогается, строка с той же `sto
 
 До 80 фото на пользователя — `profile_photos(user_id, position, storage_path)`,
 одна строка на фото, тот же неплотный `position` и delete+insert-reorder, что
-и у `post_media`. Видимость — **себе или Connection, без учёта mute/block** —
-то же правило, что у самой аватарки в Storage (см. «Storage» ниже), а не
+и у `post_media`, и так же одной транзакцией — через
+`reorder_profile_photos(photo_ids)`, которому надо передать **всю** галерею
+(позиции переписываются в плотный 0..N-1, частичная перестановка налезла бы на
+нетронутые строки; несовпадение — `PT422`). Видимость — **себе или
+Connection, без учёта mute/block** — то же правило, что у самой аватарки в
+Storage (см. «Storage» ниже), а не
 `is_author_visible()`: блок не должен прятать аватар со экрана
 «Заблокированные», где блок и снимают. `users.avatar_path` остаётся
 единственным полем, которое читает весь остальной клиент (лента, список
@@ -85,6 +94,12 @@ storage при reorder не трогается, строка с той же `sto
 `author_id`/`created_at`/`id`/`client_token` недостижимы через этот путь.
 
 ## Серверные колонки
+
+Клиентский write-грант сужен по колонкам на **каждой** таблице, куда он вообще
+пишет. У `users` это `update (name, avatar_path)` и никакого INSERT вовсе
+(строку заводит триггер `handle_new_user()`) — `dislikes_disabled` и
+`created_at` серверные, хотя RLS-политика говорит лишь «моя ли это строка»
+(20260820140000). `name` ограничено 100 символами.
 
 Прибиты в INSERT-политиках `posts`/`comments`: `created_at = now()`,
 `deleted_at is null`. `id` у `posts`/`comments`/`reactions` не грантован на
@@ -108,7 +123,10 @@ ARB и никогда не показывает `e.message`.
 
 ## Storage
 
-Бакет `media` приватный, signed URL живут 24 ч. `posts/<uid>/…` — по
+Бакет `media` приватный, signed URL живут 24 ч, лимит объекта 100 MiB,
+`allowed_mime_types` — пять image-типов и шесть video, ровно под
+`_videoExtensions` композера (content-type storage_client берёт из расширения
+в имени объекта, а не из содержимого; 20260820130000). `posts/<uid>/…` — по
 `is_author_visible`. `avatars/<uid>/…` — себе и Connections, **блок их не
 сужает**: заблокированный остаётся в списке знакомых и на экране
 «Заблокированные», где блок и снимают, а оба экрана рисуют аватарку. Фото

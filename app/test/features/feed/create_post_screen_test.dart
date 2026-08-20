@@ -42,7 +42,6 @@ class _FakeFeedRepository implements FeedRepository {
     required String authorId,
     required String postClientToken,
     String? text,
-    required List<PostMedia> originalMedia,
     required List<ComposerMediaItem> finalMedia,
   }) async {
     updateCalls++;

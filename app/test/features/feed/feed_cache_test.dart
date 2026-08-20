@@ -97,16 +97,16 @@ void main() {
 
     test('load returns null when nothing was ever saved', () async {
       const cache = FeedCache();
-      expect(await cache.load(null), isNull);
-      expect(await cache.load('some-author'), isNull);
+      expect(await cache.load('viewer-1', null), isNull);
+      expect(await cache.load('viewer-1', 'some-author'), isNull);
     });
 
     test('save then load round-trips the posts for that scope', () async {
       const cache = FeedCache();
       final posts = [post(id: 'p1'), post(id: 'p2', text: null)];
 
-      await cache.save(null, posts);
-      final loaded = await cache.load(null);
+      await cache.save('viewer-1', null, posts);
+      final loaded = await cache.load('viewer-1', null);
 
       expect(loaded, isNotNull);
       expect(loaded!.map((p) => p.id), ['p1', 'p2']);
@@ -114,26 +114,87 @@ void main() {
 
     test('the main feed and a specific author do not share a slot', () async {
       const cache = FeedCache();
-      await cache.save(null, [post(id: 'main-post')]);
-      await cache.save('author-9', [post(id: 'author-post')]);
+      await cache.save('viewer-1', null, [post(id: 'main-post')]);
+      await cache.save('viewer-1', 'author-9', [post(id: 'author-post')]);
 
-      expect((await cache.load(null))!.single.id, 'main-post');
-      expect((await cache.load('author-9'))!.single.id, 'author-post');
+      expect((await cache.load('viewer-1', null))!.single.id, 'main-post');
+      expect(
+        (await cache.load('viewer-1', 'author-9'))!.single.id,
+        'author-post',
+      );
     });
 
     test('a later save for the same scope replaces the earlier one', () async {
       const cache = FeedCache();
-      await cache.save(null, [post(id: 'stale')]);
-      await cache.save(null, [post(id: 'fresh')]);
+      await cache.save('viewer-1', null, [post(id: 'stale')]);
+      await cache.save('viewer-1', null, [post(id: 'fresh')]);
 
-      expect((await cache.load(null))!.single.id, 'fresh');
+      expect((await cache.load('viewer-1', null))!.single.id, 'fresh');
+    });
+
+    // The whole point of scoping by viewer: signing in as someone else on
+    // this device must not surface the previous account's feed, which holds
+    // posts RLS only ever showed to them.
+    test('another viewer does not see this one cached page', () async {
+      const cache = FeedCache();
+      await cache.save('viewer-1', null, [post(id: 'private-to-viewer-1')]);
+
+      expect(await cache.load('viewer-2', null), isNull);
+      expect(await cache.load(null, null), isNull);
+    });
+
+    test('the same scope for two viewers keeps two slots', () async {
+      const cache = FeedCache();
+      await cache.save('viewer-1', null, [post(id: 'one')]);
+      await cache.save('viewer-2', null, [post(id: 'two')]);
+
+      expect((await cache.load('viewer-1', null))!.single.id, 'one');
+      expect((await cache.load('viewer-2', null))!.single.id, 'two');
+    });
+
+    test('clear drops every viewer and every scope', () async {
+      const cache = FeedCache();
+      await cache.save('viewer-1', null, [post(id: 'a')]);
+      await cache.save('viewer-1', 'author-9', [post(id: 'b')]);
+      await cache.save('viewer-2', null, [post(id: 'c')]);
+
+      await cache.clear();
+
+      expect(await cache.load('viewer-1', null), isNull);
+      expect(await cache.load('viewer-1', 'author-9'), isNull);
+      expect(await cache.load('viewer-2', null), isNull);
+    });
+
+    // Entries written before the keys were scoped by viewer are exactly the
+    // ones a sign-out most needs to remove, so clear() matches on the prefix
+    // rather than reconstructing one viewer's keys.
+    test('clear also drops unscoped keys from an older build', () async {
+      SharedPreferences.setMockInitialValues({
+        'feed_cache_main': '[]',
+        'unrelated_key': 'kept',
+      });
+      const cache = FeedCache();
+
+      await cache.clear();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('feed_cache_main'), isNull);
+      expect(prefs.getString('unrelated_key'), 'kept');
+    });
+
+    test('clear on an empty store is a no-op', () async {
+      const cache = FeedCache();
+      await cache.clear();
+      expect(await cache.load('viewer-1', null), isNull);
     });
 
     test('corrupted cache contents are treated as no cache', () async {
-      SharedPreferences.setMockInitialValues({'feed_cache_main': 'not json'});
+      SharedPreferences.setMockInitialValues({
+        'feed_cache_viewer-1_main': 'not json',
+      });
       const cache = FeedCache();
 
-      expect(await cache.load(null), isNull);
+      expect(await cache.load('viewer-1', null), isNull);
     });
   });
 }

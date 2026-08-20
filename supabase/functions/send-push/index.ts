@@ -173,32 +173,75 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.value;
 }
 
+// Only the pg_cron job in migration 20260818200000 is meant to call this: it
+// reads the service-role key out of Vault and sends it as a bearer token.
+// Nothing else about the request identifies the caller, and the platform's
+// default `verify_jwt` is satisfied by *any* project JWT — including the anon
+// key, which ships inside the APK (--dart-define=SUPABASE_ANON_KEY) and is
+// therefore public by construction. Without this check, anyone who unpacked
+// the app could drain the outbox on demand: every call burns a Google token
+// exchange plus one FCM request per recipient device, and stamps `sent_at` on
+// every row it touched whether or not delivery worked, so the notifications it
+// fails to deliver are simply lost (this is best-effort push, there is no
+// retry queue).
+//
+// Compared with a fixed-time loop rather than `===`: a short-circuiting
+// compare leaks the length of the matching prefix to a caller who can time
+// it, which is exactly how a secret this shape gets guessed byte by byte.
+function isAuthorized(req: Request): boolean {
+  const header = req.headers.get('Authorization') ?? '';
+  const prefix = 'Bearer ';
+  if (!header.startsWith(prefix)) return false;
+  const presented = header.slice(prefix.length);
+  if (presented.length !== SERVICE_ROLE_KEY.length) return false;
+  let diff = 0;
+  for (let i = 0; i < presented.length; i++) {
+    diff |= presented.charCodeAt(i) ^ SERVICE_ROLE_KEY.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // FCM's per-message response distinguishes a dead token (404/400 —
 // unregistered or malformed) from everything else (network blip, quota,
 // transient 5xx). Only the former is safe to prune; the rest just fails this
 // round and the row still gets marked sent (best-effort push, not
 // at-least-once — a missed nudge isn't worth a retry queue for this app).
 async function sendToToken(token: string, body: string): Promise<'ok' | 'stale' | 'error'> {
-  const accessToken = await getAccessToken();
-  const resp = await fetch(
-    `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+  // Everything in here is per-token best-effort, including the token
+  // exchange: letting a throw escape would abort the whole drain, leaving
+  // `sent_at` unset on rows this run already delivered — so the next minute's
+  // run sends those again. One duplicate push is worse than one dropped one.
+  try {
+    const accessToken = await getAccessToken();
+    const resp = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: { token, notification: { title: APP_TITLE, body } },
+        }),
       },
-      body: JSON.stringify({
-        message: { token, notification: { title: APP_TITLE, body } },
-      }),
-    },
-  );
-  if (resp.ok) return 'ok';
-  if (resp.status === 404 || resp.status === 400) return 'stale';
-  return 'error';
+    );
+    if (resp.ok) return 'ok';
+    if (resp.status === 404 || resp.status === 400) return 'stale';
+    return 'error';
+  } catch (_) {
+    return 'error';
+  }
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  if (!isAuthorized(req)) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
   const { data: rows, error } = await supabase

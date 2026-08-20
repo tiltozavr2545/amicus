@@ -524,6 +524,12 @@ abstract class AppLocalizations {
   /// **'Video must be under 60 seconds'**
   String get videoTooLongError;
 
+  /// No description provided for @failedToAddMediaError.
+  ///
+  /// In en, this message translates to:
+  /// **'Some files couldn\'t be added'**
+  String get failedToAddMediaError;
+
   /// No description provided for @addTextOrPhotoError.
   ///
   /// In en, this message translates to:

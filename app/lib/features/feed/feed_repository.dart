@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
+import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
 
 /// The three mutually-exclusive reactions a user can leave on a post. Stored
@@ -562,21 +563,8 @@ class FeedRepository {
       .createSignedUrl(storagePath, _signedUrlTtl)
       .timeout(networkTimeout);
 
-  Future<void> _uploadTolerant(String path, Uint8List bytes) async {
-    try {
-      await _client.storage
-          .from(_bucket)
-          .uploadBinary(path, bytes)
-          .timeout(networkTimeout);
-    } on StorageException catch (e) {
-      // 409: a previous attempt at this same item already put these exact
-      // bytes at this exact path (see [postMediaPath]). There is no UPDATE
-      // policy on storage.objects for post media (only SELECT/INSERT/DELETE),
-      // so overwriting via `upsert: true` would be refused by RLS — and there
-      // is nothing to overwrite anyway, the content is identical.
-      if (e.statusCode != '409') rethrow;
-    }
-  }
+  Future<void> _uploadTolerant(String path, Uint8List bytes) =>
+      uploadTolerant(_client, bucket: _bucket, path: path, bytes: bytes);
 
   Future<void> _uploadMediaItem({
     required String authorId,
@@ -705,15 +693,25 @@ class FeedRepository {
 
   /// Saves edits to a post the current user owns: [text] and/or its media.
   ///
-  /// [originalMedia] is the post's media as last fetched from the server;
   /// [finalMedia] is the composer's final ordered list — a mix of items kept
   /// from the original post ([KeptMedia]) and freshly picked ones
-  /// ([NewMedia]). Diffing the two tells this method what to delete/upload:
-  /// anything in [originalMedia] whose id isn't in [finalMedia] is removed
-  /// (storage object + row), every [NewMedia] is uploaded, and every
-  /// surviving [KeptMedia] row is deleted and reinserted at its new position
-  /// — cheap (no storage I/O, the object stays put) and keeps `post_media`
-  /// free of an UPDATE policy, since reordering is then just row churn.
+  /// ([NewMedia]). New files are uploaded first, then the whole media set is
+  /// handed to `set_post_media()`, which replaces `post_media` for this post
+  /// in **one transaction** and returns the storage paths nothing references
+  /// any more, for this method to delete afterwards.
+  ///
+  /// The server does the diffing (which is why the post's original media is
+  /// no longer a parameter) for a reason that is not tidiness. This used to
+  /// be a DELETE of the surviving rows followed by a separate INSERT at their
+  /// new positions — two PostgREST calls, so two transactions, with nothing
+  /// in between. A failure after the first (and `.timeout()` stops waiting
+  /// without cancelling, so that is an ordinary Tuesday on a bad connection)
+  /// left the post with *no media rows at all*, while its files sat on in
+  /// Storage referenced by nothing.
+  ///
+  /// Storage deletions come last, after the rows are already correct: an
+  /// object nothing points at is wasted bucket space, whereas a row pointing
+  /// at a deleted object is a broken image in everyone's feed.
   ///
   /// [postClientToken] is the prefix new media is uploaded under — normally
   /// the post's own [Post.clientToken], but the caller mints a fresh one for
@@ -723,34 +721,8 @@ class FeedRepository {
     required String authorId,
     required String postClientToken,
     String? text,
-    required List<PostMedia> originalMedia,
     required List<ComposerMediaItem> finalMedia,
   }) async {
-    final keptIds = finalMedia
-        .whereType<KeptMedia>()
-        .map((k) => k.media.id)
-        .toSet();
-    final removed = originalMedia
-        .where((m) => !keptIds.contains(m.id))
-        .toList();
-
-    if (removed.isNotEmpty) {
-      final removedPaths = [
-        for (final m in removed) m.storagePath,
-        for (final m in removed)
-          if (m.posterPath != null) m.posterPath!,
-      ];
-      await _client.storage
-          .from(_bucket)
-          .remove(removedPaths)
-          .timeout(networkTimeout);
-      await _client
-          .from('post_media')
-          .delete()
-          .inFilter('id', removed.map((m) => m.id).toList())
-          .timeout(networkTimeout);
-    }
-
     for (final item in finalMedia.whereType<NewMedia>()) {
       await _uploadMediaItem(
         authorId: authorId,
@@ -759,45 +731,46 @@ class FeedRepository {
       );
     }
 
-    final keptSurvivingIds = finalMedia
-        .whereType<KeptMedia>()
-        .map((k) => k.media.id)
-        .toList();
-    if (keptSurvivingIds.isNotEmpty) {
-      await _client
-          .from('post_media')
-          .delete()
-          .inFilter('id', keptSurvivingIds)
-          .timeout(networkTimeout);
-    }
-
-    if (finalMedia.isNotEmpty) {
-      final rows = [
-        for (var i = 0; i < finalMedia.length; i++)
-          switch (finalMedia[i]) {
-            KeptMedia(:final media) => {
-              'post_id': postId,
-              'position': i,
-              'media_type': media.mediaType.dbValue,
-              'storage_path': media.storagePath,
-              if (media.posterPath != null) 'poster_path': media.posterPath,
-            },
-            NewMedia(:final pending) => _pendingMediaRow(
-              postId: postId,
+    final items = [
+      for (final slot in finalMedia)
+        switch (slot) {
+          KeptMedia(:final media) => {
+            'media_type': media.mediaType.dbValue,
+            'storage_path': media.storagePath,
+            if (media.posterPath != null) 'poster_path': media.posterPath,
+          },
+          NewMedia(:final pending) => {
+            'media_type': pending.mediaType.dbValue,
+            'storage_path': postMediaPath(
               authorId: authorId,
               postClientToken: postClientToken,
-              position: i,
-              item: pending,
+              mediaClientToken: pending.mediaClientToken,
+              ext: pending.ext,
             ),
+            if (pending.posterBytes != null)
+              'poster_path': postMediaPosterPath(
+                authorId: authorId,
+                postClientToken: postClientToken,
+                mediaClientToken: pending.mediaClientToken,
+              ),
           },
-      ];
-      await _client
-          .from('post_media')
-          .upsert(
-            rows,
-            onConflict: 'post_id,storage_path',
-            ignoreDuplicates: true,
-          )
+        },
+    ];
+
+    final orphaned = await _client
+        .rpc('set_post_media', params: {'p_post_id': postId, 'p_items': items})
+        .timeout(networkTimeout);
+
+    // `returns table (storage_path text)`, so PostgREST hands these back as
+    // rows — the same shape as every other RPC in this project.
+    final orphanedPaths = [
+      for (final row in (orphaned as List<dynamic>? ?? const []))
+        (row as Map<String, dynamic>)['storage_path'] as String,
+    ];
+    if (orphanedPaths.isNotEmpty) {
+      await _client.storage
+          .from(_bucket)
+          .remove(orphanedPaths)
           .timeout(networkTimeout);
     }
 

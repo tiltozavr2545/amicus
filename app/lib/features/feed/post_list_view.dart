@@ -58,6 +58,10 @@ class _PostListViewState extends ConsumerState<PostListView> {
   // apply it twice.
   late final Future<List<Post>?> _cacheLoadFuture;
 
+  // The viewer every cache entry this list touches is filed under. See
+  // [FeedCache]: a page holds content RLS only ever showed to this account.
+  String? _cacheUserId;
+
   // Set once the very first fetch attempt (success or failure) has settled,
   // so a cache read that resolves after it can no longer touch `_posts` —
   // including when the real fetch came back with zero posts: that confirmed
@@ -72,7 +76,15 @@ class _PostListViewState extends ConsumerState<PostListView> {
   @override
   void initState() {
     super.initState();
-    _cacheLoadFuture = ref.read(feedCacheProvider).load(widget.authorId);
+    // Captured once, here, rather than read inside each cache call: the
+    // session can end while this list is still mounted (sign-out redirects
+    // the router, it doesn't tear this widget down synchronously), and a save
+    // that resolved `null` at that moment would file this viewer's page under
+    // the signed-out slot.
+    _cacheUserId = ref.read(currentUserIdProvider);
+    _cacheLoadFuture = ref
+        .read(feedCacheProvider)
+        .load(_cacheUserId, widget.authorId);
     _primeFromCache();
     _loadMore();
     _scrollController.addListener(() {
@@ -130,7 +142,9 @@ class _PostListViewState extends ConsumerState<PostListView> {
         _hasMore = page.length == pageSize;
       });
       if (isFirstPage) {
-        unawaited(ref.read(feedCacheProvider).save(widget.authorId, page));
+        unawaited(
+          ref.read(feedCacheProvider).save(_cacheUserId, widget.authorId, page),
+        );
       }
     } catch (e) {
       if (!mounted || epoch != _loadEpoch) return;
@@ -477,14 +491,54 @@ class _MediaCarousel extends ConsumerStatefulWidget {
 
 class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
   late final _pageController = PageController();
+
+  // Seeded from `widget.media`, then owned locally so [_resolve] can fill in
+  // signed URLs the parent never learns about. That local ownership is why
+  // [didUpdateWidget] below is not optional: build() reads `_items`, so
+  // without it a State reused for a *different* post keeps painting the old
+  // post's media under the new post's name.
   late List<PostMedia> _items = widget.media;
   final _resolving = <int>{};
   int _currentIndex = 0;
+
+  // Bumped whenever `_items` is replaced wholesale from a new widget. A
+  // resolve started against the previous post finishes with an item that no
+  // longer belongs in this list, so it has to be able to tell it lost the
+  // race — the `_resolving` set alone can't, it keys on an index that both
+  // lists have.
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
     _resolve(0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_sameMedia(oldWidget.media, widget.media)) return;
+    // A different post (or the same post's media edited): drop everything
+    // derived from the old list, including any in-flight resolve.
+    _generation++;
+    _resolving.clear();
+    _items = widget.media;
+    _currentIndex = 0;
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
+    _resolve(0);
+  }
+
+  /// Whether two media lists describe the same slides. Compared by row id and
+  /// order rather than by list identity: `Post.copyWith` (reactions, comment
+  /// counts) hands back the very same `List` instance, and rebuilding for that
+  /// must not throw away URLs already resolved.
+  static bool _sameMedia(List<PostMedia> a, List<PostMedia> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
   }
 
   @override
@@ -500,6 +554,7 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
     final needsPosterUrl = item.posterPath != null && item.posterUrl == null;
     if (!needsUrl && !needsPosterUrl) return;
     if (!_resolving.add(index)) return;
+    final generation = _generation;
     final repo = ref.read(feedRepositoryProvider);
     try {
       final url = needsUrl
@@ -509,13 +564,13 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
       final posterUrl = needsPosterUrl
           ? await repo.resolveMediaUrl(posterPath!)
           : item.posterUrl;
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _items = List.of(_items)
           ..[index] = item.copyWith(url: url, posterUrl: posterUrl);
       });
     } finally {
-      _resolving.remove(index);
+      if (generation == _generation) _resolving.remove(index);
     }
   }
 
@@ -735,6 +790,20 @@ class _MediaSlideState extends State<_MediaSlide> {
   VideoPlayerController? _controller;
 
   @override
+  void didUpdateWidget(covariant _MediaSlide oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // build() short-circuits on a non-null controller, so a State reused for
+    // a different item would keep rendering (and playing) the previous clip
+    // under the new one. Only the *identity* of the media matters here — a
+    // rebuild that merely filled in a resolved URL for the same row must not
+    // interrupt playback.
+    if (oldWidget.item.id == widget.item.id) return;
+    final stale = _controller;
+    _controller = null;
+    stale?.dispose();
+  }
+
+  @override
   void dispose() {
     _controller?.dispose();
     super.dispose();
@@ -744,7 +813,16 @@ class _MediaSlideState extends State<_MediaSlide> {
     final url = widget.item.url;
     if (url == null) return;
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-    await controller.initialize();
+    try {
+      await controller.initialize();
+    } catch (_) {
+      // An unplayable codec, an expired signed URL, no network. Nothing to
+      // report beyond leaving the poster and its play button in place —
+      // letting this escape would be an unhandled async error *and* would
+      // leak the controller, since dispose() only ever runs via State.
+      await controller.dispose();
+      return;
+    }
     if (!mounted) {
       await controller.dispose();
       return;
