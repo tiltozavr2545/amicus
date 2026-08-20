@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
+import 'carousel_position_cache.dart';
 import 'comments_screen.dart';
 import 'create_post_screen.dart';
 import 'feed_cache.dart';
@@ -420,7 +421,7 @@ class _PostCard extends StatelessWidget {
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: _MediaCarousel(media: post.media),
+                child: _MediaCarousel(postId: post.id, media: post.media),
               ),
             ],
             const SizedBox(height: 4),
@@ -473,16 +474,86 @@ class _PostCard extends StatelessWidget {
   }
 }
 
+/// How many slides on either side of the current one are signed and built
+/// ahead of the viewer. One is enough to make a swipe feel instant — the
+/// neighbour's URL is already signed and, thanks to `allowImplicitScrolling`,
+/// its image is already downloading before the swipe starts — without paying
+/// for slides nobody asked for.
+const _prefetchRadius = 1;
+
+/// The slides within [_prefetchRadius] of [index] that still need a signed
+/// URL and aren't already being fetched. Marks what it returns as in flight
+/// in [resolving]; the caller clears them when the batch settles.
+List<int> _takePendingAround(
+  List<PostMedia> items,
+  int index,
+  Set<int> resolving,
+) {
+  final pending = <int>[];
+  for (var i = index - _prefetchRadius; i <= index + _prefetchRadius; i++) {
+    if (i < 0 || i >= items.length) continue;
+    if (!_needsResolving(items[i])) continue;
+    if (!resolving.add(i)) continue;
+    pending.add(i);
+  }
+  return pending;
+}
+
+bool _needsResolving(PostMedia item) =>
+    item.url == null || (item.posterPath != null && item.posterUrl == null);
+
+/// Every storage path the given slides are still missing a URL for — a video
+/// contributes both its own path and its poster's.
+List<String> _pathsToSign(List<PostMedia> items, Iterable<int> indices) {
+  final paths = <String>[];
+  for (final i in indices) {
+    final item = items[i];
+    if (item.url == null) paths.add(item.storagePath);
+    final posterPath = item.posterPath;
+    if (posterPath != null && item.posterUrl == null) paths.add(posterPath);
+  }
+  return paths;
+}
+
+/// [items] with the freshly signed URLs filled in. Paths missing from
+/// [signedByPath] (the storage API refused to sign them) leave their slide
+/// untouched, so it stays pending and is retried on the next swipe.
+List<PostMedia> _applySignedUrls(
+  List<PostMedia> items,
+  Iterable<int> indices,
+  Map<String, String> signedByPath,
+) {
+  final updated = List.of(items);
+  for (final i in indices) {
+    final item = updated[i];
+    final posterPath = item.posterPath;
+    updated[i] = item.copyWith(
+      url: item.url ?? signedByPath[item.storagePath],
+      posterUrl: posterPath == null
+          ? item.posterUrl
+          : item.posterUrl ?? signedByPath[posterPath],
+    );
+  }
+  return updated;
+}
+
 /// A post's up-to-20 photos/videos, swiped horizontally one at a time
 /// (Instagram-style), with a position counter when there's more than one.
 ///
 /// Only the first item arrives with a resolved signed URL (see
 /// [FeedRepository.fetchPage] — resolving all 20 for every post on every page
 /// load would be wasteful for slides most viewers never swipe to), so this
-/// widget resolves each further slide lazily, right before it's shown.
+/// widget signs the rest itself, a [_prefetchRadius]-wide window at a time so
+/// the next slide is ready before the viewer swipes to it rather than only
+/// starting to load once they have.
+///
+/// Which slide the viewer left off on is remembered in
+/// [CarouselPositionCache] for as long as the app runs, so scrolling the post
+/// out of the list and back doesn't rewind it to the first photo.
 class _MediaCarousel extends ConsumerStatefulWidget {
-  const _MediaCarousel({required this.media});
+  const _MediaCarousel({required this.postId, required this.media});
 
+  final String postId;
   final List<PostMedia> media;
 
   @override
@@ -490,11 +561,11 @@ class _MediaCarousel extends ConsumerStatefulWidget {
 }
 
 class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
-  late final _pageController = PageController();
+  late PageController _pageController;
 
-  // Seeded from `widget.media`, then owned locally so [_resolve] can fill in
-  // signed URLs the parent never learns about. That local ownership is why
-  // [didUpdateWidget] below is not optional: build() reads `_items`, so
+  // Seeded from `widget.media`, then owned locally so [_resolveAround] can
+  // fill in signed URLs the parent never learns about. That local ownership
+  // is why [didUpdateWidget] below is not optional: build() reads `_items`, so
   // without it a State reused for a *different* post keeps painting the old
   // post's media under the new post's name.
   late List<PostMedia> _items = widget.media;
@@ -511,21 +582,43 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
   @override
   void initState() {
     super.initState();
-    _resolve(0);
+    _currentIndex = _rememberedIndex();
+    _pageController = PageController(initialPage: _currentIndex);
+    _resolveAround(_currentIndex);
   }
 
   @override
   void didUpdateWidget(covariant _MediaCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_sameMedia(oldWidget.media, widget.media)) return;
+    if (oldWidget.postId == widget.postId &&
+        _sameMedia(oldWidget.media, widget.media)) {
+      return;
+    }
     // A different post (or the same post's media edited): drop everything
     // derived from the old list, including any in-flight resolve.
     _generation++;
     _resolving.clear();
     _items = widget.media;
-    _currentIndex = 0;
-    if (_pageController.hasClients) _pageController.jumpToPage(0);
-    _resolve(0);
+    _currentIndex = _rememberedIndex();
+    // A fresh controller rather than `jumpToPage`, which needs one already
+    // attached to a viewport — not the case when this very rebuild is what
+    // introduces the PageView (a single-item post edited into a multi-item
+    // one). The outgoing controller is still attached to the old viewport
+    // until the rebuild that follows detaches it, hence disposing it a frame
+    // later instead of here.
+    final stale = _pageController;
+    WidgetsBinding.instance.addPostFrameCallback((_) => stale.dispose());
+    _pageController = PageController(initialPage: _currentIndex);
+    _resolveAround(_currentIndex);
+  }
+
+  /// The slide this post was last left on, clamped: the media may have been
+  /// edited down to fewer items since the position was recorded.
+  int _rememberedIndex() {
+    final cache = ref.read(carouselPositionCacheProvider);
+    final remembered = cache.read(widget.postId);
+    if (remembered == null || widget.media.isEmpty) return 0;
+    return remembered.clamp(0, widget.media.length - 1);
   }
 
   /// Whether two media lists describe the same slides. Compared by row id and
@@ -547,36 +640,30 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
     super.dispose();
   }
 
-  Future<void> _resolve(int index) async {
-    if (index < 0 || index >= _items.length) return;
-    final item = _items[index];
-    final needsUrl = item.url == null;
-    final needsPosterUrl = item.posterPath != null && item.posterUrl == null;
-    if (!needsUrl && !needsPosterUrl) return;
-    if (!_resolving.add(index)) return;
+  /// Signs [index] and its neighbours in one round trip.
+  Future<void> _resolveAround(int index) async {
+    final pending = _takePendingAround(_items, index, _resolving);
+    if (pending.isEmpty) return;
     final generation = _generation;
     final repo = ref.read(feedRepositoryProvider);
     try {
-      final url = needsUrl
-          ? await repo.resolveMediaUrl(item.storagePath)
-          : item.url;
-      final posterPath = item.posterPath;
-      final posterUrl = needsPosterUrl
-          ? await repo.resolveMediaUrl(posterPath!)
-          : item.posterUrl;
+      final signed = await repo.resolveMediaUrls(_pathsToSign(_items, pending));
       if (!mounted || generation != _generation) return;
-      setState(() {
-        _items = List.of(_items)
-          ..[index] = item.copyWith(url: url, posterUrl: posterUrl);
-      });
+      setState(() => _items = _applySignedUrls(_items, pending, signed));
+    } catch (_) {
+      // Offline, or the request timed out. The slides stay on their spinner
+      // and, since the `finally` below un-marks them, are retried the next
+      // time the viewer swipes near them — there is nothing to report here
+      // that the missing photo doesn't already say.
     } finally {
-      if (generation == _generation) _resolving.remove(index);
+      if (generation == _generation) _resolving.removeAll(pending);
     }
   }
 
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
-    _resolve(index);
+    ref.read(carouselPositionCacheProvider).write(widget.postId, index);
+    _resolveAround(index);
   }
 
   void _openFullscreen(int index) {
@@ -618,6 +705,11 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
             child: PageView.builder(
               controller: _pageController,
               itemCount: _items.length,
+              // Keeps the slide on either side of the current one in the
+              // tree, so its image is already downloading (and decoded, if it
+              // has been seen before) by the time the swipe lands, instead of
+              // starting from a spinner once the page has settled.
+              allowImplicitScrolling: true,
               onPageChanged: _onPageChanged,
               itemBuilder: (context, index) => _MediaSlide(
                 item: _items[index],
@@ -676,7 +768,7 @@ class _FullscreenMediaViewerState
   @override
   void initState() {
     super.initState();
-    _resolve(widget.initialIndex);
+    _resolveAround(widget.initialIndex);
   }
 
   @override
@@ -685,29 +777,21 @@ class _FullscreenMediaViewerState
     super.dispose();
   }
 
-  Future<void> _resolve(int index) async {
-    if (index < 0 || index >= _items.length) return;
-    final item = _items[index];
-    final needsUrl = item.url == null;
-    final needsPosterUrl = item.posterPath != null && item.posterUrl == null;
-    if (!needsUrl && !needsPosterUrl) return;
-    if (!_resolving.add(index)) return;
+  /// Same one-round-trip window as the carousel's: the neighbouring photo is
+  /// signed and loading before it's swiped to, not after.
+  Future<void> _resolveAround(int index) async {
+    final pending = _takePendingAround(_items, index, _resolving);
+    if (pending.isEmpty) return;
     final repo = ref.read(feedRepositoryProvider);
     try {
-      final url = needsUrl
-          ? await repo.resolveMediaUrl(item.storagePath)
-          : item.url;
-      final posterPath = item.posterPath;
-      final posterUrl = needsPosterUrl
-          ? await repo.resolveMediaUrl(posterPath!)
-          : item.posterUrl;
+      final signed = await repo.resolveMediaUrls(_pathsToSign(_items, pending));
       if (!mounted) return;
-      setState(() {
-        _items = List.of(_items)
-          ..[index] = item.copyWith(url: url, posterUrl: posterUrl);
-      });
+      setState(() => _items = _applySignedUrls(_items, pending, signed));
+    } catch (_) {
+      // Nothing to say beyond the spinner already on screen; un-marked below
+      // so the next swipe retries.
     } finally {
-      _resolving.remove(index);
+      _resolving.removeAll(pending);
     }
   }
 
@@ -722,7 +806,8 @@ class _FullscreenMediaViewerState
       body: PageView.builder(
         controller: _pageController,
         itemCount: _items.length,
-        onPageChanged: _resolve,
+        allowImplicitScrolling: true,
+        onPageChanged: _resolveAround,
         itemBuilder: (context, index) {
           final item = _items[index];
           if (item.mediaType == MediaType.video) {

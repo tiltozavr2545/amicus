@@ -437,7 +437,7 @@ class FeedRepository {
   /// Each post's *first* media slide gets a signed URL resolved eagerly here
   /// (the `media` bucket is private, so a plain public URL wouldn't be
   /// servable) — the rest of a multi-media post's slides are resolved lazily
-  /// via [resolveMediaUrl] as the user actually swipes to them, since a post
+  /// via [resolveMediaUrls] as the carousel approaches them, since a post
   /// can carry up to 20 items and resolving all of them for every post on
   /// every page would multiply this call's cost by up to 20x for slides most
   /// users never see.
@@ -533,14 +533,7 @@ class FeedRepository {
     }
     if (firstSlidePaths.isEmpty) return posts;
 
-    final signResults = await _client.storage
-        .from(_bucket)
-        .createSignedUrlsResult(firstSlidePaths, _signedUrlTtl)
-        .timeout(networkTimeout);
-    final signedByPath = <String, String>{
-      for (final r in signResults)
-        if (r is SignedUrlSuccess) r.path: r.signedUrl,
-    };
+    final signedByPath = await resolveMediaUrls(firstSlidePaths);
 
     return posts.map((post) {
       if (post.media.isEmpty) return post;
@@ -555,13 +548,35 @@ class FeedRepository {
     }).toList();
   }
 
-  /// Resolves a signed URL for one media item — used to lazily fetch a
-  /// carousel slide beyond the first as the user swipes to it, rather than
-  /// eagerly resolving all up to 20 items in [fetchPage].
+  /// Resolves a signed URL for one media item, for the callers that only ever
+  /// have one path in hand.
   Future<String> resolveMediaUrl(String storagePath) => _client.storage
       .from(_bucket)
       .createSignedUrl(storagePath, _signedUrlTtl)
       .timeout(networkTimeout);
+
+  /// Signs a batch of media paths in a single round trip — how a carousel
+  /// resolves the slides beyond the first, rather than eagerly resolving all
+  /// up to 20 items in [fetchPage]. Batched because a slide plus its poster,
+  /// and the slide on either side of the current one, are wanted at the same
+  /// moment: one request instead of up to six.
+  ///
+  /// Paths the storage API refuses to sign are simply absent from the result,
+  /// leaving those slides unresolved (and retried on the next swipe) instead
+  /// of failing the whole batch.
+  Future<Map<String, String>> resolveMediaUrls(
+    List<String> storagePaths,
+  ) async {
+    if (storagePaths.isEmpty) return const {};
+    final results = await _client.storage
+        .from(_bucket)
+        .createSignedUrlsResult(storagePaths, _signedUrlTtl)
+        .timeout(networkTimeout);
+    return {
+      for (final r in results)
+        if (r is SignedUrlSuccess) r.path: r.signedUrl,
+    };
+  }
 
   Future<void> _uploadTolerant(String path, Uint8List bytes) =>
       uploadTolerant(_client, bucket: _bucket, path: path, bytes: bytes);
