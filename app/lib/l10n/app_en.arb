@@ -97,6 +97,7 @@
   "playVideoTooltip": "Play video",
   "mediaLimitMessage": "You can add up to 20 photos or videos",
   "videoTooLongError": "Video must be under 60 seconds",
+  "failedToAddMediaError": "Some files couldn't be added",
   "addTextOrPhotoError": "Add text, a photo, or a video",
   "failedToPublishError": "Failed to publish. Please try again.",
   "failedToSaveChangesError": "Failed to save changes. Please try again.",

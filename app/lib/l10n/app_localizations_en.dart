@@ -244,6 +244,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videoTooLongError => 'Video must be under 60 seconds';
 
   @override
+  String get failedToAddMediaError => 'Some files couldn\'t be added';
+
+  @override
   String get addTextOrPhotoError => 'Add text, a photo, or a video';
 
   @override

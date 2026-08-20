@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/network_timeout.dart';
+import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
 
 class Profile {
@@ -113,6 +114,12 @@ class ProfileRepository {
   /// whatever [existing] photos are already there. `users.avatar_path` is
   /// updated automatically by a DB trigger, not here — see
   /// `sync_avatar_path_from_profile_photos()` in the migration.
+  ///
+  /// Uploads go through [uploadTolerant] for the same reason post media does:
+  /// `.timeout()` stops waiting without cancelling, so a batch can be half
+  /// landed when the screen reports failure, and the natural retry re-sends
+  /// items whose objects are already there. A plain `uploadBinary` answers
+  /// that with 409 and failed the whole batch every single time, forever.
   Future<void> addPhotos({
     required String userId,
     required List<PendingPhoto> items,
@@ -120,17 +127,16 @@ class ProfileRepository {
   }) async {
     if (items.isEmpty) return;
     for (final item in items) {
-      await _client.storage
-          .from(_bucket)
-          .uploadBinary(
-            profilePhotoPath(
-              userId: userId,
-              photoClientToken: item.photoClientToken,
-              ext: item.ext,
-            ),
-            item.bytes,
-          )
-          .timeout(networkTimeout);
+      await uploadTolerant(
+        _client,
+        bucket: _bucket,
+        path: profilePhotoPath(
+          userId: userId,
+          photoClientToken: item.photoClientToken,
+          ext: item.ext,
+        ),
+        bytes: item.bytes,
+      );
     }
     final nextPosition = existing.isEmpty
         ? 0
@@ -157,34 +163,30 @@ class ProfileRepository {
         .timeout(networkTimeout);
   }
 
-  /// Applies a new display order for the whole gallery: delete+insert every
-  /// row rather than update-in-place, same pattern (and same reason — no
-  /// UPDATE policy) as [FeedRepository.updatePost]'s media reorder. The
-  /// storage objects themselves are untouched.
+  /// Applies a new display order for the whole gallery, in one transaction.
+  ///
+  /// Still delete+insert rather than update-in-place — `profile_photos` has
+  /// no UPDATE policy on purpose — but both halves now happen inside
+  /// `reorder_profile_photos()`, server-side. As two PostgREST calls they
+  /// were two transactions with nothing in between, and a failure after the
+  /// DELETE (which `.timeout()` makes routine: it stops waiting without
+  /// cancelling) wiped the entire gallery — including `users.avatar_path`,
+  /// which the sync trigger had already recomputed against zero rows, so the
+  /// user's avatar vanished everywhere at once while their files sat on in
+  /// Storage referenced by nothing.
+  ///
+  /// The whole gallery has to be passed, not a slice: positions are rewritten
+  /// as a dense 0..N-1 and a partial reorder would collide with the rows left
+  /// out. The server rejects a mismatched set with `PT422`.
   Future<void> reorderPhotos({
     required String userId,
     required List<ProfilePhoto> order,
   }) async {
     if (order.isEmpty) return;
     await _client
-        .from('profile_photos')
-        .delete()
-        .inFilter('id', order.map((p) => p.id).toList())
-        .timeout(networkTimeout);
-    final rows = [
-      for (var i = 0; i < order.length; i++)
-        {
-          'user_id': userId,
-          'position': i,
-          'storage_path': order[i].storagePath,
-        },
-    ];
-    await _client
-        .from('profile_photos')
-        .upsert(
-          rows,
-          onConflict: 'user_id,storage_path',
-          ignoreDuplicates: true,
+        .rpc(
+          'reorder_profile_photos',
+          params: {'p_photo_ids': order.map((p) => p.id).toList()},
         )
         .timeout(networkTimeout);
   }

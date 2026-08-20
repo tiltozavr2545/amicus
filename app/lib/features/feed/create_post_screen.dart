@@ -12,6 +12,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
+import '../../shared/picker_limit.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
 
@@ -163,67 +164,84 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       return;
     }
 
+    // Not `limit: remaining`: the picker rejects a limit below 2 outright.
+    // See [pickerLimit] — `take(remaining)` below is the real cap either way.
     final picked = await ImagePicker().pickMultipleMedia(
       maxWidth: 1600,
-      limit: remaining,
+      limit: pickerLimit(remaining),
     );
     if (picked.isEmpty) return;
 
     setState(() => _isPicking = true);
     var skippedTooLong = false;
+    var failed = false;
     final newSlots = <_Slot>[];
+    // Per file, not per batch: one unreadable file (an unsupported codec
+    // makes initialize() throw, a huge one fails readAsBytes) shouldn't cost
+    // the user the other files they picked — and must not escape, or the
+    // `finally` below never runs and the Add button stays disabled for the
+    // rest of the composer session, with no way back except losing the draft.
     for (final file in picked.take(remaining)) {
       final mediaClientToken = const Uuid().v4();
-      if (_looksLikeVideo(file)) {
-        final controller = VideoPlayerController.file(File(file.path));
-        Duration duration;
-        try {
-          await controller.initialize();
-          duration = controller.value.duration;
-        } finally {
-          await controller.dispose();
-        }
-        if (duration > _maxVideoDuration) {
-          skippedTooLong = true;
-          continue;
-        }
-        final posterBytes = await video_thumbnail.VideoThumbnail.thumbnailData(
-          video: file.path,
-          imageFormat: video_thumbnail.ImageFormat.JPEG,
-          maxWidth: 640,
-          quality: 70,
-        );
-        // Couldn't extract a poster frame — skip rather than add a video
-        // slide with nothing to show for it in the feed's tap-to-play poster.
-        if (posterBytes == null) continue;
-        final bytes = await file.readAsBytes();
-        newSlots.add(
-          _PickedSlot(
-            mediaClientToken,
-            PendingMedia(
-              mediaClientToken: mediaClientToken,
-              mediaType: MediaType.video,
-              bytes: bytes,
-              ext: fileExtension(file.name),
-              posterBytes: posterBytes,
+      try {
+        if (_looksLikeVideo(file)) {
+          final controller = VideoPlayerController.file(File(file.path));
+          Duration duration;
+          try {
+            await controller.initialize();
+            duration = controller.value.duration;
+          } finally {
+            await controller.dispose();
+          }
+          if (duration > _maxVideoDuration) {
+            skippedTooLong = true;
+            continue;
+          }
+          final posterBytes =
+              await video_thumbnail.VideoThumbnail.thumbnailData(
+                video: file.path,
+                imageFormat: video_thumbnail.ImageFormat.JPEG,
+                maxWidth: 640,
+                quality: 70,
+              );
+          // Couldn't extract a poster frame — skip rather than add a video
+          // slide with nothing to show for it in the feed's tap-to-play
+          // poster.
+          if (posterBytes == null) {
+            failed = true;
+            continue;
+          }
+          final bytes = await file.readAsBytes();
+          newSlots.add(
+            _PickedSlot(
+              mediaClientToken,
+              PendingMedia(
+                mediaClientToken: mediaClientToken,
+                mediaType: MediaType.video,
+                bytes: bytes,
+                ext: fileExtension(file.name),
+                posterBytes: posterBytes,
+              ),
+              posterBytes,
             ),
-            posterBytes,
-          ),
-        );
-      } else {
-        final bytes = await file.readAsBytes();
-        newSlots.add(
-          _PickedSlot(
-            mediaClientToken,
-            PendingMedia(
-              mediaClientToken: mediaClientToken,
-              mediaType: MediaType.image,
-              bytes: bytes,
-              ext: fileExtension(file.name),
+          );
+        } else {
+          final bytes = await file.readAsBytes();
+          newSlots.add(
+            _PickedSlot(
+              mediaClientToken,
+              PendingMedia(
+                mediaClientToken: mediaClientToken,
+                mediaType: MediaType.image,
+                bytes: bytes,
+                ext: fileExtension(file.name),
+              ),
+              bytes,
             ),
-            bytes,
-          ),
-        );
+          );
+        }
+      } catch (_) {
+        failed = true;
       }
     }
     if (!mounted) return;
@@ -235,6 +253,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.videoTooLongError)));
+    } else if (failed) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.failedToAddMediaError)));
     }
   }
 
@@ -277,7 +299,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           // one for this edit session instead (see [Post.clientToken]).
           postClientToken: existingPost.clientToken ?? _pendingToken!,
           text: text,
-          originalMedia: existingPost.media,
           finalMedia: [
             for (final slot in _slots)
               switch (slot) {

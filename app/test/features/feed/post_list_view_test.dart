@@ -37,19 +37,36 @@ Post _post(String id, {List<PostMedia> media = const []}) => Post(
   media: media,
 );
 
-Widget _wrap(_FakeFeedRepository repo) {
+/// [container], when given, lets a test poke providers from the outside —
+/// bumping [feedRefreshTickProvider] the way muting or saving an edit does.
+Widget _wrap(_FakeFeedRepository repo, {ProviderContainer? container}) {
+  const app = MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(body: PostListView()),
+  );
+  if (container != null) {
+    return UncontrolledProviderScope(container: container, child: app);
+  }
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
     ],
-    child: const MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: PostListView()),
-    ),
+    child: app,
   );
 }
+
+ProviderContainer _container(_FakeFeedRepository repo) => ProviderContainer(
+  overrides: [
+    currentUserIdProvider.overrideWithValue('test-user'),
+    feedRepositoryProvider.overrideWithValue(repo),
+  ],
+);
+
+/// The cache slot the widget under test writes to: scoped to the viewer as
+/// well as the feed scope, so one account can't be served another's page.
+const _cacheKey = 'feed_cache_test-user_main';
 
 const _failedToLoad = 'Failed to load feed. Please try again.';
 
@@ -75,7 +92,7 @@ void main() {
     'falls back to the last-seen posts instead of going blank when offline',
     (tester) async {
       SharedPreferences.setMockInitialValues({
-        'feed_cache_main': jsonEncode([_post('cached-1').toCacheJson()]),
+        _cacheKey: jsonEncode([_post('cached-1').toCacheJson()]),
       });
       final repo = _FakeFeedRepository()..throwOnFetch = true;
       await tester.pumpWidget(_wrap(repo));
@@ -97,7 +114,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
-      'feed_cache_main': jsonEncode([_post('stale').toCacheJson()]),
+      _cacheKey: jsonEncode([_post('stale').toCacheJson()]),
     });
     final repo = _FakeFeedRepository()..pageToReturn = [_post('fresh')];
     await tester.pumpWidget(_wrap(repo));
@@ -165,6 +182,58 @@ void main() {
       expect(find.text('1/3'), findsOneWidget);
     },
   );
+
+  // Regression: _MediaCarousel owns its own copy of the media list so it can
+  // fill in lazily-resolved URLs. Without a didUpdateWidget, the State reused
+  // for whatever post now sits at this index kept painting the previous
+  // post's photos — under the new post's author and timestamp.
+  testWidgets('a refresh that reshuffles the feed repaints each carousel', (
+    tester,
+  ) async {
+    PostMedia mediaOf(String post) => PostMedia(
+      id: 'm-of-$post',
+      position: 0,
+      mediaType: MediaType.image,
+      storagePath: 'posts/author-1/token/$post.jpg',
+      url: 'https://example.invalid/signed?p=$post',
+    );
+
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [
+        _post('old', media: [mediaOf('old')]),
+      ];
+    final container = _container(repo);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(_wrap(repo, container: container));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+          .imageUrl,
+      'https://example.invalid/signed?p=old',
+    );
+
+    // A new post arrives at the top, so index 0's State is reused for it.
+    repo.pageToReturn = [
+      _post('new', media: [mediaOf('new')]),
+      _post('old', media: [mediaOf('old')]),
+    ];
+    container.read(feedRefreshTickProvider.notifier).bump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    final urls = tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .map((w) => w.imageUrl)
+        .toList();
+    expect(urls.first, 'https://example.invalid/signed?p=new');
+    expect(urls, hasLength(2));
+  });
 
   testWidgets('a single-media post shows no position counter', (tester) async {
     final repo = _FakeFeedRepository()

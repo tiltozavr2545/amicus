@@ -8,9 +8,22 @@
          FirebaseMessaging.instance.requestNotificationsPermission() in
          push_notifications.dart. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Auto Backup is on by default, and it sweeps up SharedPreferences —
+         which is exactly where supabase_flutter keeps the session (access and
+         refresh tokens, in plain XML) and where FeedCache keeps cached posts
+         and signed media URLs. Backed up to the user's Drive and restored on
+         another device, that refresh token is a working session for the
+         account without the password ever being involved.
+
+         allowBackup="false" closes cloud backup on every version; the two
+         rule files below close device-to-device transfer on Android 12+,
+         which allowBackup alone does not. -->
     <application
         android:label="Amicus"
         android:name="${applicationName}"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

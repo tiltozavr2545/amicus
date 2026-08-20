@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
+import '../../shared/picker_limit.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
@@ -100,9 +101,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
+    // Not `limit: remaining`: the picker rejects a limit below 2 outright,
+    // which made the 80th photo unreachable. See [pickerLimit].
     final picked = await ImagePicker().pickMultiImage(
       maxWidth: 1600,
-      limit: remaining,
+      limit: pickerLimit(remaining),
     );
     if (picked.isEmpty) return;
 
@@ -267,6 +270,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: 24),
                 TextField(
                   controller: _nameController,
+                  // Matches the `users_name_length` CHECK added in
+                  // 20260820140000, so the cap reads as a full field rather
+                  // than as a database error on save. No counter: unlike the
+                  // composer's 5000, nobody writes a name near this limit.
+                  maxLength: 100,
+                  buildCounter:
+                      (
+                        _, {
+                        required currentLength,
+                        required isFocused,
+                        maxLength,
+                      }) => null,
                   decoration: InputDecoration(labelText: l10n.nameLabel),
                 ),
                 if (nameChanged) ...[
