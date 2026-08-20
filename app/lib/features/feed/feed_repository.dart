@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
+import '../../shared/system_account_id.dart';
 import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
 
@@ -434,6 +435,10 @@ class FeedRepository {
   /// the profile screen's "my posts" list, layered on top of the same RLS
   /// visibility rather than replacing it.
   ///
+  /// The system account stays in `visible_author_ids()` (its profile is still
+  /// reachable directly, via [authorId]) but is excluded here on the
+  /// unscoped call — its posts no longer clutter the general feed.
+  ///
   /// Each post's *first* media slide gets a signed URL resolved eagerly here
   /// (the `media` bucket is private, so a plain public URL wouldn't be
   /// servable) — the rest of a multi-media post's slides are resolved lazily
@@ -449,6 +454,8 @@ class FeedRepository {
         );
     if (authorId != null) {
       query = query.eq('author_id', authorId);
+    } else {
+      query = query.neq('author_id', systemAccountId);
     }
     final filter = keysetFilter(cursor);
     if (filter != null) {

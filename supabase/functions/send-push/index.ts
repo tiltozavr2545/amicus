@@ -29,9 +29,6 @@ const SEND_PUSH_SECRET = Deno.env.get('SEND_PUSH_SECRET')!;
 const APP_TITLE = 'Amicus';
 
 // Four variants per kind so repeat notifications don't read identically.
-// `new_post` covers both the system account and favorited Connections — the
-// account's own display name ("Amicus") already satisfies "say who posted"
-// for itself, so one template set covers both without a separate copy.
 //
 // Keyed by locale first, matching the two locales device_tokens.locale is
 // constrained to (see migration 20260820110000) and the app's own
@@ -45,6 +42,12 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name}: в ленте новый пост',
       'У {author_name} свежий пост, не пропустите',
       'Новости от {author_name} уже в вашей ленте',
+    ],
+    app_update: [
+      'Доступно обновление приложения',
+      'Вышло новое обновление — загляните в Amicus',
+      'Amicus обновился — что нового, смотрите в приложении',
+      'Есть новости об обновлении приложения',
     ],
     inactive_week: [
       'Заскучали без вас — напишите что-нибудь новое',
@@ -77,6 +80,12 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name} just posted something new',
       '{author_name} has a fresh post, don’t miss it',
       'News from {author_name} is in your feed',
+    ],
+    app_update: [
+      'An app update is available',
+      'A new update just landed — check out Amicus',
+      'Amicus was updated — see what’s new in the app',
+      'There’s news about an app update',
     ],
     inactive_week: [
       'We’ve missed you — write something new',
