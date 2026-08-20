@@ -445,7 +445,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationsSectionTitle => 'Notifications';
 
   @override
-  String get notifyAmicusLabel => 'Posts from Amicus';
+  String get notifyAppUpdatesLabel => 'App update announcements';
 
   @override
   String get notifyFavoritesLabel => 'Posts from favorite friends';

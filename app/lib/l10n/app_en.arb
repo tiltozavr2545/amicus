@@ -177,7 +177,7 @@
   "settingsTooltip": "Settings",
   "settingsTitle": "Settings",
   "notificationsSectionTitle": "Notifications",
-  "notifyAmicusLabel": "Posts from Amicus",
+  "notifyAppUpdatesLabel": "App update announcements",
   "notifyFavoritesLabel": "Posts from favorite friends",
   "notifyCommentsLabel": "Comments on your posts and replies to you",
   "notifyDigestLabel": "Digest of posts from everyone else",

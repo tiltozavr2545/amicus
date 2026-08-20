@@ -27,7 +27,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get passwordLabel => 'Пароль';
 
   @override
-  String get nameRequiredError => 'Введи имя';
+  String get nameRequiredError => 'Введите имя';
 
   @override
   String get invalidCredentialsError => 'Неверный email или пароль.';
@@ -59,11 +59,11 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get emailAlreadyRegisteredError =>
-      'Этот email уже зарегистрирован. Попробуй войти.';
+      'Этот email уже зарегистрирован. Попробуйте войти.';
 
   @override
   String confirmationEmailSentMessage(String email) {
-    return 'Письмо со ссылкой для подтверждения отправлено на $email. Перейди по ссылке в письме, потом вернись сюда и войди с этим email и паролем.';
+    return 'Письмо со ссылкой для подтверждения отправлено на $email. Перейдите по ссылке в письме, потом вернитесь сюда и войдите с этим email и паролем.';
   }
 
   @override
@@ -83,7 +83,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get resetPasswordInstructions =>
-      'Введи email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.';
+      'Введите email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.';
 
   @override
   String resetPasswordSuccessMessage(String email) {
@@ -130,11 +130,11 @@ class AppLocalizationsRu extends AppLocalizations {
   String get inviteCodeLabel => 'Код приглашения';
 
   @override
-  String get inviteCodeRequiredError => 'Введи код приглашения';
+  String get inviteCodeRequiredError => 'Введите код приглашения';
 
   @override
   String get inviteCodeNotFoundError =>
-      'Код приглашения не найден. Проверь его и попробуй ещё раз.';
+      'Код приглашения не найден. Проверьте его и попробуйте ещё раз.';
 
   @override
   String get inviteCodeAlreadyUsedError =>
@@ -142,7 +142,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get ownInviteCodeError =>
-      'Это твой собственный код — отправь его кому-нибудь другому.';
+      'Это ваш собственный код — отправьте его кому-нибудь другому.';
 
   @override
   String get activateButton => 'Активировать';
@@ -156,7 +156,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noConnectionsYetMessage =>
-      'Пока нет знакомых — активируй код или создай свой выше';
+      'Пока нет знакомых — активируйте код или создайте свой выше';
 
   @override
   String nowConnectedWithMessage(String name) {
@@ -245,7 +245,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get failedToAddMediaError => 'Некоторые файлы не удалось добавить';
 
   @override
-  String get addTextOrPhotoError => 'Добавь текст, фото или видео';
+  String get addTextOrPhotoError => 'Добавьте текст, фото или видео';
 
   @override
   String get failedToPublishError =>
@@ -272,7 +272,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noPostsYetMessage =>
-      'Пока нет постов от знакомых. Добавь знакомых или напиши первым.';
+      'Пока нет постов от знакомых. Добавьте знакомых или напишите первым.';
 
   @override
   String get addConnectionsButton => 'Добавить знакомых';
@@ -453,20 +453,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get notificationsSectionTitle => 'Уведомления';
 
   @override
-  String get notifyAmicusLabel => 'Уведомления от Amicus';
+  String get notifyAppUpdatesLabel => 'Анонсы обновлений приложения';
 
   @override
-  String get notifyFavoritesLabel => 'Уведомления от постов избранных друзей';
+  String get notifyFavoritesLabel => 'Посты избранных друзей';
 
   @override
-  String get notifyCommentsLabel => 'Уведомления от оставленных комментариев';
+  String get notifyCommentsLabel => 'Комментарии к вашим постам и ответы вам';
 
   @override
-  String get notifyDigestLabel =>
-      'Уведомления о накопившихся постах остальных людей';
+  String get notifyDigestLabel => 'Подборка постов от остальных знакомых';
 
   @override
-  String get notifyInactiveLabel => 'Уведомления о долгой неактивности';
+  String get notifyInactiveLabel => 'Напоминания после недели без постов';
 
   @override
   String get failedToLoadSettingsError =>

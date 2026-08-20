@@ -842,11 +842,11 @@ abstract class AppLocalizations {
   /// **'Notifications'**
   String get notificationsSectionTitle;
 
-  /// No description provided for @notifyAmicusLabel.
+  /// No description provided for @notifyAppUpdatesLabel.
   ///
   /// In en, this message translates to:
-  /// **'Posts from Amicus'**
-  String get notifyAmicusLabel;
+  /// **'App update announcements'**
+  String get notifyAppUpdatesLabel;
 
   /// No description provided for @notifyFavoritesLabel.
   ///

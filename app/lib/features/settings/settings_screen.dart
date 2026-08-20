@@ -173,7 +173,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               SwitchListTile(
-                title: Text(l10n.notifyAmicusLabel),
+                title: Text(l10n.notifyAppUpdatesLabel),
                 value: prefs.systemAccount,
                 onChanged: (value) =>
                     _toggle((p) => p.copyWith(systemAccount: value)),

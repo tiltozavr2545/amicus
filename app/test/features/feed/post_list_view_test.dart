@@ -11,11 +11,16 @@ import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/features/feed/post_list_view.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
-/// Only [fetchPage] needs real behaviour; the rest satisfy the `implements`
-/// contract via `noSuchMethod`, same trick as the other feed screen tests.
+/// Only [fetchPage] and [resolveMediaUrls] need real behaviour; the rest
+/// satisfy the `implements` contract via `noSuchMethod`, same trick as the
+/// other feed screen tests.
 class _FakeFeedRepository implements FeedRepository {
   bool throwOnFetch = false;
   List<Post> pageToReturn = const [];
+
+  /// Every path a carousel asked to have signed, in call order — what the
+  /// prefetch tests assert on.
+  final signedPaths = <String>[];
 
   @override
   Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
@@ -24,8 +29,31 @@ class _FakeFeedRepository implements FeedRepository {
   }
 
   @override
+  Future<Map<String, String>> resolveMediaUrls(
+    List<String> storagePaths,
+  ) async {
+    signedPaths.addAll(storagePaths);
+    return {
+      for (final path in storagePaths) path: 'https://example.invalid/$path',
+    };
+  }
+
+  @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+/// A post's slides, only the first of which arrives already signed — exactly
+/// what [FeedRepository.fetchPage] hands the carousel.
+List<PostMedia> _images(int count) => [
+  for (var i = 0; i < count; i++)
+    PostMedia(
+      id: 'm$i',
+      position: i,
+      mediaType: MediaType.image,
+      storagePath: 'posts/author-1/token/m$i.jpg',
+      url: i == 0 ? 'https://example.invalid/signed?m=0' : null,
+    ),
+];
 
 Post _post(String id, {List<PostMedia> media = const []}) => Post(
   id: id,
@@ -163,17 +191,8 @@ void main() {
   testWidgets(
     'a post with several media items shows a position counter, no dots',
     (tester) async {
-      PostMedia mediaAt(int i) => PostMedia(
-        id: 'm$i',
-        position: i,
-        mediaType: MediaType.image,
-        storagePath: 'posts/author-1/token/m$i.jpg',
-        url: i == 0 ? 'https://example.invalid/signed?m=0' : null,
-      );
       final repo = _FakeFeedRepository()
-        ..pageToReturn = [
-          _post('p1', media: [for (var i = 0; i < 3; i++) mediaAt(i)]),
-        ];
+        ..pageToReturn = [_post('p1', media: _images(3))];
       await tester.pumpWidget(_wrap(repo));
       await tester.pump();
       await tester.pump();
@@ -182,6 +201,100 @@ void main() {
       expect(find.text('1/3'), findsOneWidget);
     },
   );
+
+  // The whole point of the prefetch: the next slide is signed while the
+  // viewer is still looking at the current one, so swiping doesn't start a
+  // round trip the viewer has to wait out.
+  testWidgets('the slide next to the shown one is signed before it is swiped '
+      'to, the rest are not', (tester) async {
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [_post('p1', media: _images(4))];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(repo.signedPaths, ['posts/author-1/token/m1.jpg']);
+    // ...and its image widget is already in the tree — off screen in the
+    // PageView's own cache region (hence `skipOffstage: false`), which is
+    // what gets the bytes downloading before the swipe rather than after it.
+    final urls = tester
+        .widgetList<CachedNetworkImage>(
+          find.byType(CachedNetworkImage, skipOffstage: false),
+        )
+        .map((w) => w.imageUrl);
+    expect(
+      urls,
+      contains('https://example.invalid/posts/author-1/token/m1.jpg'),
+    );
+  });
+
+  // The bug this fixes: a post scrolled out of the list has its carousel
+  // disposed, and the rebuilt one used to start over at photo 1 — so
+  // scrolling down and back lost where you were in every post you passed.
+  testWidgets('a carousel comes back on the slide it was left on', (
+    tester,
+  ) async {
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [
+        for (final id in ['p1', 'p2', 'p3']) _post(id, media: _images(3)),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    await tester.drag(find.byType(PageView).first, const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2/3'), findsOneWidget);
+
+    // Far enough past the first card (taller than the viewport on its own)
+    // to leave the list's cache region behind, so its carousel is really
+    // gone rather than merely off screen.
+    await tester.drag(find.byType(ListView), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.text('2/3'), findsNothing);
+
+    await tester.drag(find.byType(ListView), const Offset(0, 2000));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2/3'), findsOneWidget);
+  });
+
+  // The cache is keyed by post, not by slot in the list: the post that moved
+  // to index 0 must not inherit where the viewer left the post previously
+  // shown there.
+  testWidgets('a remembered position follows its post, not its position in '
+      'the feed', (tester) async {
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [_post('p1', media: _images(3))];
+    final container = _container(repo);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(_wrap(repo, container: container));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    await tester.drag(find.byType(PageView), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2/3'), findsOneWidget);
+
+    // A newer post arrives on top, so index 0's State is reused for it.
+    repo.pageToReturn = [
+      _post('p2', media: _images(3)),
+      _post('p1', media: _images(3)),
+    ];
+    container.read(feedRefreshTickProvider.notifier).bump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    // The new post starts at its own first slide rather than inheriting the
+    // slide the post previously drawn by this State was left on.
+    expect(find.text('1/3'), findsOneWidget);
+    expect(find.text('2/3'), findsNothing);
+  });
 
   // Regression: _MediaCarousel owns its own copy of the media list so it can
   // fill in lazily-resolved URLs. Without a didUpdateWidget, the State reused
