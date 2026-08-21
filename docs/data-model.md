@@ -9,6 +9,12 @@
 `favorite_users`, `device_tokens`, `notification_outbox`,
 `notification_preferences`, `user_activity`.
 
+Задания pg_cron: `drain-notification-outbox` (раз в минуту, дёргает
+send-push — 20260818200000/20260820160000), `inactive-week-nudge` (ежедневно
+в 12:00 UTC — 20260818190000), `purge-abandoned-signups` (ежедневно в 03:40
+UTC, сносит неподтверждённые регистрации старше 30 суток с нулевой
+активностью — 20260822100000).
+
 ## Правило видимости
 
 **Одно правило видимости на весь проект** — `is_author_visible(uuid)`: я сам,
