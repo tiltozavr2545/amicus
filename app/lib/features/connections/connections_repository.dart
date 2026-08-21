@@ -82,35 +82,41 @@ class ConnectionsRepository {
   }
 
   Future<List<Friend>> fetchFriends(String currentUserId) async {
-    final rows = await _client
-        .from('connections')
-        .select(
-          'user_a_id, user_b_id, created_at, '
-          'user_a:users!connections_user_a_id_fkey(name, avatar_path), '
-          'user_b:users!connections_user_b_id_fkey(name, avatar_path)',
-        )
-        .or('user_a_id.eq.$currentUserId,user_b_id.eq.$currentUserId')
-        .order('created_at', ascending: false)
-        .timeout(networkTimeout);
-
-    final mutedIds = await _fetchIdSet(
-      table: 'muted_users',
-      ownerColumn: 'muter_id',
-      otherColumn: 'muted_id',
-      ownerId: currentUserId,
-    );
-    final blockedIds = await _fetchIdSet(
-      table: 'blocked_users',
-      ownerColumn: 'blocker_id',
-      otherColumn: 'blocked_id',
-      ownerId: currentUserId,
-    );
-    final favoriteIds = await _fetchIdSet(
-      table: 'favorite_users',
-      ownerColumn: 'user_id',
-      otherColumn: 'favorite_id',
-      ownerId: currentUserId,
-    );
+    // All four queries are independent, so they go out together rather than
+    // costing this screen three extra serial round trips — the same reasoning
+    // (and the same `Future.wait`) FeedRepository.fetchPage applies to its two
+    // RPCs. This runs again on every ref.invalidate(friendsProvider), i.e.
+    // after each mute/block/favorite tap.
+    final (rows, mutedIds, blockedIds, favoriteIds) = await (
+      _client
+          .from('connections')
+          .select(
+            'user_a_id, user_b_id, created_at, '
+            'user_a:users!connections_user_a_id_fkey(name, avatar_path), '
+            'user_b:users!connections_user_b_id_fkey(name, avatar_path)',
+          )
+          .or('user_a_id.eq.$currentUserId,user_b_id.eq.$currentUserId')
+          .order('created_at', ascending: false)
+          .timeout(networkTimeout),
+      _fetchIdSet(
+        table: 'muted_users',
+        ownerColumn: 'muter_id',
+        otherColumn: 'muted_id',
+        ownerId: currentUserId,
+      ),
+      _fetchIdSet(
+        table: 'blocked_users',
+        ownerColumn: 'blocker_id',
+        otherColumn: 'blocked_id',
+        ownerId: currentUserId,
+      ),
+      _fetchIdSet(
+        table: 'favorite_users',
+        ownerColumn: 'user_id',
+        otherColumn: 'favorite_id',
+        ownerId: currentUserId,
+      ),
+    ).wait;
 
     return rows.map((row) {
       final isCurrentUserA = row['user_a_id'] == currentUserId;

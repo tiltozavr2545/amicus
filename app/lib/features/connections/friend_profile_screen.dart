@@ -5,6 +5,7 @@ import '../../l10n/app_localizations.dart';
 import '../feed/post_list_view.dart';
 import '../profile/profile_photos_screen.dart';
 import '../profile/profile_repository.dart';
+import '../../shared/sized_memory_image.dart';
 
 final _friendPhotosProvider = FutureProvider.autoDispose
     .family<List<ProfilePhoto>, String>((ref, friendId) {
@@ -64,7 +65,7 @@ class FriendProfileScreen extends ConsumerWidget {
               child: CircleAvatar(
                 radius: 72,
                 backgroundImage: avatarBytes != null
-                    ? MemoryImage(avatarBytes)
+                    ? sizedMemoryImage(context, avatarBytes, logicalWidth: 144)
                     : null,
                 child: avatarBytes == null
                     ? const Icon(Icons.person, size: 58)

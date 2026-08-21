@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
@@ -58,8 +59,6 @@ class PendingPhoto {
   final Uint8List bytes;
   final String ext;
 }
-
-const _bucket = 'media';
 
 /// Storage path for one profile photo. Reuses the `avatars/<uid>/…` prefix
 /// the existing avatar storage policies already scope SELECT/INSERT/
@@ -129,7 +128,7 @@ class ProfileRepository {
     for (final item in items) {
       await uploadTolerant(
         _client,
-        bucket: _bucket,
+        bucket: mediaBucket,
         path: profilePhotoPath(
           userId: userId,
           photoClientToken: item.photoClientToken,
@@ -178,10 +177,7 @@ class ProfileRepository {
   /// The whole gallery has to be passed, not a slice: positions are rewritten
   /// as a dense 0..N-1 and a partial reorder would collide with the rows left
   /// out. The server rejects a mismatched set with `PT422`.
-  Future<void> reorderPhotos({
-    required String userId,
-    required List<ProfilePhoto> order,
-  }) async {
+  Future<void> reorderPhotos({required List<ProfilePhoto> order}) async {
     if (order.isEmpty) return;
     await _client
         .rpc(
@@ -191,27 +187,45 @@ class ProfileRepository {
         .timeout(networkTimeout);
   }
 
-  /// Removes [photos] from the gallery: their storage objects, then their
-  /// rows. `users.avatar_path` is re-synced automatically by the same DB
+  /// Removes [photos] from the gallery: their rows, then their storage
+  /// objects. `users.avatar_path` is re-synced automatically by the same DB
   /// trigger that handles [addPhotos]/[reorderPhotos].
+  ///
+  /// Rows first, deliberately. With the objects going first, a `.timeout()`
+  /// on the row delete (which stops waiting without cancelling, so it is
+  /// routine) left every selected row still listed and still naming bytes that
+  /// were already gone — and if the selection included position 0, the sync
+  /// trigger had never run, so `users.avatar_path` kept pointing at a deleted
+  /// object and the user's avatar turned into the grey placeholder in their
+  /// own profile, in every friend's Connections list and on every one of their
+  /// posts. This order fails the other way: unreferenced bytes nobody sees.
   Future<void> deletePhotos({required List<ProfilePhoto> photos}) async {
     if (photos.isEmpty) return;
-    await _client.storage
-        .from(_bucket)
-        .remove(photos.map((p) => p.storagePath).toList())
-        .timeout(networkTimeout);
     await _client
         .from('profile_photos')
         .delete()
         .inFilter('id', photos.map((p) => p.id).toList())
         .timeout(networkTimeout);
+    try {
+      await _client.storage
+          .from(mediaBucket)
+          .remove(photos.map((p) => p.storagePath).toList())
+          .timeout(networkTimeout);
+    } catch (_) {
+      // The gallery is already correct for everyone; a failure here is an
+      // orphan in the bucket, not a broken reference, and must not report the
+      // delete as failed.
+    }
   }
 
   /// The `media` bucket is private (RLS-controlled); the SDK's storage
   /// client automatically attaches the current user's access token, so a
   /// plain SDK download respects the same policies as any other request.
   Future<Uint8List> downloadAvatar(String path) {
-    return _client.storage.from(_bucket).download(path).timeout(networkTimeout);
+    return _client.storage
+        .from(mediaBucket)
+        .download(path)
+        .timeout(networkTimeout);
   }
 }
 

@@ -1,13 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../auth/auth_providers.dart';
 import '../feed/carousel_position_cache.dart';
 import '../feed/feed_cache.dart';
 import '../notifications/push_notifications_repository.dart';
-
-const _bucket = 'media';
 
 class AccountRepository {
   AccountRepository(
@@ -48,10 +47,26 @@ class AccountRepository {
   /// Storage isn't reachable from the DB-side FK cascade that
   /// `delete_own_account()` relies on for everything else (see that
   /// migration), so this user's profile photos and post media are removed
-  /// here first, best-effort — a leftover object becomes unreachable the
-  /// moment the RPC below commits (its visibility policies all require
-  /// rows — `connections`, `users` — that no longer exist), not a real leak,
-  /// so a failed cleanup here must not block the deletion itself.
+  /// from the bucket separately, best-effort — a leftover object is an orphan
+  /// nothing can reach, not a real leak, so a failed cleanup must not block
+  /// the deletion itself.
+  ///
+  /// Order matters, and it used to be the other way round. Removing the
+  /// objects *before* the RPC meant that any failure of the RPC — a cascade
+  /// over posts/comments/reactions/tokens on a cold connection overrunning
+  /// [networkTimeout] is enough — left a perfectly live account whose every
+  /// avatar and every photo/video in every post had already been destroyed,
+  /// for the user's Connections as much as for the user. Nothing re-uploads
+  /// them. So: read the paths first (their rows are about to cascade away),
+  /// then delete the account, then clean the bucket.
+  ///
+  /// That order is only available because the storage DELETE policies
+  /// (20260707222025, 20260708172235) test nothing but the path prefix
+  /// against `auth.uid()` — unlike the SELECT policies, they do not read
+  /// `users` or `connections`, and the access token stays valid until it
+  /// expires regardless of whether the row behind it still exists. The
+  /// bucket therefore remains writable for this user's own paths after the
+  /// account row is gone.
   ///
   /// The gallery is enumerated from `profile_photos`, not from
   /// `users.avatar_path`: that column names only the *top* photo (position 0,
@@ -66,9 +81,8 @@ class AccountRepository {
       // Best-effort, same as signOut above.
     }
 
+    final paths = <String>{};
     try {
-      final paths = <String>{};
-
       final profileRow = await _client
           .from('users')
           .select('avatar_path')
@@ -105,18 +119,26 @@ class AccountRepository {
           if (posterPath != null) paths.add(posterPath);
         }
       }
-
-      if (paths.isNotEmpty) {
-        await _client.storage
-            .from(_bucket)
-            .remove(paths.toList())
-            .timeout(networkTimeout);
-      }
     } catch (_) {
-      // Best-effort cleanup, see the doc comment above.
+      // Best-effort enumeration: an incomplete path list costs orphaned bytes,
+      // never a blocked deletion. See the doc comment above.
     }
 
+    // The point of no return, and deliberately the first destructive step:
+    // until this commits, nothing of the user's has been touched, so a failure
+    // here leaves them exactly as they were.
     await _client.rpc('delete_own_account').timeout(networkTimeout);
+
+    if (paths.isNotEmpty) {
+      try {
+        await _client.storage
+            .from(mediaBucket)
+            .remove(paths.toList())
+            .timeout(networkTimeout);
+      } catch (_) {
+        // Best-effort cleanup, see the doc comment above.
+      }
+    }
 
     // Not best-effort, and not conditional on the cleanup above: the cached
     // pages are this account's content sitting in plain SharedPreferences,

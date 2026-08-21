@@ -106,29 +106,49 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   /// The feed only eagerly resolves a post's *first* slide (see
   /// [FeedRepository.fetchPage]) — the composer needs every existing item
   /// previewable at once, so it resolves whatever's still missing right away.
+  /// Every missing path is signed in ONE request, via
+  /// [FeedRepository.resolveMediaUrls] — the same batch helper the carousel
+  /// already uses (`post_list_view.dart`). Signing them one at a time meant
+  /// opening the editor on a full 20-item post fired up to 40 separate
+  /// `createSignedUrl` calls, two of them sequential within every video slot.
   Future<void> _resolveExistingMediaUrls() async {
-    final repo = ref.read(feedRepositoryProvider);
-    final resolved = await Future.wait(
-      _slots.map((slot) async {
-        if (slot is! _ExistingSlot) return slot;
-        final media = slot.media;
-        final needsUrl = media.url == null;
-        final needsPosterUrl =
-            media.posterPath != null && media.posterUrl == null;
-        if (!needsUrl && !needsPosterUrl) return slot;
-        final url = needsUrl
-            ? await repo.resolveMediaUrl(media.storagePath)
-            : media.url;
-        final posterUrl = needsPosterUrl
-            ? await repo.resolveMediaUrl(media.posterPath!)
-            : media.posterUrl;
-        return _ExistingSlot(
-          slot.key,
-          media.copyWith(url: url, posterUrl: posterUrl),
-        );
-      }),
-    );
+    final missing = <String>{};
+    for (final slot in _slots) {
+      if (slot is! _ExistingSlot) continue;
+      final media = slot.media;
+      if (media.url == null) missing.add(media.storagePath);
+      if (media.posterPath != null && media.posterUrl == null) {
+        missing.add(media.posterPath!);
+      }
+    }
+    if (missing.isEmpty) return;
+
+    final signed = await ref
+        .read(feedRepositoryProvider)
+        .resolveMediaUrls(missing.toList());
     if (!mounted) return;
+
+    final resolved = [
+      for (final slot in _slots)
+        if (slot is _ExistingSlot)
+          _ExistingSlot(
+            slot.key,
+            slot.media.copyWith(
+              // A path the storage API refused to sign is absent from the
+              // result; keeping the existing (null) value leaves that slide
+              // unresolved rather than failing the whole editor.
+              url: slot.media.url ?? signed[slot.media.storagePath],
+              posterUrl:
+                  slot.media.posterUrl ??
+                  (slot.media.posterPath == null
+                      ? null
+                      : signed[slot.media.posterPath!]),
+            ),
+          )
+        else
+          slot,
+    ];
+
     setState(() {
       _slots
         ..clear()
@@ -211,14 +231,18 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             failed = true;
             continue;
           }
-          final bytes = await file.readAsBytes();
+          // No readAsBytes for video: the clip is read at upload time instead
+          // (see uploadTolerantFile), so only the one being sent is resident
+          // rather than all 20 slots at once for the whole session. Nothing on
+          // screen needs those bytes — this composer's preview and the feed's
+          // tap-to-play slide both show the poster frame.
           newSlots.add(
             _PickedSlot(
               mediaClientToken,
               PendingMedia(
                 mediaClientToken: mediaClientToken,
                 mediaType: MediaType.video,
-                bytes: bytes,
+                source: MediaFile(file.path),
                 ext: fileExtension(file.name),
                 posterBytes: posterBytes,
               ),
@@ -233,7 +257,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               PendingMedia(
                 mediaClientToken: mediaClientToken,
                 mediaType: MediaType.image,
-                bytes: bytes,
+                source: MediaBytes(bytes),
                 ext: fileExtension(file.name),
               ),
               bytes,
@@ -320,6 +344,11 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
+      // Guarded like the `finally` below. Nothing stops the user pressing back
+      // while an upload is in flight — the composer shows no warning and there
+      // is no PopScope — so this State can be gone by the time a timeout
+      // lands, and an unguarded setState then throws an unhandled async error.
+      if (!mounted) return;
       setState(
         () => _errorMessage = _isEditing
             ? l10n.failedToSaveChangesError

@@ -5,7 +5,13 @@ import '../features/connections/friend_profile_screen.dart';
 import '../features/profile/profile_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../shared/system_account_id.dart';
+import '../shared/tap_streak.dart';
 import 'theme_mode_provider.dart';
+
+/// Counts flips of the switch below. A plain [Provider] rather than state on
+/// the widget: this sits in the top bar and is rebuilt on every frame that
+/// touches the theme, so a field would reset constantly.
+final _toggleStreakProvider = Provider<TapStreak>((ref) => TapStreak(6));
 
 /// Light/dark toggle shown in the top bar's actions, opposite the title.
 class ThemeToggleSwitch extends ConsumerWidget {
@@ -15,9 +21,18 @@ class ThemeToggleSwitch extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    final profile = await ref
-        .read(profileRepositoryProvider)
-        .fetchProfile(systemAccountId);
+    // Swallowed on purpose: this is a side path off a switch whose actual job
+    // (flipping the theme) has already succeeded, and it has no error surface
+    // of its own. Without the guard a flaky connection turned an unhandled
+    // `fetchProfile` throw loose from a top-bar widget.
+    final Profile profile;
+    try {
+      profile = await ref
+          .read(profileRepositoryProvider)
+          .fetchProfile(systemAccountId);
+    } catch (_) {
+      return;
+    }
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -44,12 +59,10 @@ class ThemeToggleSwitch extends ConsumerWidget {
       child: Switch(
         value: isDark,
         onChanged: (_) async {
-          final streakComplete = await ref
-              .read(themeModeProvider.notifier)
-              .toggle(systemIsDark);
-          if (streakComplete && context.mounted) {
-            await _openSystemAccountProfile(context, ref);
-          }
+          await ref.read(themeModeProvider.notifier).toggle(systemIsDark);
+          if (!ref.read(_toggleStreakProvider).record()) return;
+          if (!context.mounted) return;
+          await _openSystemAccountProfile(context, ref);
         },
         thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
           (states) => Icon(

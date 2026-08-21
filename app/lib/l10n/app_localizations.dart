@@ -140,6 +140,24 @@ abstract class AppLocalizations {
   /// **'Enter your name'**
   String get nameRequiredError;
 
+  /// No description provided for @emailRequiredError.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email'**
+  String get emailRequiredError;
+
+  /// No description provided for @invalidEmailError.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the email address — it doesn\'t look right.'**
+  String get invalidEmailError;
+
+  /// No description provided for @undeliverableEmailError.
+  ///
+  /// In en, this message translates to:
+  /// **'This domain can\'t receive mail. Enter a real email address.'**
+  String get undeliverableEmailError;
+
   /// No description provided for @invalidCredentialsError.
   ///
   /// In en, this message translates to:

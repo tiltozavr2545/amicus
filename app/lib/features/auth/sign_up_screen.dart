@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/auth_error_message.dart';
+import '../../shared/email_validation.dart';
 import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
@@ -32,11 +33,20 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
+    final l10n = AppLocalizations.of(context)!;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      setState(
-        () => _errorMessage = AppLocalizations.of(context)!.nameRequiredError,
-      );
+      setState(() => _errorMessage = l10n.nameRequiredError);
+      return;
+    }
+    // Checked before the request, not after it. A signup to a domain that
+    // cannot receive mail — `example.com` and friends are reserved by RFC 2606
+    // exactly so they never can — leaves an account that is never confirmed
+    // and can never be signed into, and the only sign of trouble is a
+    // confirmation link that never arrives.
+    final emailProblem = validateEmail(_emailController.text);
+    if (emailProblem != null) {
+      setState(() => _errorMessage = emailProblemMessage(l10n, emailProblem));
       return;
     }
     setState(() {
@@ -58,22 +68,32 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             data: {'name': name},
           )
           .timeout(networkTimeout);
-      // Supabase won't throw for an already-registered email (that would
-      // let an attacker enumerate accounts) — it silently returns a user
-      // with no identities instead. That's the only signal we get.
-      if (response.user != null &&
-          (response.user!.identities?.isEmpty ?? false)) {
-        setState(
-          () => _errorMessage = AppLocalizations.of(
-            context,
-          )!.emailAlreadyRegisteredError,
-        );
-        return;
-      }
+      // An already-registered address is deliberately NOT distinguished here.
+      //
+      // Supabase won't throw for one — it returns a user with no identities,
+      // and it does that precisely so the response cannot be used to
+      // enumerate accounts. Reading that signal back out and printing "this
+      // email is already registered" handed the oracle straight back: point
+      // the app (or a replay of this same call — there is no captcha
+      // configured) at a list of candidate addresses and get a clean yes/no
+      // per address, which for a private social app discloses membership.
+      //
+      // So both cases fall through to the same message. It is also what
+      // actually happened server-side: Supabase sends the existing account a
+      // "someone tried to sign up with your address" mail, so "check your
+      // inbox" is accurate for the real owner and uninformative to anyone
+      // else. Someone who genuinely forgot they had an account is served by
+      // the forgot-password screen, which makes the same non-disclosure.
+      //
+      // (`authErrorMessage` still maps `user_already_exists`/`email_exists` to
+      // a distinct message. That path is only reachable when the server itself
+      // chooses to throw — i.e. with email confirmation turned off — and at
+      // that point the disclosure is the server's decision, not this screen's.)
+      if (!mounted) return;
       // With email confirmation required, signUp() succeeds but doesn't
       // return a session — without this message the screen would just sit
       // there with no sign anything happened.
-      if (response.session == null && mounted) {
+      if (response.session == null) {
         setState(
           () => _successMessage = AppLocalizations.of(
             context,
@@ -81,11 +101,17 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         );
       }
     } on AuthException catch (e) {
+      // Guarded like the `finally` below: leaving this screen mid-request
+      // (the "Forgot password?" link replaces the route via context.go, which
+      // disposes this State) otherwise lands a setState and an
+      // AppLocalizations lookup on a defunct element.
+      if (!mounted) return;
       setState(
         () =>
             _errorMessage = authErrorMessage(AppLocalizations.of(context)!, e),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(
         () => _errorMessage = AppLocalizations.of(context)!.unexpectedError,
       );

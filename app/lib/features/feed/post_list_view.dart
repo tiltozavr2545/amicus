@@ -202,8 +202,14 @@ class _PostListViewState extends ConsumerState<PostListView> {
     await _loadMore();
   }
 
-  Future<void> _deletePost(int index) async {
-    final post = _posts[index];
+  // Takes the post itself, not its index. The callbacks below are built in
+  // `itemBuilder` and then live inside the popup menu's own route, so they
+  // outlive the list they were built against: `_loadMore` replaces `_posts`
+  // wholesale on the first page (the cache preview being superseded by the
+  // network page), and an index captured before that points at a different
+  // post afterwards — or past the end. The write side already defended itself
+  // by removing by id; the read on entry did not.
+  Future<void> _deletePost(Post post) async {
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -245,8 +251,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
     }
   }
 
-  Future<void> _editPost(int index) async {
-    final post = _posts[index];
+  Future<void> _editPost(Post post) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => CreatePostScreen(existingPost: post)),
     );
@@ -261,11 +266,16 @@ class _PostListViewState extends ConsumerState<PostListView> {
   /// Tapping a reaction toggles it: tapping the one you already have clears it,
   /// tapping a different one switches to it. Applied optimistically, rolled
   /// back on error.
-  Future<void> _react(int index, ReactionType type) async {
-    final post = _posts[index];
-    final userId = ref.read(currentUserIdProvider)!;
+  Future<void> _react(Post post, ReactionType type) async {
+    final userId = ref.read(currentUserIdProvider);
+    // The session can end while this list is still mounted — sign-out
+    // redirects the router, it does not tear this widget down synchronously.
+    // A tap landing in that window has nobody to attribute the reaction to.
+    if (userId == null) return;
     final next = post.myReaction == type ? null : type;
-    setState(() => _posts[index] = applyReaction(post, next));
+    final at = _posts.indexWhere((p) => p.id == post.id);
+    if (at == -1) return;
+    setState(() => _posts[at] = applyReaction(post, next));
     try {
       final repo = ref.read(feedRepositoryProvider);
       if (next == null) {
@@ -337,13 +347,19 @@ class _PostListViewState extends ConsumerState<PostListView> {
                       : const SizedBox.shrink();
                 }
                 final post = _posts[index];
-                final currentUserId = ref.read(currentUserIdProvider)!;
+                // Not `!`: the session can clear while this list is still
+                // mounted (see initState), and a rebuild in that window would
+                // otherwise throw a null-check error out of `build` — a red
+                // screen instead of a clean bounce to sign-in. No id matches
+                // no author, which is the right answer for "is this mine".
+                final currentUserId = ref.read(currentUserIdProvider);
                 return _PostCard(
                   post: post,
-                  isOwnPost: post.authorId == currentUserId,
-                  onReact: (type) => _react(index, type),
-                  onEdit: () => _editPost(index),
-                  onDelete: () => _deletePost(index),
+                  isOwnPost:
+                      currentUserId != null && post.authorId == currentUserId,
+                  onReact: (type) => _react(post, type),
+                  onEdit: () => _editPost(post),
+                  onDelete: () => _deletePost(post),
                   onOpenComments: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => CommentsScreen(postId: post.id),

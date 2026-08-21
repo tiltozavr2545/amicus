@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/auth_error_message.dart';
+import '../../shared/email_validation.dart';
 import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
@@ -29,6 +30,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   Future<void> _sendResetEmail() async {
+    // Same pre-flight as sign-up: this call sends mail too, so an address
+    // that provably can't receive it is worth catching here rather than
+    // spending a round trip on. Syntax only tells the user nothing about who
+    // has an account — the screen's own non-disclosure is unaffected.
+    final emailProblem = validateEmail(_emailController.text);
+    if (emailProblem != null) {
+      setState(
+        () => _errorMessage = emailProblemMessage(
+          AppLocalizations.of(context)!,
+          emailProblem,
+        ),
+      );
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -57,11 +72,17 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         );
       }
     } on AuthException catch (e) {
+      // Guarded like the `finally` below: leaving this screen mid-request
+      // disposes this State, and a setState (or an AppLocalizations lookup)
+      // on a defunct element is a silent no-op in release — the error would
+      // simply never appear.
+      if (!mounted) return;
       setState(
         () =>
             _errorMessage = authErrorMessage(AppLocalizations.of(context)!, e),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(
         () => _errorMessage = AppLocalizations.of(context)!.unexpectedError,
       );

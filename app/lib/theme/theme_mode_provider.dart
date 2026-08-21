@@ -2,17 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../shared/tap_streak.dart';
+
 const _themeModePrefsKey = 'theme_mode';
 
 /// Light/dark toggle state, persisted across app restarts. Starts by
 /// following the system theme; [_load] then overrides it once a previously
 /// toggled preference is read. Once the user flips the switch, that explicit
 /// choice sticks instead of following the system setting.
-const _toggleStreakTarget = 6;
-
 class ThemeModeNotifier extends Notifier<ThemeMode> {
-  int _toggleStreak = 0;
-
   @override
   ThemeMode build() {
     _load();
@@ -33,23 +31,18 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   /// switch reflects the system brightness rather than an explicit choice —
   /// toggling from there should flip away from whatever is on screen now.
   ///
-  /// Returns true once every [_toggleStreakTarget]th consecutive call, then
-  /// resets the count — lets the caller react to a run of toggles without
-  /// this notifier knowing anything about what that reaction is.
-  Future<bool> toggle(bool systemIsDark) async {
+  /// Flips and persists, and that is all it does. It used to also count
+  /// consecutive calls and return a boolean meaning "the user flipped this six
+  /// times", which made the return type of a theme setter an event channel and
+  /// tied this file to whatever consumed that event. The counting now lives in
+  /// [TapStreak], owned by the widget that cares.
+  Future<void> toggle(bool systemIsDark) async {
     final isDark =
         state == ThemeMode.dark || (state == ThemeMode.system && systemIsDark);
     final next = isDark ? ThemeMode.light : ThemeMode.dark;
     state = next;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_themeModePrefsKey, next.name);
-
-    _toggleStreak++;
-    if (_toggleStreak >= _toggleStreakTarget) {
-      _toggleStreak = 0;
-      return true;
-    }
-    return false;
   }
 }
 

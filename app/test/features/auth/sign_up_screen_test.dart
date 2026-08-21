@@ -54,4 +54,58 @@ void main() {
 
     expect(find.text('Enter your name'), findsOneWidget);
   });
+
+  // Same property the name guard relies on, and what makes these worth having:
+  // no Supabase client is registered in this ProviderScope, so if the check
+  // ever stopped running before signUp() the call would blow up instead of
+  // showing a message. A passing test is therefore proof nothing was sent.
+  testWidgets('A reserved domain is rejected before anything is sent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap());
+
+    await tester.enterText(find.byType(TextField).at(0), 'Test User');
+    await tester.enterText(
+      find.byType(TextField).at(1),
+      'testuser@example.com',
+    );
+    await tester.enterText(find.byType(TextField).at(2), 'password123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign up'));
+    await tester.pump();
+
+    expect(
+      find.text("This domain can't receive mail. Enter a real email address."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('A malformed address is rejected before anything is sent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap());
+
+    await tester.enterText(find.byType(TextField).at(0), 'Test User');
+    await tester.enterText(find.byType(TextField).at(1), 'not-an-email');
+    await tester.enterText(find.byType(TextField).at(2), 'password123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign up'));
+    await tester.pump();
+
+    expect(
+      find.text("Check the email address \u2014 it doesn't look right."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('An empty email is rejected before anything is sent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap());
+
+    await tester.enterText(find.byType(TextField).at(0), 'Test User');
+    await tester.enterText(find.byType(TextField).at(2), 'password123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign up'));
+    await tester.pump();
+
+    expect(find.text('Enter your email'), findsOneWidget);
+  });
 }
