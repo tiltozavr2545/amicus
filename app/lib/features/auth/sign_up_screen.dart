@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/auth_error_message.dart';
+import '../../shared/email_validation.dart';
 import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
 
@@ -32,11 +33,20 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
+    final l10n = AppLocalizations.of(context)!;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      setState(
-        () => _errorMessage = AppLocalizations.of(context)!.nameRequiredError,
-      );
+      setState(() => _errorMessage = l10n.nameRequiredError);
+      return;
+    }
+    // Checked before the request, not after it. A signup to a domain that
+    // cannot receive mail — `example.com` and friends are reserved by RFC 2606
+    // exactly so they never can — leaves an account that is never confirmed
+    // and can never be signed into, and the only sign of trouble is a
+    // confirmation link that never arrives.
+    final emailProblem = validateEmail(_emailController.text);
+    if (emailProblem != null) {
+      setState(() => _errorMessage = emailProblemMessage(l10n, emailProblem));
       return;
     }
     setState(() {

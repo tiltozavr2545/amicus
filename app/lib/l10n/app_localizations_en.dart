@@ -30,6 +30,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nameRequiredError => 'Enter your name';
 
   @override
+  String get emailRequiredError => 'Enter your email';
+
+  @override
+  String get invalidEmailError =>
+      'Check the email address — it doesn\'t look right.';
+
+  @override
+  String get undeliverableEmailError =>
+      'This domain can\'t receive mail. Enter a real email address.';
+
+  @override
   String get invalidCredentialsError => 'Incorrect email or password.';
 
   @override

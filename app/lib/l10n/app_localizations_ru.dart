@@ -30,6 +30,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String get nameRequiredError => 'Введите имя';
 
   @override
+  String get emailRequiredError => 'Введите email';
+
+  @override
+  String get invalidEmailError => 'Проверьте адрес — он выглядит неправильно.';
+
+  @override
+  String get undeliverableEmailError =>
+      'На этот домен нельзя отправить письмо. Укажите настоящий адрес.';
+
+  @override
   String get invalidCredentialsError => 'Неверный email или пароль.';
 
   @override
