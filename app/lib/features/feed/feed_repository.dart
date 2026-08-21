@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
@@ -952,36 +953,27 @@ class FeedRepository {
   /// storage path, plus video poster paths — the caller already has these on
   /// the loaded [Post.media]) is removed separately, in one batch call.
   ///
-  /// Row first, objects second — the same rule [updatePost] states and this
-  /// method used to break. With the objects going first, a delete that lost
-  /// its connection between the two calls left the row and its `post_media`
-  /// alive and pointing at bytes that no longer existed: a permanently broken
-  /// image slot in the feed of every Connection, not just the author's own,
-  /// self-healing only if the author happened to retry. The other order costs
-  /// unreferenced bytes in the bucket, which nobody ever sees.
+  /// Ordering — and the reason for it — lives in [deleteRowsThenObjects].
+  /// The storage DELETE policy matches on the `posts/<uid>/…` path alone, so
+  /// the cleanup stays permitted after the row is gone.
   Future<void> deletePost({
     required String postId,
     List<String> mediaStoragePaths = const [],
-  }) async {
-    await _client
-        .from('posts')
-        .delete()
-        .eq('id', postId)
-        .timeout(networkTimeout);
-    if (mediaStoragePaths.isNotEmpty) {
-      // Best-effort: the post is already gone for everyone, and the storage
-      // DELETE policy matches on the `posts/<uid>/…` path alone, so this stays
-      // permitted with the row deleted. Failing here must not resurrect an
-      // error for a delete that has already succeeded.
-      try {
+  }) {
+    return deleteRowsThenObjects(
+      rows: () => _client
+          .from('posts')
+          .delete()
+          .eq('id', postId)
+          .timeout(networkTimeout),
+      objects: () async {
+        if (mediaStoragePaths.isEmpty) return;
         await _client.storage
             .from(mediaBucket)
             .remove(mediaStoragePaths)
             .timeout(networkTimeout);
-      } catch (_) {
-        // Orphaned bytes, not a broken post.
-      }
-    }
+      },
+    );
   }
 
   /// Deletes a comment of the current user's. Whether the row is removed or

@@ -50,9 +50,8 @@ class FriendProfileScreen extends ConsumerWidget {
     final avatarBytes = avatarPath == null
         ? null
         : ref.watch(avatarBytesProvider(avatarPath!)).value;
-    final photos =
-        ref.watch(_friendPhotosProvider(friendId)).value ??
-        const <ProfilePhoto>[];
+    final photosAsync = ref.watch(_friendPhotosProvider(friendId));
+    final photos = photosAsync.value ?? const <ProfilePhoto>[];
 
     final header = Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -73,6 +72,17 @@ class FriendProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
+          // Same reasoning as ProfileScreen: without this, a failed load looks
+          // exactly like a friend who has posted no photos — the avatar simply
+          // does not open.
+          if (photosAsync.hasError) ...[
+            const SizedBox(height: 12),
+            Text(
+              l10n.failedToLoadPhotosError,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
           const SizedBox(height: 24),
           const Divider(height: 1),
           const SizedBox(height: 16),
