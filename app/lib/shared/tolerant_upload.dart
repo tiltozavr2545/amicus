@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,12 +25,37 @@ Future<void> uploadTolerant(
   required String bucket,
   required String path,
   required Uint8List bytes,
+}) {
+  return _tolerant(() => client.storage.from(bucket).uploadBinary(path, bytes));
+}
+
+/// Reads [file] and uploads it, with the same 409 tolerance.
+///
+/// Deliberately NOT `storage.upload(path, File)`, which looks like the
+/// streaming call and is not one: in storage_client 2.6.0 that path runs
+/// `file.readAsBytesSync()` (`src/fetch.dart`, `_handleFileRequest`) and then
+/// hands the result to `MultipartFile.fromBytes` — the very same bytes in
+/// memory as `uploadBinary`, except read *synchronously* on the calling
+/// isolate. For a 100 MB clip that is a frozen UI, so it would be strictly
+/// worse than what it replaced.
+///
+/// The win is therefore in *when* the read happens, not in avoiding it. The
+/// clip is materialised here, during its own upload, and released after —
+/// instead of being read at pick time and held for the whole composer
+/// session alongside up to 19 others.
+Future<void> uploadTolerantFile(
+  SupabaseClient client, {
+  required String bucket,
+  required String path,
+  required File file,
 }) async {
+  final bytes = await file.readAsBytes();
+  await uploadTolerant(client, bucket: bucket, path: path, bytes: bytes);
+}
+
+Future<void> _tolerant(Future<String> Function() upload) async {
   try {
-    await client.storage
-        .from(bucket)
-        .uploadBinary(path, bytes)
-        .timeout(networkTimeout);
+    await upload().timeout(networkTimeout);
   } on StorageException catch (e) {
     if (e.statusCode != '409') rethrow;
   }

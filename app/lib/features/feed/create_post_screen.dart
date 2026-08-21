@@ -231,14 +231,18 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             failed = true;
             continue;
           }
-          final bytes = await file.readAsBytes();
+          // No readAsBytes for video: the clip is read at upload time instead
+          // (see uploadTolerantFile), so only the one being sent is resident
+          // rather than all 20 slots at once for the whole session. Nothing on
+          // screen needs those bytes — this composer's preview and the feed's
+          // tap-to-play slide both show the poster frame.
           newSlots.add(
             _PickedSlot(
               mediaClientToken,
               PendingMedia(
                 mediaClientToken: mediaClientToken,
                 mediaType: MediaType.video,
-                bytes: bytes,
+                source: MediaFile(file.path),
                 ext: fileExtension(file.name),
                 posterBytes: posterBytes,
               ),
@@ -253,7 +257,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               PendingMedia(
                 mediaClientToken: mediaClientToken,
                 mediaType: MediaType.image,
-                bytes: bytes,
+                source: MediaBytes(bytes),
                 ext: fileExtension(file.name),
               ),
               bytes,

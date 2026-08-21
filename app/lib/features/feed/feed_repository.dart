@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -334,11 +335,40 @@ class Comment {
 /// One picked-but-not-yet-uploaded photo or video, held by the composer
 /// screen's local state. Distinct from [PostMedia] (a *server* row): this
 /// models a pending upload, before it has a `post_media` id at all.
+/// Where a picked item's payload lives until it is uploaded.
+///
+/// Images are held as bytes because the composer paints them anyway (they are
+/// downscaled to `maxWidth: 1600` at pick time, so a few hundred KB each).
+/// Video is held as a path: it is never transcoded, a 60 s 1080p clip is
+/// 50–100 MB, and nothing on screen needs its bytes — the composer preview and
+/// the feed both show the poster frame.
+///
+/// This bounds *concurrent* residency, not the read itself. Every upload path
+/// available in storage_client 2.6.0 ends in `MultipartFile.fromBytes`, so a
+/// clip is in memory while it uploads no matter what (see
+/// [uploadTolerantFile]). What changes is that it is read when its turn comes
+/// and dropped afterwards, instead of all 20 slots being read at pick time and
+/// held for the whole composer session — which is where the hundreds of
+/// megabytes to over a gigabyte came from.
+sealed class MediaSource {
+  const MediaSource();
+}
+
+class MediaBytes extends MediaSource {
+  const MediaBytes(this.bytes);
+  final Uint8List bytes;
+}
+
+class MediaFile extends MediaSource {
+  const MediaFile(this.path);
+  final String path;
+}
+
 class PendingMedia {
   const PendingMedia({
     required this.mediaClientToken,
     required this.mediaType,
-    required this.bytes,
+    required this.source,
     required this.ext,
     this.posterBytes,
   });
@@ -348,7 +378,7 @@ class PendingMedia {
   /// storage path (and the retry-idempotency built on it) deterministic.
   final String mediaClientToken;
   final MediaType mediaType;
-  final Uint8List bytes;
+  final MediaSource source;
   final String ext;
 
   /// JPEG poster frame, generated client-side at pick time. Required for
@@ -612,19 +642,30 @@ class FeedRepository {
   Future<void> _uploadTolerant(String path, Uint8List bytes) =>
       uploadTolerant(_client, bucket: mediaBucket, path: path, bytes: bytes);
 
+  Future<void> _uploadSource(String path, MediaSource source) =>
+      switch (source) {
+        MediaBytes(:final bytes) => _uploadTolerant(path, bytes),
+        MediaFile(path: final sourcePath) => uploadTolerantFile(
+          _client,
+          bucket: mediaBucket,
+          path: path,
+          file: File(sourcePath),
+        ),
+      };
+
   Future<void> _uploadMediaItem({
     required String authorId,
     required String postClientToken,
     required PendingMedia item,
   }) async {
-    await _uploadTolerant(
+    await _uploadSource(
       postMediaPath(
         authorId: authorId,
         postClientToken: postClientToken,
         mediaClientToken: item.mediaClientToken,
         ext: item.ext,
       ),
-      item.bytes,
+      item.source,
     );
     final posterBytes = item.posterBytes;
     if (posterBytes != null) {
