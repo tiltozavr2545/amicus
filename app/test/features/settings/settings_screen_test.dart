@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +17,13 @@ class _FakeNotificationPreferencesRepository
   int saveCalls = 0;
   NotificationPreferences? lastSaved;
 
+  /// When true, every [save] parks on a fresh completer appended to [gates],
+  /// so a test can hold several writes in flight at once and settle them out
+  /// of order. Complete a gate to let that call succeed, or `completeError` it
+  /// to fail just that one.
+  bool gateSaves = false;
+  final List<Completer<void>> gates = [];
+
   @override
   Future<NotificationPreferences> fetch(String userId) async => stored;
 
@@ -22,6 +31,11 @@ class _FakeNotificationPreferencesRepository
   Future<void> save(String userId, NotificationPreferences prefs) async {
     saveCalls++;
     lastSaved = prefs;
+    if (gateSaves) {
+      final gate = Completer<void>();
+      gates.add(gate);
+      await gate.future;
+    }
     if (saveThrows) throw Exception('network error');
     stored = prefs;
   }
@@ -247,4 +261,45 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'A failed toggle rolls back only its own field, not a concurrent one',
+    (tester) async {
+      // Regression: the rollback used to restore the whole snapshot taken
+      // before the request, so a failing toggle silently undid a different
+      // toggle that had already succeeded — and because save() upserts all
+      // five booleans, the next write persisted that stale picture.
+      final repo = _FakeNotificationPreferencesRepository()..gateSaves = true;
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      const commentsLabel = 'Comments on your posts and replies to you';
+      const digestLabel = 'Digest of posts from everyone else';
+
+      await tester.tap(find.text(commentsLabel));
+      await tester.pump();
+      await tester.tap(find.text(digestLabel));
+      await tester.pump();
+      expect(repo.saveCalls, 2);
+      expect(repo.gates, hasLength(2));
+
+      // The second write lands; the first one then fails.
+      repo.gates[1].complete();
+      await tester.pump();
+      repo.gates[0].completeError(Exception('network error'));
+      await tester.pump();
+
+      SwitchListTile tileFor(String label) => tester.widget<SwitchListTile>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(SwitchListTile),
+        ),
+      );
+
+      // Only the failed field comes back on.
+      expect(tileFor(commentsLabel).value, true);
+      // The one that succeeded stays off.
+      expect(tileFor(digestLabel).value, false);
+    },
+  );
 }

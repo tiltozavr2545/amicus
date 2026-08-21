@@ -4,6 +4,7 @@ import 'package:reorderables/reorderables.dart';
 
 import '../../l10n/app_localizations.dart';
 import 'profile_repository.dart';
+import '../../shared/sized_memory_image.dart';
 
 const _thumbSize = 140.0;
 
@@ -68,13 +69,8 @@ class _ViewerPage extends ConsumerWidget {
 /// [ProfileRepository.reorderPhotos]) — the storage objects themselves are
 /// never touched.
 class ProfilePhotoReorderScreen extends ConsumerStatefulWidget {
-  const ProfilePhotoReorderScreen({
-    super.key,
-    required this.userId,
-    required this.photos,
-  });
+  const ProfilePhotoReorderScreen({super.key, required this.photos});
 
-  final String userId;
   final List<ProfilePhoto> photos;
 
   @override
@@ -97,9 +93,7 @@ class _ProfilePhotoReorderScreenState
   Future<void> _save() async {
     setState(() => _isSaving = true);
     try {
-      await ref
-          .read(profileRepositoryProvider)
-          .reorderPhotos(userId: widget.userId, order: _order);
+      await ref.read(profileRepositoryProvider).reorderPhotos(order: _order);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -236,21 +230,29 @@ class _ProfilePhotoDeleteScreenState
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      // A lazy grid, not a Wrap inside a SingleChildScrollView. That built
+      // every tile at once, so opening this screen on a full 80-photo gallery
+      // started 80 simultaneous downloads and 80 decodes before a single tile
+      // was on screen. GridView.builder only builds what is visible (plus its
+      // cache extent), which is also what makes `avatarBytesProvider`'s
+      // per-path fetches arrive a screenful at a time.
+      body: GridView.builder(
         padding: const EdgeInsets.all(16),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final photo in widget.photos)
-              _SelectablePhotoThumb(
-                key: ValueKey(photo.id),
-                path: photo.storagePath,
-                selected: _selectedIds.contains(photo.id),
-                onTap: () => _toggle(photo.id),
-              ),
-          ],
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: _thumbSize,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
         ),
+        itemCount: widget.photos.length,
+        itemBuilder: (context, index) {
+          final photo = widget.photos[index];
+          return _SelectablePhotoThumb(
+            key: ValueKey(photo.id),
+            path: photo.storagePath,
+            selected: _selectedIds.contains(photo.id),
+            onTap: () => _toggle(photo.id),
+          );
+        },
       ),
     );
   }
@@ -270,7 +272,14 @@ class _PhotoThumb extends ConsumerWidget {
         width: _thumbSize,
         height: _thumbSize,
         child: bytes != null
-            ? Image.memory(bytes, fit: BoxFit.cover)
+            ? Image(
+                image: sizedMemoryImage(
+                  context,
+                  bytes,
+                  logicalWidth: _thumbSize,
+                ),
+                fit: BoxFit.cover,
+              )
             : Container(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
               ),
@@ -306,7 +315,14 @@ class _SelectablePhotoThumb extends ConsumerWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: bytes != null
-                  ? Image.memory(bytes, fit: BoxFit.cover)
+                  ? Image(
+                      image: sizedMemoryImage(
+                        context,
+                        bytes,
+                        logicalWidth: _thumbSize,
+                      ),
+                      fit: BoxFit.cover,
+                    )
                   : Container(
                       color: Theme.of(
                         context,

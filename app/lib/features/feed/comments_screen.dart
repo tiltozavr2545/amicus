@@ -56,23 +56,36 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// Returns whether the list now reflects the server.
+  ///
+  /// The failure branch has to pick its channel the same way [_send] does:
+  /// `_errorMessage` is rendered only *in place of* the list, so once comments
+  /// are on screen, assigning to it puts the message nowhere at all. A reload
+  /// that failed after a successful send was therefore completely silent — the
+  /// composer cleared, the comment was missing, and the user reasonably
+  /// concluded it had not sent.
+  Future<bool> _load() async {
     try {
       final comments = await ref
           .read(feedRepositoryProvider)
           .fetchComments(widget.postId);
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _comments = threadComments(comments);
         _errorMessage = null;
       });
+      return true;
     } catch (e) {
-      if (!mounted) return;
-      setState(
-        () => _errorMessage = AppLocalizations.of(
+      if (!mounted) return false;
+      final message = AppLocalizations.of(context)!.failedToLoadCommentsError;
+      if (_comments == null) {
+        setState(() => _errorMessage = message);
+      } else {
+        ScaffoldMessenger.of(
           context,
-        )!.failedToLoadCommentsError,
-      );
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+      return false;
     }
   }
 
@@ -123,7 +136,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final target = _replyTarget;
     setState(() => _isSending = true);
     try {
-      final userId = ref.read(currentUserIdProvider)!;
+      // Not `!`: the session can clear while this screen is still mounted.
+      final userId = ref.read(currentUserIdProvider);
+      if (userId == null) return;
       final parentCommentId = target == null
           ? null
           : target.comment.parentCommentId ?? target.comment.id;
@@ -146,11 +161,20 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             parentCommentId: parentCommentId,
             replyToId: replyToId,
           );
-      _pendingToken = null;
-      _pendingSignature = null;
       _textController.clear();
       if (mounted) setState(() => _replyTarget = null);
-      await _load();
+      // The token is retired only once the reload has confirmed the comment
+      // landed. Clearing it right after the insert defeated the whole
+      // idempotency scheme on the one path that needs it: send succeeds,
+      // reload fails, the user retypes the identical text — and with the token
+      // already gone, `_pendingSignature != signature` minted a fresh one, so
+      // `onConflict: 'author_id,client_token'` matched nothing and the comment
+      // was inserted a second time. Keeping it means that retry reuses the same
+      // token and the server no-ops it.
+      if (await _load()) {
+        _pendingToken = null;
+        _pendingSignature = null;
+      }
     } catch (e) {
       // A snackbar, not _errorMessage: that field is rendered only in place of
       // the list, so once comments have loaded — which is the normal state when

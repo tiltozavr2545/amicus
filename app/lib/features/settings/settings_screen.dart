@@ -123,13 +123,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Flips one switch optimistically and persists the result.
+  ///
+  /// [set] writes a single field, so a failure can be undone by writing that
+  /// same field back on top of *current* state. Restoring a whole snapshot
+  /// taken before the request — which is what this did — silently undid any
+  /// other switch that had succeeded in the meantime: turn Comments off, then
+  /// Digest off before the first request returns, let the first one time out,
+  /// and both switches jumped back to on while the server had both off. Since
+  /// [NotificationPreferencesRepository.save] upserts all five booleans at
+  /// once, the next unrelated toggle then wrote that stale picture back and
+  /// quietly re-enabled pushes the user had turned off.
   Future<void> _toggle(
-    NotificationPreferences Function(NotificationPreferences) apply,
+    NotificationPreferences Function(NotificationPreferences, bool) set,
+    bool value,
   ) async {
-    final previous = _prefs;
-    if (previous == null) return;
-    final userId = ref.read(currentUserIdProvider)!;
-    final next = apply(previous);
+    final current = _prefs;
+    if (current == null) return;
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    final next = set(current, value);
     setState(() => _prefs = next);
     try {
       await ref
@@ -137,7 +150,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           .save(userId, next);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _prefs = previous);
+      final latest = _prefs;
+      if (latest != null) setState(() => _prefs = set(latest, !value));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -176,30 +190,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 title: Text(l10n.notifyAppUpdatesLabel),
                 value: prefs.systemAccount,
                 onChanged: (value) =>
-                    _toggle((p) => p.copyWith(systemAccount: value)),
+                    _toggle((p, v) => p.copyWith(systemAccount: v), value),
               ),
               SwitchListTile(
                 title: Text(l10n.notifyFavoritesLabel),
                 value: prefs.favorites,
                 onChanged: (value) =>
-                    _toggle((p) => p.copyWith(favorites: value)),
+                    _toggle((p, v) => p.copyWith(favorites: v), value),
               ),
               SwitchListTile(
                 title: Text(l10n.notifyCommentsLabel),
                 value: prefs.comments,
                 onChanged: (value) =>
-                    _toggle((p) => p.copyWith(comments: value)),
+                    _toggle((p, v) => p.copyWith(comments: v), value),
               ),
               SwitchListTile(
                 title: Text(l10n.notifyDigestLabel),
                 value: prefs.digest,
-                onChanged: (value) => _toggle((p) => p.copyWith(digest: value)),
+                onChanged: (value) =>
+                    _toggle((p, v) => p.copyWith(digest: v), value),
               ),
               SwitchListTile(
                 title: Text(l10n.notifyInactiveLabel),
                 value: prefs.inactiveWeek,
                 onChanged: (value) =>
-                    _toggle((p) => p.copyWith(inactiveWeek: value)),
+                    _toggle((p, v) => p.copyWith(inactiveWeek: v), value),
               ),
               const Divider(height: 32),
               ListTile(

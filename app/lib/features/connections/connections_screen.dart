@@ -13,6 +13,7 @@ import 'blocked_users_screen.dart';
 import 'connection_duration.dart';
 import 'connections_repository.dart';
 import 'friend_profile_screen.dart';
+import '../../shared/sized_memory_image.dart';
 
 class FriendAvatar extends ConsumerWidget {
   const FriendAvatar({super.key, required this.avatarPath});
@@ -28,7 +29,7 @@ class FriendAvatar extends ConsumerWidget {
     final avatarAsync = ref.watch(avatarBytesProvider(avatarPath!));
     return CircleAvatar(
       backgroundImage: avatarAsync.value != null
-          ? MemoryImage(avatarAsync.value!)
+          ? sizedMemoryImage(context, avatarAsync.value!, logicalWidth: 40)
           : null,
       child: avatarAsync.value == null ? const Icon(Icons.person) : null,
     );
@@ -41,46 +42,33 @@ class _FriendListItem extends ConsumerWidget {
   final Friend friend;
   final String currentUserId;
 
+  /// Runs one relation change and refreshes the list, reporting any failure.
+  ///
+  /// [refreshFeed] is the whole difference between the two variants this used
+  /// to have. Muting or blocking changes what the feed is allowed to show, but
+  /// the feed tab lives in the shell's IndexedStack and keeps whatever it
+  /// loaded last — leaving the newly hidden person's posts on screen, with
+  /// buttons whose requests RLS now rejects. Same on the way back: unmuting has
+  /// to bring the posts back without a manual pull-to-refresh. Favoriting is
+  /// different: it's purely personal bookkeeping for notifications, changes
+  /// nothing about visibility, and bumping the feed for it would just be a
+  /// pointless reload.
   Future<void> _run(
     BuildContext context,
     WidgetRef ref,
-    Future<void> Function() action,
-  ) async {
+    Future<void> Function() action, {
+    bool refreshFeed = true,
+  }) async {
     final l10n = AppLocalizations.of(context)!;
     try {
       await action();
       ref.invalidate(friendsProvider);
-      // Muting or blocking changes what the feed is allowed to show, but the
-      // feed tab lives in the shell's IndexedStack and keeps whatever it loaded
-      // last — leaving the newly hidden person's posts on screen, with buttons
-      // whose requests RLS now rejects. Same on the way back: unmuting has to
-      // bring the posts back without a manual pull-to-refresh.
-      ref.read(feedRefreshTickProvider.notifier).bump();
+      if (refreshFeed) ref.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.unexpectedError)));
-    }
-  }
-
-  // Favoriting doesn't change what the feed is allowed to show — unlike
-  // mute/block, it's purely personal bookkeeping for notifications — so
-  // there's nothing for the feed tab to catch up on, and bumping it would
-  // just be a pointless reload.
-  Future<void> _runFavoriteToggle(
-    BuildContext context,
-    WidgetRef ref,
-    Future<void> Function() action,
-  ) async {
-    try {
-      await action();
-      ref.invalidate(friendsProvider);
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context)!.unexpectedError)),
-      );
     }
   }
 
@@ -147,27 +135,16 @@ class _FriendListItem extends ConsumerWidget {
             tooltip: friend.isFavorite
                 ? l10n.unfavoriteFriendTooltip
                 : l10n.favoriteFriendTooltip,
-            onPressed: () {
-              if (friend.isFavorite) {
-                _runFavoriteToggle(
-                  context,
-                  ref,
-                  () => repo.unfavoriteUser(
+            onPressed: () => _run(
+              context,
+              ref,
+              () =>
+                  (friend.isFavorite ? repo.unfavoriteUser : repo.favoriteUser)(
                     userId: currentUserId,
                     favoriteId: friend.userId,
                   ),
-                );
-              } else {
-                _runFavoriteToggle(
-                  context,
-                  ref,
-                  () => repo.favoriteUser(
-                    userId: currentUserId,
-                    favoriteId: friend.userId,
-                  ),
-                );
-              }
-            },
+              refreshFeed: false,
+            ),
           ),
           IconButton(
             icon: Icon(friend.isMuted ? Icons.volume_off : Icons.volume_up),

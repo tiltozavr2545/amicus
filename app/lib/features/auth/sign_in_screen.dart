@@ -43,11 +43,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           )
           .timeout(networkTimeout);
     } on AuthException catch (e) {
+      // Guarded like the `finally` below: leaving this screen mid-request
+      // disposes this State, and a setState (or an AppLocalizations lookup)
+      // on a defunct element is a silent no-op in release — the error would
+      // simply never appear.
+      if (!mounted) return;
       setState(
         () =>
             _errorMessage = authErrorMessage(AppLocalizations.of(context)!, e),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(
         () => _errorMessage = AppLocalizations.of(context)!.unexpectedError,
       );

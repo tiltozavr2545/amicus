@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
 import '../../shared/system_account_id.dart';
@@ -373,7 +374,6 @@ class NewMedia extends ComposerMediaItem {
   final PendingMedia pending;
 }
 
-const _bucket = 'media';
 const pageSize = 20;
 
 /// How long a signed URL for a post's media stays valid before it needs
@@ -429,6 +429,36 @@ class FeedRepository {
 
   final SupabaseClient _client;
 
+  List<String>? _cachedSystemAccountIds;
+
+  /// Which authors the general feed leaves out, asked of the server rather
+  /// than compiled in.
+  ///
+  /// This used to be the literal in [systemAccountId], which made the app a
+  /// second copy of a rule `is_system_account()` already owns server-side —
+  /// so adding a system account, or rotating the existing one, would have
+  /// changed the server and left every installed build still showing that
+  /// account's posts in the general feed, fixable only by a release.
+  ///
+  /// Fetched once per repository instance and cached: the answer changes about
+  /// as often as a migration is written. [systemAccountId] survives purely as
+  /// the offline fallback — a feed must not fail to load because this lookup
+  /// did, and falling back to today's known answer is strictly better than
+  /// filtering nothing.
+  Future<List<String>> _systemAccountIds() async {
+    final cached = _cachedSystemAccountIds;
+    if (cached != null) return cached;
+    try {
+      final rows = await _client
+          .rpc('system_account_ids')
+          .timeout(networkTimeout);
+      final ids = (rows as List<dynamic>).cast<String>();
+      return _cachedSystemAccountIds = ids;
+    } catch (_) {
+      return const [systemAccountId];
+    }
+  }
+
   /// Fetches one page of the feed (newest first), starting strictly after
   /// [cursor] (the last post of the previous page; null for the first page).
   /// When [authorId] is set, only that author's posts are returned — used by
@@ -455,7 +485,8 @@ class FeedRepository {
     if (authorId != null) {
       query = query.eq('author_id', authorId);
     } else {
-      query = query.neq('author_id', systemAccountId);
+      final excluded = await _systemAccountIds();
+      query = query.not('author_id', 'in', '(${excluded.join(',')})');
     }
     final filter = keysetFilter(cursor);
     if (filter != null) {
@@ -555,13 +586,6 @@ class FeedRepository {
     }).toList();
   }
 
-  /// Resolves a signed URL for one media item, for the callers that only ever
-  /// have one path in hand.
-  Future<String> resolveMediaUrl(String storagePath) => _client.storage
-      .from(_bucket)
-      .createSignedUrl(storagePath, _signedUrlTtl)
-      .timeout(networkTimeout);
-
   /// Signs a batch of media paths in a single round trip — how a carousel
   /// resolves the slides beyond the first, rather than eagerly resolving all
   /// up to 20 items in [fetchPage]. Batched because a slide plus its poster,
@@ -576,7 +600,7 @@ class FeedRepository {
   ) async {
     if (storagePaths.isEmpty) return const {};
     final results = await _client.storage
-        .from(_bucket)
+        .from(mediaBucket)
         .createSignedUrlsResult(storagePaths, _signedUrlTtl)
         .timeout(networkTimeout);
     return {
@@ -586,7 +610,7 @@ class FeedRepository {
   }
 
   Future<void> _uploadTolerant(String path, Uint8List bytes) =>
-      uploadTolerant(_client, bucket: _bucket, path: path, bytes: bytes);
+      uploadTolerant(_client, bucket: mediaBucket, path: path, bytes: bytes);
 
   Future<void> _uploadMediaItem({
     required String authorId,
@@ -791,7 +815,7 @@ class FeedRepository {
     ];
     if (orphanedPaths.isNotEmpty) {
       await _client.storage
-          .from(_bucket)
+          .from(mediaBucket)
           .remove(orphanedPaths)
           .timeout(networkTimeout);
     }
@@ -886,21 +910,37 @@ class FeedRepository {
   /// Storage, not Postgres, so [mediaStoragePaths] (every media item's
   /// storage path, plus video poster paths — the caller already has these on
   /// the loaded [Post.media]) is removed separately, in one batch call.
+  ///
+  /// Row first, objects second — the same rule [updatePost] states and this
+  /// method used to break. With the objects going first, a delete that lost
+  /// its connection between the two calls left the row and its `post_media`
+  /// alive and pointing at bytes that no longer existed: a permanently broken
+  /// image slot in the feed of every Connection, not just the author's own,
+  /// self-healing only if the author happened to retry. The other order costs
+  /// unreferenced bytes in the bucket, which nobody ever sees.
   Future<void> deletePost({
     required String postId,
     List<String> mediaStoragePaths = const [],
   }) async {
-    if (mediaStoragePaths.isNotEmpty) {
-      await _client.storage
-          .from(_bucket)
-          .remove(mediaStoragePaths)
-          .timeout(networkTimeout);
-    }
     await _client
         .from('posts')
         .delete()
         .eq('id', postId)
         .timeout(networkTimeout);
+    if (mediaStoragePaths.isNotEmpty) {
+      // Best-effort: the post is already gone for everyone, and the storage
+      // DELETE policy matches on the `posts/<uid>/…` path alone, so this stays
+      // permitted with the row deleted. Failing here must not resurrect an
+      // error for a delete that has already succeeded.
+      try {
+        await _client.storage
+            .from(mediaBucket)
+            .remove(mediaStoragePaths)
+            .timeout(networkTimeout);
+      } catch (_) {
+        // Orphaned bytes, not a broken post.
+      }
+    }
   }
 
   /// Deletes a comment of the current user's. Whether the row is removed or

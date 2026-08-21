@@ -62,9 +62,29 @@ android {
     buildTypes {
         release {
             // Falls back to debug signing (so `flutter run --release` still
-            // works) when key.properties isn't present, e.g. a fresh clone
-            // without the release keystore.
-            signingConfig = if (hasKeystoreProperties) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+            // works, and so CI can compile-check an AAB without holding the
+            // keystore) when key.properties isn't present, e.g. a fresh clone.
+            //
+            // The fallback is announced, loudly, because it used to be silent:
+            // the output was named like any other release artifact, gave no
+            // hint in the build log, and was signed with the world-known
+            // Android debug key. Handed to a tester as "the release build" it
+            // cannot be installed over — or later upgraded by — a Play build,
+            // and an upload attempt burns a version code on a rejection.
+            signingConfig = if (hasKeystoreProperties) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "\n" +
+                        "**********************************************************************\n" +
+                        "WARNING: android/key.properties not found.\n" +
+                        "This RELEASE build is signed with the DEBUG key. It is not\n" +
+                        "distributable: it cannot be uploaded to Play, and it cannot be\n" +
+                        "installed over or upgraded by a Play build.\n" +
+                        "**********************************************************************\n"
+                )
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

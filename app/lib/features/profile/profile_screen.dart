@@ -12,6 +12,7 @@ import '../feed/post_list_view.dart';
 import '../settings/settings_button.dart';
 import 'profile_photos_screen.dart';
 import 'profile_repository.dart';
+import '../../shared/sized_memory_image.dart';
 
 const _maxProfilePhotos = 80;
 
@@ -38,6 +39,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _nameController = TextEditingController();
   bool _isSaving = false;
   bool _isAddingPhotos = false;
+  bool _nameSeeded = false;
 
   @override
   void initState() {
@@ -132,11 +134,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _openReorder(String userId, List<ProfilePhoto> photos) async {
+  Future<void> _openReorder(List<ProfilePhoto> photos) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            ProfilePhotoReorderScreen(userId: userId, photos: photos),
+        builder: (_) => ProfilePhotoReorderScreen(photos: photos),
       ),
     );
     if (changed == true) {
@@ -184,7 +185,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         error: (error, stack) =>
             Center(child: Text(l10n.failedToLoadProfileError)),
         data: (profile) {
-          if (_nameController.text.isEmpty) {
+          // Seeded once, tracked by a flag rather than by the field being
+          // empty. The listener registered in initState rebuilds on every
+          // keystroke, so an emptiness test ran again the instant the user
+          // cleared the field — and put the old name straight back, caret and
+          // all. Selecting all and pressing backspace to retype a name was
+          // therefore impossible; the field could only be edited around its
+          // existing text. Same seed-once shape SettingsScreen uses for
+          // `_prefs`.
+          if (!_nameSeeded) {
+            _nameSeeded = true;
             _nameController.text = profile.name;
           }
           final avatarBytes = profile.avatarPath == null
@@ -222,7 +232,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           child: CircleAvatar(
                             radius: 72,
                             backgroundImage: avatarBytes != null
-                                ? MemoryImage(avatarBytes)
+                                ? sizedMemoryImage(
+                                    context,
+                                    avatarBytes,
+                                    logicalWidth: 144,
+                                  )
                                 : null,
                             child: avatarBytes == null
                                 ? const Icon(Icons.person, size: 58)
@@ -252,7 +266,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               label: l10n.reorderPhotosButton,
                               onPressed: !photosLoaded || photos.length < 2
                                   ? null
-                                  : () => _openReorder(userId!, photos),
+                                  : () => _openReorder(photos),
                             ),
                             _PhotoActionButton(
                               icon: Icons.delete_outline,

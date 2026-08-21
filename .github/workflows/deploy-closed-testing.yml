@@ -1,8 +1,19 @@
 name: Deploy Closed Testing
 
+# `push` on main, not `pull_request_target`.
+#
+# The two fire at the same moment for this repo's PR-merge flow, but
+# `pull_request_target` runs in the *elevated* context: the job gets the
+# repository's secrets — ANDROID_KEYSTORE_BASE64, PLAY_SERVICE_ACCOUNT_JSON —
+# and a write-scoped token, and then runs Gradle over code the PR author
+# contributed (`android/build.gradle.kts`, `settings.gradle.kts`, the pubspec).
+# The only thing standing between a fork PR with a `doLast { }` in it and the
+# upload keystore was a maintainer pressing Merge — and per the comment in
+# app/android/app/build.gradle.kts that key "can never be replaced or recovered
+# if lost or leaked". `push` gives identical behaviour for a merge without
+# opting into the elevated event at all.
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches: [main]
 
 permissions:
@@ -19,23 +30,26 @@ defaults:
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the merged commit
-        uses: actions/checkout@v4
+      - name: Check out the pushed commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
-      - uses: subosito/flutter-action@v2
+      # Third-party actions are pinned by commit SHA, not by tag: a tag is
+      # mutable, and both of these run with the deployment secrets in scope
+      # (this one before the build, upload-google-play with the Play service
+      # account handed to it directly and the decoded keystore still on disk).
+      # Repointing a tag would be enough to take them.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.21.0
         with:
           flutter-version: "3.32.8"
           channel: "stable"
           cache: true
           pub-cache: true
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.7.1
         with:
           distribution: temurin
           java-version: "17"
@@ -64,6 +78,15 @@ jobs:
             "platforms;android-36" "build-tools;35.0.0" "ndk;27.0.12077973"
 
       - run: flutter pub get --enforce-lockfile
+
+      # The release path runs the same gate as CI rather than trusting that CI
+      # ran and was green. Nothing made this job depend on that workflow, so a
+      # merge landed while CI was red, still queued, or on a repo without the
+      # status check required would have shipped an unverified AAB straight to
+      # the alpha track. `dart`/`flutter` come from the action above, so the
+      # Makefile's local-install defaults are overridden here.
+      - name: Verify (format, analyze, test)
+        run: make -C .. verify FLUTTER=flutter DART=dart
 
       - name: Validate deployment secrets
         working-directory: ${{ github.workspace }}
@@ -95,9 +118,24 @@ jobs:
           done
 
       - name: Verify merged version bump
+        # `github.event.before` is main's previous tip — the same commit
+        # `pull_request_target` reported as the PR base. It reads as all-zeros
+        # for a branch's first push (and can point at a discarded commit after
+        # a force-push), so fall back to the pushed commit's own first parent.
         env:
-          BASE_REF: ${{ github.event.pull_request.base.sha }}
-        run: make -C .. verify-version BASE_REF="$BASE_REF"
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -eu
+          base="$BEFORE"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || ! git -C .. cat-file -e "$base^{commit}" 2>/dev/null; then
+            base=$(git -C .. rev-parse HEAD^ 2>/dev/null || echo "")
+          fi
+          if [ -z "$base" ]; then
+            echo "::error title=No base commit::Cannot determine what to diff the version against"
+            exit 1
+          fi
+          make -C .. verify-version BASE_REF="$base"
 
       - name: Configure release signing
         working-directory: ${{ github.workspace }}
@@ -140,7 +178,7 @@ jobs:
           --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
 
       - name: Upload to Google Play Closed testing Alpha
-        uses: r0adkll/upload-google-play@v1.1.5
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.github.tiltozavr2545.amicus
@@ -149,13 +187,24 @@ jobs:
           status: completed
 
       - name: Remind to post an update from the Amicus account
+        # The PR number no longer arrives in the event payload, so it is looked
+        # up from the pushed commit. A push with no associated PR (a direct
+        # commit to main) simply gets no comment rather than failing the
+        # deploy that already succeeded.
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
           version=$(awk '/^version:[[:space:]]/ { print $2; exit }' pubspec.yaml)
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
+          pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // empty' || echo "")
+          if [ -z "$pr" ]; then
+            echo "No pull request associated with $SHA; skipping the reminder comment."
+            exit 0
+          fi
+          gh pr comment "$pr" \
+            --repo "$REPO" \
             --body "Deployed \`$version\` to Google Play Closed testing (alpha). Don't forget to post an update from the Amicus account if this release is worth telling people about."
 
       - name: Remove signing files
