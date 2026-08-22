@@ -5,6 +5,10 @@
 [CHANGELOG.md](../CHANGELOG.md), исходный MVP-план — в
 [project-brief.md](project-brief.md).
 
+Предыдущая редакция этого списка, до закрытия MVP, лежит в
+[future-development.archive.md](future-development.archive.md) — только ради
+истории, часть перечисленного там с тех пор сделана.
+
 ---
 
 ## Комнаты (Rooms)

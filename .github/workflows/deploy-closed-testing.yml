@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the pushed commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -49,7 +49,20 @@ jobs:
           cache: true
           pub-cache: true
 
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.7.1
+      # checkout and setup-java are on their Node 24 majors (v7 / v5). The
+      # Node 20 ones they replace still ran — the runner forced them onto
+      # Node 24 and said so in an annotation — but only until GitHub drops
+      # that fallback, at which point this workflow is what breaks. Nothing
+      # in the jump touches how they are used here: `fetch-depth`,
+      # `distribution` and `java-version` are unchanged, and the only
+      # breaking change in either is the Node bump itself (plus a runner
+      # floor of v2.327.1, far below what ubuntu-latest ships).
+      #
+      # checkout v7 also refuses to check out a fork's head for
+      # `pull_request_target`/`workflow_run`. That cannot bite here, and for
+      # the reason spelled out at the top of this file: this workflow is
+      # deliberately not on `pull_request_target`.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: "17"

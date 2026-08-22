@@ -143,8 +143,17 @@ class _PostListViewState extends ConsumerState<PostListView> {
         _hasMore = page.length == pageSize;
       });
       if (isFirstPage) {
+        // `unawaited` silences the lint, not the failure: a rejected future
+        // nobody is holding is an unhandled async error, and this one has a
+        // plugin and a disk behind it. Writing the snapshot is best-effort by
+        // construction — the page is already on screen, and this cache only
+        // exists so the *next* cold start isn't blank — so a failed write has
+        // to be swallowed here rather than escape into `FlutterError.onError`.
         unawaited(
-          ref.read(feedCacheProvider).save(_cacheUserId, widget.authorId, page),
+          ref
+              .read(feedCacheProvider)
+              .save(_cacheUserId, widget.authorId, page)
+              .catchError((Object _) {}),
         );
       }
     } catch (e) {
@@ -731,6 +740,7 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
                 item: _items[index],
                 fit: BoxFit.cover,
                 constrainHeight: true,
+                isCurrent: index == _currentIndex,
                 onTapImage: () => _openFullscreen(index),
               ),
             ),
@@ -780,6 +790,7 @@ class _FullscreenMediaViewerState
   late final _pageController = PageController(initialPage: widget.initialIndex);
   late List<PostMedia> _items = widget.media;
   final _resolving = <int>{};
+  late int _currentIndex = widget.initialIndex;
 
   @override
   void initState() {
@@ -823,7 +834,14 @@ class _FullscreenMediaViewerState
         controller: _pageController,
         itemCount: _items.length,
         allowImplicitScrolling: true,
-        onPageChanged: _resolveAround,
+        // Tracks the page as well as resolving around it: the same
+        // keep-the-neighbour-alive behaviour as the carousel, so a video
+        // swiped past here needs pausing for the same reason (see
+        // [_MediaSlide.isCurrent]).
+        onPageChanged: (index) {
+          setState(() => _currentIndex = index);
+          _resolveAround(index);
+        },
         itemBuilder: (context, index) {
           final item = _items[index];
           if (item.mediaType == MediaType.video) {
@@ -832,6 +850,7 @@ class _FullscreenMediaViewerState
                 item: item,
                 fit: BoxFit.contain,
                 constrainHeight: false,
+                isCurrent: index == _currentIndex,
               ),
             );
           }
@@ -865,11 +884,26 @@ class _MediaSlide extends StatefulWidget {
     required this.item,
     required this.fit,
     required this.constrainHeight,
+    this.isCurrent = true,
     this.onTapImage,
   });
 
   final PostMedia item;
   final BoxFit fit;
+
+  /// Whether this is the slide the viewer is actually looking at.
+  ///
+  /// It exists because of `allowImplicitScrolling`: the page on either side of
+  /// the current one is deliberately kept in the tree so its image is already
+  /// downloading before the swipe lands. For an image that is free; for a
+  /// *playing video* it meant the clip was neither disposed nor paused when it
+  /// was swiped past, so its audio went on playing over the next photo until
+  /// the viewer swiped two slides away (or scrolled the whole post off screen)
+  /// and the state was finally torn down.
+  ///
+  /// Losing this flag pauses rather than disposes, so swiping back resumes
+  /// where the clip left off instead of restarting it.
+  final bool isCurrent;
 
   /// Whether this slide sits inside a fixed-height frame (the multi-item
   /// carousel, or the fullscreen viewer's own bounded page) — an image only
@@ -898,7 +932,14 @@ class _MediaSlideState extends State<_MediaSlide> {
     // under the new one. Only the *identity* of the media matters here — a
     // rebuild that merely filled in a resolved URL for the same row must not
     // interrupt playback.
-    if (oldWidget.item.id == widget.item.id) return;
+    if (oldWidget.item.id == widget.item.id) {
+      // Same clip, but it is no longer the page in view — see [isCurrent].
+      final controller = _controller;
+      if (controller != null && oldWidget.isCurrent && !widget.isCurrent) {
+        unawaited(controller.pause().catchError((Object _) {}));
+      }
+      return;
+    }
     final stale = _controller;
     _controller = null;
     stale?.dispose();
