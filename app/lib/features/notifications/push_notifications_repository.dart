@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/locale_provider.dart';
+import '../../shared/app_version.dart';
 import '../../shared/network_timeout.dart';
 import '../auth/auth_providers.dart';
 
@@ -27,10 +28,14 @@ class PushNotificationsRepository {
   /// [locale] is the language send-push should use for this device's
   /// notification text (see `effectiveLocaleCodeProvider`); the caller
   /// re-invokes this whenever it changes so the row stays current, so it only
-  /// needs capturing here, not read live inside the listener.
+  /// needs capturing here, not read live inside the listener. [version] is
+  /// passed the same way and for the same reason — it cannot change while the
+  /// process is alive, so reading it once at the call site is both correct and
+  /// what keeps this class free of a platform lookup of its own.
   Future<StreamSubscription<String>?> registerDevice({
     required String userId,
     required String locale,
+    required AppVersion version,
   }) async {
     final settings = await FirebaseMessaging.instance.requestPermission();
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
@@ -39,14 +44,24 @@ class PushNotificationsRepository {
 
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
-      await _upsertToken(userId: userId, token: token, locale: locale);
+      await _upsertToken(
+        userId: userId,
+        token: token,
+        locale: locale,
+        version: version,
+      );
     }
 
     // Token rotation (app reinstall, Play Services data reset, etc.) — the
     // old row is left in place rather than deleted; send-push prunes it
     // itself the first time a send to it comes back "unregistered".
     return FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-      _upsertToken(userId: userId, token: newToken, locale: locale);
+      _upsertToken(
+        userId: userId,
+        token: newToken,
+        locale: locale,
+        version: version,
+      );
     });
   }
 
@@ -69,10 +84,21 @@ class PushNotificationsRepository {
     required String userId,
     required String token,
     required String locale,
+    required AppVersion version,
   }) {
     return _client
         .from('device_tokens')
-        .upsert({'user_id': userId, 'fcm_token': token, 'locale': locale})
+        .upsert({
+          'user_id': userId,
+          'fcm_token': token,
+          'locale': locale,
+          // Rewritten on every app open, so it tracks the install rather than
+          // recording whatever version first registered this device. That is
+          // what lets enqueue_app_update_notifications() tell someone who has
+          // already updated from someone who has not.
+          'app_version': version.name,
+          'app_build': version.build,
+        })
         .timeout(networkTimeout);
   }
 }
@@ -105,9 +131,13 @@ final pushRegistrationProvider = FutureProvider<void>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
   final locale = ref.watch(effectiveLocaleCodeProvider);
   if (userId == null) return;
+  // Awaited before registering rather than watched: the version cannot change
+  // while the app is running, so there is nothing to react to — it just has to
+  // be known before the row is written.
+  final version = await ref.watch(appVersionProvider.future);
   final subscription = await ref
       .read(pushNotificationsRepositoryProvider)
-      .registerDevice(userId: userId, locale: locale);
+      .registerDevice(userId: userId, locale: locale, version: version);
   if (!ref.mounted) {
     subscription?.cancel();
     return;
