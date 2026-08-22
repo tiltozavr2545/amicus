@@ -88,6 +88,16 @@ class _ViewerPage extends ConsumerWidget {
 /// `profile_photos` row for this user (delete+insert, per
 /// [ProfileRepository.reorderPhotos]) — the storage objects themselves are
 /// never touched.
+///
+/// A lazy [ReorderableListView], not the [ReorderableWrap] grid this used to
+/// be. The wrap sat in a [SingleChildScrollView] and therefore built every
+/// tile up front, so opening it on a full gallery started 80 downloads and 80
+/// decodes before anything was on screen — the same stall
+/// [ProfilePhotoDeleteScreen] was moved off a wrap to fix, left behind here.
+/// A wrap cannot be lazy (it has to measure every child to lay out its runs),
+/// so the grid gives way to a list; the trade is one photo per row, which also
+/// makes the numbering below — and with it "the first photo is your avatar" —
+/// readable at a glance instead of implied by grid position.
 class ProfilePhotoReorderScreen extends ConsumerStatefulWidget {
   const ProfilePhotoReorderScreen({super.key, required this.photos});
 
@@ -103,8 +113,15 @@ class _ProfilePhotoReorderScreenState
   late final List<ProfilePhoto> _order = List.of(widget.photos);
   bool _isSaving = false;
 
+  /// [ReorderableListView] reports [newIndex] as the slot the item would take
+  /// *before* it is lifted out, so dragging downwards overshoots by one once
+  /// the removal shifts everything up. `reorderables`' `ReorderableWrap` — what
+  /// this screen used before, and what the composer's media grid still uses —
+  /// hands back the final index and needs no such adjustment, which is why the
+  /// two look like they should share this method and must not.
   void _reorder(int oldIndex, int newIndex) {
     setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
       final item = _order.removeAt(oldIndex);
       _order.insert(newIndex, item);
     });
@@ -147,18 +164,32 @@ class _ProfilePhotoReorderScreenState
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      // `.builder`, so only a screenful of thumbnails is built (and only that
+      // many downloads started) however long the gallery is.
+      body: ReorderableListView.builder(
         padding: const EdgeInsets.all(16),
-        child: ReorderableWrap(
-          spacing: 8,
-          runSpacing: 8,
-          needsLongPressDraggable: true,
-          onReorder: _reorder,
-          children: [
-            for (final photo in _order)
-              _PhotoThumb(key: ValueKey(photo.id), path: photo.storagePath),
-          ],
-        ),
+        itemCount: _order.length,
+        onReorder: _reorder,
+        itemBuilder: (context, index) {
+          final photo = _order[index];
+          return Padding(
+            key: ValueKey(photo.id),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                _PhotoThumb(path: photo.storagePath),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    '${index + 1}',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                const Icon(Icons.drag_handle),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -279,7 +310,7 @@ class _ProfilePhotoDeleteScreenState
 }
 
 class _PhotoThumb extends ConsumerWidget {
-  const _PhotoThumb({super.key, required this.path});
+  const _PhotoThumb({required this.path});
 
   final String path;
 

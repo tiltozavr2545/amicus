@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -227,19 +228,41 @@ final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepository(ref.watch(supabaseClientProvider));
 });
 
+/// How long a fetched image stays cached after the last widget stops watching
+/// it. Long enough to cover the round trip this cache exists for — leave a
+/// screen, come back, don't re-download — and short enough that a gallery the
+/// user has walked away from doesn't sit in memory for the rest of the day.
+const _avatarCacheGrace = Duration(minutes: 5);
+
 /// Downloads avatar bytes for any storage path, keyed by path so callers
 /// (own profile, friends list, ...) share the same cached result.
 ///
-/// The successful result is kept alive across navigation so revisiting a screen
-/// doesn't re-download unchanged avatars. This is safe because every profile
-/// photo is uploaded under its own client-minted path (see
-/// [profilePhotoPath]), so a changed photo is a different cache key rather
-/// than a stale hit. Errors are not kept alive, so they retry naturally.
+/// The successful result outlives its listeners so revisiting a screen doesn't
+/// re-download unchanged avatars. This is safe because every profile photo is
+/// uploaded under its own client-minted path (see [profilePhotoPath]), so a
+/// changed photo is a different cache key rather than a stale hit. Errors are
+/// not kept alive, so they retry naturally.
+///
+/// The keep-alive is released [_avatarCacheGrace] after the last listener goes
+/// away, rather than held for the process's whole life. A bare `keepAlive()`
+/// pins every path ever fetched: the small set of avatars the lists reuse is
+/// what it was written for, but whole galleries flow through the same family —
+/// opening the delete or reorder screen on a full 80-photo profile pins 80
+/// `maxWidth: 1600` JPEGs, and nothing ever let go of them. It also meant the
+/// previous account's photos stayed resident across a sign-out, which is the
+/// in-memory shape of what [FeedCache]'s per-user keys close on disk.
 final avatarBytesProvider = FutureProvider.autoDispose
     .family<Uint8List, String>((ref, path) async {
       final bytes = await ref
           .watch(profileRepositoryProvider)
           .downloadAvatar(path);
-      ref.keepAlive();
+      final link = ref.keepAlive();
+      Timer? release;
+      // onCancel/onResume, not onDispose alone: the provider is "cancelled"
+      // when its last listener leaves and "resumed" if one comes back before
+      // the timer fires, which is exactly the revisit this cache is for.
+      ref.onCancel(() => release = Timer(_avatarCacheGrace, link.close));
+      ref.onResume(() => release?.cancel());
+      ref.onDispose(() => release?.cancel());
       return bytes;
     });

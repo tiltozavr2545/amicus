@@ -24,6 +24,19 @@ class _FakeFeedRepository implements FeedRepository {
   String? lastUpdatedText;
   List<ComposerMediaItem>? lastFinalMedia;
 
+  /// Stands in for the editor opening with no connectivity: the composer
+  /// resolves every existing item's preview up front, and that call is fired
+  /// unawaited from initState, so its failure has nowhere to propagate.
+  bool resolveThrows = false;
+
+  @override
+  Future<Map<String, String>> resolveMediaUrls(
+    List<String> storagePaths,
+  ) async {
+    if (resolveThrows) throw Exception('offline');
+    return {for (final path in storagePaths) path: 'https://signed/$path'};
+  }
+
   @override
   Future<void> createPost({
     required String clientToken,
@@ -215,6 +228,40 @@ void main() {
         expect(repo.updateCalls, 1);
         expect(repo.lastFinalMedia, hasLength(1));
         expect(repo.lastFinalMedia!.single, isA<KeptMedia>());
+        expect((repo.lastFinalMedia!.single as KeptMedia).media.id, 'm1');
+      },
+    );
+
+    testWidgets(
+      'an editor opened offline reports it instead of throwing, and still '
+      'keeps the photo on save',
+      (tester) async {
+        // Regression guard: _resolveExistingMediaUrls() is started unawaited
+        // from initState, so before it caught anything a failed resolve
+        // escaped as an unhandled async error rather than reaching the user.
+        final repo = _FakeFeedRepository()..resolveThrows = true;
+        // No `url`, so the composer actually has something to resolve.
+        const media = PostMedia(
+          id: 'm1',
+          position: 0,
+          mediaType: MediaType.image,
+          storagePath: 'posts/test-user/post-token/m1.jpg',
+        );
+        await tester.pumpWidget(
+          _wrap(repo, existingPost: existingPost(media: [media])),
+        );
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(
+          find.text('Failed to load photos. Please try again.'),
+          findsOneWidget,
+        );
+
+        // An unresolved preview is a grey tile, not a dropped photo: the slot
+        // still carries its PostMedia and saving sends it on unchanged.
+        await _tapSave(tester);
+        expect(repo.lastFinalMedia, hasLength(1));
         expect((repo.lastFinalMedia!.single as KeptMedia).media.id, 'm1');
       },
     );

@@ -17,9 +17,16 @@ import 'network_timeout.dart';
 /// request that is still in flight.
 ///
 /// Deliberately not `upsert: true`: there is no UPDATE policy on
-/// `storage.objects` for either prefix (replacing a file is always a new
-/// upload plus a delete of the old object), so an overwrite would be refused
-/// by RLS — and there is nothing to overwrite anyway, the content is identical.
+/// `storage.objects` for either prefix, so an overwrite would be refused by
+/// RLS — and there is nothing to overwrite anyway, the content is identical.
+///
+/// That was only half true until 20260822210000. `avatars/` did carry a
+/// "Users can update their own avatar" UPDATE policy, unused since
+/// 20260707222025 wrote it: replacing a file here is always a new object under
+/// a fresh client-minted path plus a delete of the old one, never an
+/// overwrite. The policy is gone, so the sentence above now holds for both
+/// prefixes — which matters, because it is the reasoning the next person will
+/// lean on before reaching for `upsert`.
 Future<void> uploadTolerant(
   SupabaseClient client, {
   required String bucket,

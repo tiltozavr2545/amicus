@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -201,6 +202,58 @@ void main() {
       // set with PT422, so "all of it" is the contract, not an accident.
       expect(repo.reorderedTo!.map((p) => p.id), ['p0', 'p1', 'p2']);
       expect(popped, [true]);
+    });
+
+    testWidgets('dragging a photo down lands it where it was dropped', (
+      tester,
+    ) async {
+      // ReorderableListView reports newIndex as the slot the item would take
+      // *before* it is lifted out, so a downward drag overshoots by one unless
+      // the handler compensates. `reorderables`' ReorderableWrap — which this
+      // screen used to use, and which the composer's media grid still does —
+      // hands back the final index and must not be given the same adjustment.
+      final repo = _FakeProfileRepository();
+      await _pump(tester, repo, ProfilePhotoReorderScreen(photos: _photos(3)));
+
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('p0'))),
+      );
+      // Long-press first: on mobile ReorderableListView wraps each row in a
+      // ReorderableDelayedDragStartListener.
+      await tester.pump(kLongPressTimeout + kPressTimeout);
+      // Small steps rather than one jump to the destination — the drag
+      // recognizer tracks movement frame by frame and a single large moveTo
+      // right after the delay does not register as a drag at all. 200 px is
+      // one row (148) plus enough to clear p1's midpoint, and well short of
+      // p2's.
+      for (var i = 0; i < 20; i++) {
+        await drag.moveBy(const Offset(0, 10));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await drag.up();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(repo.reorderedTo!.map((p) => p.id), ['p1', 'p0', 'p2']);
+    });
+
+    testWidgets('the list is lazy, not a Wrap that builds all 80 at once', (
+      tester,
+    ) async {
+      // Same regression guard the delete screen carries: this screen was a
+      // ReorderableWrap inside a SingleChildScrollView, so opening it on a
+      // full gallery started 80 downloads and 80 decodes up front.
+      final repo = _FakeProfileRepository();
+      await _pump(tester, repo, ProfilePhotoReorderScreen(photos: _photos(80)));
+
+      expect(find.byType(Wrap), findsNothing);
+      expect(
+        find.byKey(const ValueKey('p79')),
+        findsNothing,
+        reason: 'the last row must not be built up front',
+      );
     });
 
     testWidgets('a failed save reports it and does not close the screen', (
