@@ -55,13 +55,27 @@ class PushNotificationsRepository {
     // Token rotation (app reinstall, Play Services data reset, etc.) — the
     // old row is left in place rather than deleted; send-push prunes it
     // itself the first time a send to it comes back "unregistered".
-    return FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-      _upsertToken(
-        userId: userId,
-        token: newToken,
-        locale: locale,
-        version: version,
-      );
+    //
+    // The write is awaited *inside* the callback and its failure caught here,
+    // because a stream callback has nobody to hand a rejected future to. Left
+    // bare, a token that rotates while the device is offline turned
+    // `_upsertToken`'s timeout into an unhandled async error — straight into
+    // `FlutterError.onError`, the same shape `_resolveExistingMediaUrls` in
+    // the composer had to be guarded against. There is no screen behind this
+    // to report to, and nothing to retry against: the row is rewritten by the
+    // `registerDevice` call above on the next app start regardless.
+    return FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      try {
+        await _upsertToken(
+          userId: userId,
+          token: newToken,
+          locale: locale,
+          version: version,
+        );
+      } catch (_) {
+        // Offline, or the write timed out. Nothing to say and nowhere to say
+        // it — see above.
+      }
     });
   }
 

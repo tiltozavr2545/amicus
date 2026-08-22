@@ -161,8 +161,25 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             parentCommentId: parentCommentId,
             replyToId: replyToId,
           );
-      _textController.clear();
-      if (mounted) setState(() => _replyTarget = null);
+      // Both under the same guard. The clear() used to sit above it, one line
+      // too early: nothing stops the user pressing back while the send is in
+      // flight, and by the time this resumes `dispose()` may already have
+      // disposed the controller — writing to one throws
+      // "A TextEditingController was used after being disposed" (verified: it
+      // throws, it is not a no-op).
+      //
+      // Nothing visible came of it, and that is the whole reason it survived:
+      // the throw lands in this method's own `catch`, which then returns on
+      // `!mounted`, so the exception never reaches a screen or a log. What it
+      // actually did was divert control — the reload below and the retiring of
+      // the idempotency token were skipped, which on a screen that is already
+      // gone costs nothing. It stops costing nothing the moment that `catch`
+      // is narrowed to the failures it is meant for. Guarded here rather than
+      // left to that.
+      if (mounted) {
+        _textController.clear();
+        setState(() => _replyTarget = null);
+      }
       // The token is retired only once the reload has confirmed the comment
       // landed. Clearing it right after the insert defeated the whole
       // idempotency scheme on the one path that needs it: send succeeds,

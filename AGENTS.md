@@ -14,6 +14,7 @@
 | отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
 | пошаговый план MVP, CI/деплой | [docs/implementation-plan.md](docs/implementation-plan.md) |
 | схема БД, правило видимости, storage-политики | [docs/data-model.md](docs/data-model.md) |
+| расписания, секреты, релиз, рассылка «обновитесь» | [docs/operations.md](docs/operations.md) |
 
 ## Проект
 
@@ -56,9 +57,9 @@ SQL/PostgreSQL и C#/.NET. Работать пошагово, не забега�
 ## Грабли
 
 - **Правило видимости жило в четырёх копиях, две отстали от mute/block и стали
-  дырами** — см. 0.11.0 в CHANGELOG. Сведено в одну `is_author_visible(uuid)`,
-  подробности схемы и её потребителей — [docs/data-model.md](docs/data-model.md).
-  Менять правило только там, не заводить вторую копию.
+  дырами.** Сведено в одну `is_author_visible(uuid)`; схема и её потребители —
+  [docs/data-model.md](docs/data-model.md). Менять правило только там, не
+  заводить вторую копию.
 - **RLS применяется и к подзапросам внутри политики.** Подзапрос к
   `blocked_users` сам фильтруется политикой `blocked_users`, поэтому ветка «меня
   заблокировали» молча отваливалась. Отсюда весь паттерн `security definer` +
