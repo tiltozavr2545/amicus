@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/tolerant_upload.dart';
@@ -191,31 +192,24 @@ class ProfileRepository {
   /// objects. `users.avatar_path` is re-synced automatically by the same DB
   /// trigger that handles [addPhotos]/[reorderPhotos].
   ///
-  /// Rows first, deliberately. With the objects going first, a `.timeout()`
-  /// on the row delete (which stops waiting without cancelling, so it is
-  /// routine) left every selected row still listed and still naming bytes that
-  /// were already gone — and if the selection included position 0, the sync
-  /// trigger had never run, so `users.avatar_path` kept pointing at a deleted
-  /// object and the user's avatar turned into the grey placeholder in their
-  /// own profile, in every friend's Connections list and on every one of their
-  /// posts. This order fails the other way: unreferenced bytes nobody sees.
-  Future<void> deletePhotos({required List<ProfilePhoto> photos}) async {
-    if (photos.isEmpty) return;
-    await _client
-        .from('profile_photos')
-        .delete()
-        .inFilter('id', photos.map((p) => p.id).toList())
-        .timeout(networkTimeout);
-    try {
-      await _client.storage
+  /// Ordering — and the reason for it — lives in [deleteRowsThenObjects].
+  /// It bites hardest here: deleting the object for position 0 first meant the
+  /// sync trigger never ran, so `users.avatar_path` went on naming bytes that
+  /// were gone and the avatar turned into a grey placeholder in the user's own
+  /// profile, in every friend's Connections list and on all of their posts.
+  Future<void> deletePhotos({required List<ProfilePhoto> photos}) {
+    if (photos.isEmpty) return Future.value();
+    return deleteRowsThenObjects(
+      rows: () => _client
+          .from('profile_photos')
+          .delete()
+          .inFilter('id', photos.map((p) => p.id).toList())
+          .timeout(networkTimeout),
+      objects: () => _client.storage
           .from(mediaBucket)
           .remove(photos.map((p) => p.storagePath).toList())
-          .timeout(networkTimeout);
-    } catch (_) {
-      // The gallery is already correct for everyone; a failure here is an
-      // orphan in the bucket, not a broken reference, and must not report the
-      // delete as failed.
-    }
+          .timeout(networkTimeout),
+    );
   }
 
   /// The `media` bucket is private (RLS-controlled); the SDK's storage

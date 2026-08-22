@@ -13,7 +13,7 @@ const _thumbSize = 140.0;
 /// by storage path) rather than resolving a signed URL, same as the small
 /// avatar circle everywhere else, so a photo already shown there paints
 /// instantly without a second download.
-class ProfilePhotoViewerScreen extends StatelessWidget {
+class ProfilePhotoViewerScreen extends StatefulWidget {
   const ProfilePhotoViewerScreen({
     super.key,
     required this.photos,
@@ -24,6 +24,26 @@ class ProfilePhotoViewerScreen extends StatelessWidget {
   final int initialIndex;
 
   @override
+  State<ProfilePhotoViewerScreen> createState() =>
+      _ProfilePhotoViewerScreenState();
+}
+
+/// Stateful purely to own the [PageController]. It used to be built inline in
+/// a [StatelessWidget]'s `build()`, which meant a fresh controller — seeded at
+/// `initialIndex` — on every rebuild: the viewer snapped back to the photo it
+/// was opened on whenever the system theme, text scale or orientation changed,
+/// and each discarded controller was a [ChangeNotifier] nobody disposed. Every
+/// other controller in this app is owned by a [State]; this was the exception.
+class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
+  late final _pageController = PageController(initialPage: widget.initialIndex);
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
@@ -32,10 +52,10 @@ class ProfilePhotoViewerScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: PageView.builder(
-        controller: PageController(initialPage: initialIndex),
-        itemCount: photos.length,
+        controller: _pageController,
+        itemCount: widget.photos.length,
         itemBuilder: (context, index) =>
-            _ViewerPage(path: photos[index].storagePath),
+            _ViewerPage(path: widget.photos[index].storagePath),
       ),
     );
   }

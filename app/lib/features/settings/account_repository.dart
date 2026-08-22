@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../auth/auth_providers.dart';
@@ -124,21 +125,21 @@ class AccountRepository {
       // never a blocked deletion. See the doc comment above.
     }
 
-    // The point of no return, and deliberately the first destructive step:
-    // until this commits, nothing of the user's has been touched, so a failure
-    // here leaves them exactly as they were.
-    await _client.rpc('delete_own_account').timeout(networkTimeout);
-
-    if (paths.isNotEmpty) {
-      try {
+    // Same ordering rule as the other two delete paths, and the same helper —
+    // see [deleteRowsThenObjects]. The account row is the reference here: until
+    // the RPC commits, nothing of the user's has been touched, so a failure
+    // leaves them exactly as they were rather than alive and stripped of every
+    // photo they had.
+    await deleteRowsThenObjects(
+      rows: () => _client.rpc('delete_own_account').timeout(networkTimeout),
+      objects: () async {
+        if (paths.isEmpty) return;
         await _client.storage
             .from(mediaBucket)
             .remove(paths.toList())
             .timeout(networkTimeout);
-      } catch (_) {
-        // Best-effort cleanup, see the doc comment above.
-      }
-    }
+      },
+    );
 
     // Not best-effort, and not conditional on the cleanup above: the cached
     // pages are this account's content sitting in plain SharedPreferences,

@@ -281,6 +281,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ],
                 ),
+                // A failed gallery load is otherwise indistinguishable from
+                // having no photos: the three buttons above just sit disabled
+                // (they key off `photosLoaded`, which is false on error too)
+                // and the avatar falls back to the person icon. The string for
+                // this existed in both locales from the start and was never
+                // wired to anything — the audit found it as an unused ARB key,
+                // which is what led back here.
+                if (photosAsync.hasError) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.failedToLoadPhotosError,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 TextField(
                   controller: _nameController,

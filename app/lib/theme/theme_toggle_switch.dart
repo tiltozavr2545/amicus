@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/connections/friend_profile_screen.dart';
 import '../features/profile/profile_repository.dart';
 import '../l10n/app_localizations.dart';
-import '../shared/system_account_id.dart';
+import '../shared/system_accounts.dart';
 import '../shared/tap_streak.dart';
 import 'theme_mode_provider.dart';
 
@@ -25,11 +25,21 @@ class ThemeToggleSwitch extends ConsumerWidget {
     // (flipping the theme) has already succeeded, and it has no error surface
     // of its own. Without the guard a flaky connection turned an unhandled
     // `fetchProfile` throw loose from a top-bar widget.
+    //
+    // Which account to open is asked of the server via [SystemAccounts] rather
+    // than read off the compiled-in [systemAccountId]. Using the literal here
+    // made this a second copy of a rule the server owns — and the copy that
+    // fails silently: after a rotation `fetchProfile` would throw on `.single()`
+    // for a uuid that no longer exists, the catch below would swallow it, and
+    // six flips of the switch would simply do nothing, with no diagnostic
+    // anywhere. See migration 20260821160000.
     final Profile profile;
     try {
+      final ids = await ref.read(systemAccountsProvider).ids();
+      if (ids.isEmpty) return;
       profile = await ref
           .read(profileRepositoryProvider)
-          .fetchProfile(systemAccountId);
+          .fetchProfile(ids.first);
     } catch (_) {
       return;
     }

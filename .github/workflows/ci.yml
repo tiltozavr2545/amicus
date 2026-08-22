@@ -72,5 +72,6 @@ jobs:
       - name: Build Android app bundle
         run: >-
           flutter build appbundle --release
+          -PallowDebugSigning=true
           --dart-define=SUPABASE_URL=https://example.invalid
           --dart-define=SUPABASE_ANON_KEY=ci-placeholder
