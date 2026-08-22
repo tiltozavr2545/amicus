@@ -13,6 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/picker_limit.dart';
+import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
 
@@ -121,6 +122,19 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   /// already uses (`post_list_view.dart`). Signing them one at a time meant
   /// opening the editor on a full 20-item post fired up to 40 separate
   /// `createSignedUrl` calls, two of them sequential within every video slot.
+  ///
+  /// Started unawaited from [initState], so a failure here has nowhere to
+  /// propagate: without the catch below, opening the editor with no
+  /// connectivity threw straight out of an orphaned future and into
+  /// `FlutterError.onError`. Every other network call on this screen — and
+  /// both of the carousel's copies of this same resolve — already guards
+  /// itself; this one was the exception.
+  ///
+  /// Losing the previews is not losing the photos: an [_ExistingSlot] keeps
+  /// its [PostMedia] whatever happens here, and [_submit] sends it on as
+  /// [KeptMedia] by `storagePath`. So the slot falls back to its placeholder
+  /// tile and saving still keeps the item — the report is there to say why the
+  /// tiles are grey, not to warn about data loss.
   Future<void> _resolveExistingMediaUrls() async {
     final missing = <String>{};
     for (final slot in _slots) {
@@ -133,9 +147,20 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
     if (missing.isEmpty) return;
 
-    final signed = await ref
-        .read(feedRepositoryProvider)
-        .resolveMediaUrls(missing.toList());
+    final Map<String, String> signed;
+    try {
+      signed = await ref
+          .read(feedRepositoryProvider)
+          .resolveMediaUrls(missing.toList());
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.failedToLoadPhotosError),
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
 
     final resolved = [
@@ -501,8 +526,13 @@ class _MediaTile extends StatelessWidget {
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
     );
     return switch (slot) {
-      _PickedSlot(:final previewBytes) => Image.memory(
-        previewBytes,
+      // Through [sizedMemoryImage], not a bare Image.memory: picked photos
+      // arrive at `maxWidth: 1600`, so each would decode to ~12 MB of ARGB for
+      // a 96 px tile — twenty of them is ~240 MB against a 100 MB ImageCache,
+      // which then thrashes and re-decodes on every composer rebuild. Same
+      // helper every other small-image site in the app already uses.
+      _PickedSlot(:final previewBytes) => Image(
+        image: sizedMemoryImage(context, previewBytes, logicalWidth: _size),
         fit: BoxFit.cover,
       ),
       _ExistingSlot(:final media) =>
