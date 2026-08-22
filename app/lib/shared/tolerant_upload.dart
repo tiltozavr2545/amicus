@@ -26,7 +26,10 @@ Future<void> uploadTolerant(
   required String path,
   required Uint8List bytes,
 }) {
-  return _tolerant(() => client.storage.from(bucket).uploadBinary(path, bytes));
+  return _tolerant(
+    bytes.length,
+    () => client.storage.from(bucket).uploadBinary(path, bytes),
+  );
 }
 
 /// Reads [file] and uploads it, with the same 409 tolerance.
@@ -53,9 +56,13 @@ Future<void> uploadTolerantFile(
   await uploadTolerant(client, bucket: bucket, path: path, bytes: bytes);
 }
 
-Future<void> _tolerant(Future<String> Function() upload) async {
+/// [bytes] is the payload size, which is what the deadline is derived from —
+/// see [uploadTimeout]. The plain [networkTimeout] used to be applied here
+/// regardless of size, which made every video post time out before its body
+/// was even sent.
+Future<void> _tolerant(int bytes, Future<String> Function() upload) async {
   try {
-    await upload().timeout(networkTimeout);
+    await upload().timeout(uploadTimeout(bytes));
   } on StorageException catch (e) {
     if (e.statusCode != '409') rethrow;
   }

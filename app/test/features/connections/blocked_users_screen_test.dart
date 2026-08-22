@@ -19,6 +19,9 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   Future<String> createInviteLink() async => 'stub-code';
 
   @override
+  Future<String> rotateInviteLink() async => 'stub-code-2';
+
+  @override
   Future<ActivatedConnection> activateInviteLink(String code) async {
     return const ActivatedConnection(ownerId: 'owner-1', ownerName: 'Owner');
   }

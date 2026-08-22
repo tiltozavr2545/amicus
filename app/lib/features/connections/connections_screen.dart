@@ -239,15 +239,49 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     super.dispose();
   }
 
+  /// Shows the caller's invite code, or replaces it when one is already on
+  /// screen — the button relabels itself to "create new code" at that point,
+  /// and until `rotate_invite_link()` existed it did not do that: the RPC
+  /// behind it is idempotent and handed back the very same string, so a code
+  /// sent to the wrong chat could never be taken back.
+  ///
+  /// Replacing is confirmed first, like every other irreversible action on
+  /// this screen: whoever already holds the old code loses it, and if it was
+  /// sent to the right person and simply not redeemed yet, that is a real
+  /// loss rather than a cosmetic one.
   Future<void> _createInviteLink() async {
+    final l10n = AppLocalizations.of(context)!;
+    final isRotating = _myInviteCode != null;
+    if (isRotating) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l10n.rotateInviteCodeTitle),
+          content: Text(l10n.rotateInviteCodeContent),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.cancelButton),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.createNewCodeButton),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
     setState(() {
       _isCreatingLink = true;
       _createLinkError = null;
     });
     try {
-      final code = await ref
-          .read(connectionsRepositoryProvider)
-          .createInviteLink();
+      final repo = ref.read(connectionsRepositoryProvider);
+      final code = isRotating
+          ? await repo.rotateInviteLink()
+          : await repo.createInviteLink();
       if (!mounted) return;
       setState(() => _myInviteCode = code);
     } catch (e) {

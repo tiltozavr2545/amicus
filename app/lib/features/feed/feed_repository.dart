@@ -8,7 +8,7 @@ import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
-import '../../shared/system_account_id.dart';
+import '../../shared/system_accounts.dart';
 import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
 
@@ -456,39 +456,13 @@ String postMediaPosterPath({
 }) => 'posts/$authorId/$postClientToken/${mediaClientToken}_poster.jpg';
 
 class FeedRepository {
-  FeedRepository(this._client);
+  FeedRepository(this._client, this._systemAccounts);
 
   final SupabaseClient _client;
 
-  List<String>? _cachedSystemAccountIds;
-
-  /// Which authors the general feed leaves out, asked of the server rather
-  /// than compiled in.
-  ///
-  /// This used to be the literal in [systemAccountId], which made the app a
-  /// second copy of a rule `is_system_account()` already owns server-side —
-  /// so adding a system account, or rotating the existing one, would have
-  /// changed the server and left every installed build still showing that
-  /// account's posts in the general feed, fixable only by a release.
-  ///
-  /// Fetched once per repository instance and cached: the answer changes about
-  /// as often as a migration is written. [systemAccountId] survives purely as
-  /// the offline fallback — a feed must not fail to load because this lookup
-  /// did, and falling back to today's known answer is strictly better than
-  /// filtering nothing.
-  Future<List<String>> _systemAccountIds() async {
-    final cached = _cachedSystemAccountIds;
-    if (cached != null) return cached;
-    try {
-      final rows = await _client
-          .rpc('system_account_ids')
-          .timeout(networkTimeout);
-      final ids = (rows as List<dynamic>).cast<String>();
-      return _cachedSystemAccountIds = ids;
-    } catch (_) {
-      return const [systemAccountId];
-    }
-  }
+  /// Which authors count as system accounts — the server's answer, shared with
+  /// every other caller that needs it. See [SystemAccounts].
+  final SystemAccounts _systemAccounts;
 
   /// Fetches one page of the feed (newest first), starting strictly after
   /// [cursor] (the last post of the previous page; null for the first page).
@@ -516,8 +490,15 @@ class FeedRepository {
     if (authorId != null) {
       query = query.eq('author_id', authorId);
     } else {
-      final excluded = await _systemAccountIds();
-      query = query.not('author_id', 'in', '(${excluded.join(',')})');
+      final excluded = await _systemAccounts.ids();
+      // Skipped rather than sent empty: `not.in.()` is not a filter PostgREST
+      // accepts, it is a 400 — and [SystemAccounts] caches its answer, so one
+      // empty result would have wedged the feed for the rest of the session
+      // while the offline fallback stood by unused (the lookup *succeeded*, it
+      // just said "none"). No system accounts means nothing to leave out.
+      if (excluded.isNotEmpty) {
+        query = query.not('author_id', 'in', '(${excluded.join(',')})');
+      }
     }
     final filter = keysetFilter(cursor);
     if (filter != null) {
@@ -797,9 +778,12 @@ class FeedRepository {
   /// left the post with *no media rows at all*, while its files sat on in
   /// Storage referenced by nothing.
   ///
-  /// Storage deletions come last, after the rows are already correct: an
-  /// object nothing points at is wasted bucket space, whereas a row pointing
-  /// at a deleted object is a broken image in everyone's feed.
+  /// Storage deletions come last, after *both* row writes are already
+  /// correct, and are best-effort — [deleteRowsThenObjects] states the rule
+  /// and this is one of its call sites. An object nothing points at is wasted
+  /// bucket space, whereas a row pointing at a deleted object is a broken
+  /// image in everyone's feed, and a failed cleanup must never be reported as
+  /// a failed save.
   ///
   /// [postClientToken] is the prefix new media is uploaded under — normally
   /// the post's own [Post.clientToken], but the caller mints a fresh one for
@@ -845,28 +829,47 @@ class FeedRepository {
         },
     ];
 
-    final orphaned = await _client
-        .rpc('set_post_media', params: {'p_post_id': postId, 'p_items': items})
-        .timeout(networkTimeout);
+    // Both halves of the save are rows, and the bucket cleanup is the object
+    // half — the same shape [deleteRowsThenObjects] exists for, so it runs
+    // through it rather than open-coding a third variant of the rule.
+    //
+    // The cleanup used to sit *between* the two row writes, un-guarded. An
+    // edit that changed the caption and dropped a photo would then commit the
+    // media change, fail on a timed-out `remove()`, and never reach the
+    // caption at all — while the composer reported that nothing had been
+    // saved. Orphaned bytes are wasted space nobody sees; a half-applied edit
+    // reported as a failure is a lie the user acts on.
+    var orphanedPaths = const <String>[];
+    await deleteRowsThenObjects(
+      rows: () async {
+        final orphaned = await _client
+            .rpc(
+              'set_post_media',
+              params: {'p_post_id': postId, 'p_items': items},
+            )
+            .timeout(networkTimeout);
 
-    // `returns table (storage_path text)`, so PostgREST hands these back as
-    // rows — the same shape as every other RPC in this project.
-    final orphanedPaths = [
-      for (final row in (orphaned as List<dynamic>? ?? const []))
-        (row as Map<String, dynamic>)['storage_path'] as String,
-    ];
-    if (orphanedPaths.isNotEmpty) {
-      await _client.storage
-          .from(mediaBucket)
-          .remove(orphanedPaths)
-          .timeout(networkTimeout);
-    }
+        // `returns table (storage_path text)`, so PostgREST hands these back
+        // as rows — the same shape as every other RPC in this project.
+        orphanedPaths = [
+          for (final row in (orphaned as List<dynamic>? ?? const []))
+            (row as Map<String, dynamic>)['storage_path'] as String,
+        ];
 
-    await _client
-        .from('posts')
-        .update({'text': (text != null && text.isNotEmpty) ? text : null})
-        .eq('id', postId)
-        .timeout(networkTimeout);
+        await _client
+            .from('posts')
+            .update({'text': (text != null && text.isNotEmpty) ? text : null})
+            .eq('id', postId)
+            .timeout(networkTimeout);
+      },
+      objects: () async {
+        if (orphanedPaths.isEmpty) return;
+        await _client.storage
+            .from(mediaBucket)
+            .remove(orphanedPaths)
+            .timeout(networkTimeout);
+      },
+    );
   }
 
   /// Sets (or switches) the current user's reaction on a post. Upserts onto
@@ -988,7 +991,10 @@ class FeedRepository {
 }
 
 final feedRepositoryProvider = Provider<FeedRepository>((ref) {
-  return FeedRepository(ref.watch(supabaseClientProvider));
+  return FeedRepository(
+    ref.watch(supabaseClientProvider),
+    ref.watch(systemAccountsProvider),
+  );
 });
 
 /// Bumped whenever something outside [FeedScreen] changes what the feed should

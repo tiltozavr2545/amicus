@@ -29,8 +29,23 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   String? lastBlockedId;
   String? lastUnblockedId;
 
+  int createCalls = 0;
+  int rotateCalls = 0;
+
   @override
-  Future<String> createInviteLink() async => 'stub-code';
+  Future<String> createInviteLink() async {
+    createCalls++;
+    return 'stub-code';
+  }
+
+  /// A different string on purpose: the whole point of rotation is that the
+  /// code on screen changes, which is exactly what the old idempotent
+  /// `createInviteLink` could not do.
+  @override
+  Future<String> rotateInviteLink() async {
+    rotateCalls++;
+    return 'rotated-code';
+  }
 
   /// Thrown instead of activating, so a test can drive the error branch.
   Object? activateError;
@@ -181,6 +196,68 @@ void main() {
     // The screen trims the code before handing it off.
     expect(repo.lastCode, 'abc123');
   });
+
+  testWidgets('The first tap mints a code without asking anything', (
+    tester,
+  ) async {
+    final repo = _FakeConnectionsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Create invite code'));
+    await tester.pumpAndSettle();
+
+    expect(repo.createCalls, 1);
+    expect(repo.rotateCalls, 0);
+    expect(find.text('stub-code'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Creating a new code asks first, and leaves the old one alone on cancel',
+    (tester) async {
+      final repo = _FakeConnectionsRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create invite code'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create new code'));
+      await tester.pumpAndSettle();
+      expect(find.text('Create a new code?'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      // Whoever already holds the code keeps it: nothing was revoked.
+      expect(repo.rotateCalls, 0);
+      expect(find.text('stub-code'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Confirming replaces the code, rather than handing back the same one',
+    (tester) async {
+      final repo = _FakeConnectionsRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create invite code'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create new code'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Create new code'));
+      await tester.pumpAndSettle();
+
+      // The rotation RPC, not the idempotent one — calling createInviteLink
+      // again is what used to redisplay the identical, unrevokable code.
+      expect(repo.rotateCalls, 1);
+      expect(repo.createCalls, 1);
+      expect(find.text('rotated-code'), findsOneWidget);
+      expect(find.text('stub-code'), findsNothing);
+    },
+  );
 
   testWidgets(
     'Muting an unmuted friend shows a confirmation dialog and only calls '

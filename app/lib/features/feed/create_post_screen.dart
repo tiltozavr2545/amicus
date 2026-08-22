@@ -18,6 +18,16 @@ import 'feed_repository.dart';
 
 const _maxMediaCount = 20;
 const _maxVideoDuration = Duration(seconds: 60);
+
+/// Mirrors the `media` bucket's own `file_size_limit` (20260820130000).
+///
+/// Duration alone was never the whole gate: 45 s of 4K/60 clears
+/// [_maxVideoDuration] and still runs well past 100 MiB, and Storage answers
+/// that with a 413 only after the entire file has been read into memory and
+/// pushed over the network. The composer showed the generic "failed to
+/// publish" for it, so the clip looked like a flaky upload rather than one
+/// that can never succeed, and retrying could not help.
+const _maxVideoBytes = 100 * 1024 * 1024;
 const _videoExtensions = {'mp4', 'mov', 'm4v', '3gp', 'webm', 'mkv'};
 
 /// One tile in the composer's media grid: either a photo/video already on
@@ -194,6 +204,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     setState(() => _isPicking = true);
     var skippedTooLong = false;
+    var skippedTooLarge = false;
     var failed = false;
     final newSlots = <_Slot>[];
     // Per file, not per batch: one unreadable file (an unsupported codec
@@ -215,6 +226,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           }
           if (duration > _maxVideoDuration) {
             skippedTooLong = true;
+            continue;
+          }
+          // Checked before the poster frame is extracted: no point spending a
+          // decode on a clip the bucket will refuse.
+          if (await file.length() > _maxVideoBytes) {
+            skippedTooLarge = true;
             continue;
           }
           final posterBytes =
@@ -277,6 +294,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.videoTooLongError)));
+    } else if (skippedTooLarge) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.videoTooLargeError)));
     } else if (failed) {
       ScaffoldMessenger.of(
         context,

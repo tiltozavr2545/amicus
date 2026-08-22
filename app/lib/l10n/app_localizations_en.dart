@@ -137,6 +137,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createNewCodeButton => 'Create new code';
 
   @override
+  String get rotateInviteCodeTitle => 'Create a new code?';
+
+  @override
+  String get rotateInviteCodeContent =>
+      'The current code stops working immediately. Anyone you have already sent it to will not be able to use it.';
+
+  @override
   String get haveCodeSectionTitle => 'I have a code';
 
   @override
@@ -253,6 +260,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoTooLongError => 'Video must be under 60 seconds';
+
+  @override
+  String get videoTooLargeError => 'Video must be under 100 MB';
 
   @override
   String get failedToAddMediaError => 'Some files couldn\'t be added';

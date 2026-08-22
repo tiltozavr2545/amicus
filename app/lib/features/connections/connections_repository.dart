@@ -55,9 +55,29 @@ class ConnectionsRepository {
 
   final SupabaseClient _client;
 
+  /// Returns the caller's current unused invite code, minting one if they have
+  /// none. Idempotent by design — a retry after a timeout must not leave two
+  /// live codes — so calling it again on someone who already has a code hands
+  /// back the same string. To *replace* a code, see [rotateInviteLink].
   Future<String> createInviteLink() async {
     final code = await _client
         .rpc('create_invite_link')
+        .timeout(networkTimeout);
+    return code as String;
+  }
+
+  /// Revokes the caller's current unused invite code and returns a fresh one.
+  ///
+  /// The separate RPC is the point: an invite code is a bearer secret — anyone
+  /// holding it becomes a Connection with full feed, profile and gallery
+  /// visibility — and [createInviteLink] deliberately cannot replace one, so
+  /// until this existed a code sent to the wrong person stayed live until
+  /// somebody redeemed it. The old row is deleted rather than marked used, so
+  /// the revoked code reads as `PT404` ("no such code") rather than `PT409`
+  /// ("already used"), which would be untrue. See migration 20260822150000.
+  Future<String> rotateInviteLink() async {
+    final code = await _client
+        .rpc('rotate_invite_link')
         .timeout(networkTimeout);
     return code as String;
   }

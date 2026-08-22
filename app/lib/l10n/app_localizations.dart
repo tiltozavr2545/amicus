@@ -332,6 +332,18 @@ abstract class AppLocalizations {
   /// **'Create new code'**
   String get createNewCodeButton;
 
+  /// No description provided for @rotateInviteCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a new code?'**
+  String get rotateInviteCodeTitle;
+
+  /// No description provided for @rotateInviteCodeContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The current code stops working immediately. Anyone you have already sent it to will not be able to use it.'**
+  String get rotateInviteCodeContent;
+
   /// No description provided for @haveCodeSectionTitle.
   ///
   /// In en, this message translates to:
@@ -541,6 +553,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Video must be under 60 seconds'**
   String get videoTooLongError;
+
+  /// No description provided for @videoTooLargeError.
+  ///
+  /// In en, this message translates to:
+  /// **'Video must be under 100 MB'**
+  String get videoTooLargeError;
 
   /// No description provided for @failedToAddMediaError.
   ///
