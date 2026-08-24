@@ -235,6 +235,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     var skippedTooLong = false;
     var skippedTooLarge = false;
     var skippedBadFormat = false;
+    var skippedBadVideoFormat = false;
     var failed = false;
     final newSlots = <_Slot>[];
     // Per file, not per batch: one unreadable file (an unsupported codec
@@ -246,6 +247,31 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       final mediaClientToken = const Uuid().v4();
       try {
         if (_looksLikeVideo(file)) {
+          // Первым делом, до инициализации плеера и до извлечения постера —
+          // и по той же причине, по которой ветка изображений ниже проверяет
+          // [imageExtensions]: content type объекта Storage берёт из
+          // РАСШИРЕНИЯ в его имени (`lookupMimeType()` в
+          // storage_client/src/fetch.dart), а имя строит [postMediaPath] из
+          // расширения выбранного файла. Формата, которого нет в
+          // `allowed_mime_types` бакета (20260822260000), не будет и после
+          // ретрая, так что `.avi`/`.mpg`/`.wmv` уходил в общее «не удалось
+          // опубликовать» — и уходил ПОСЛЕ того, как клип целиком прочитали в
+          // память и отправили по сети.
+          //
+          // [videoExtensions] до сих пор участвовал только в [_looksLikeVideo]
+          // — как классификатор «видео или картинка», когда пикер не сообщил
+          // mime, — но гейтом не был нигде, хотя data-model.md и
+          // media_extensions_test.dart исходят из того, что был.
+          //
+          // Проверка нужна и на втором, менее очевидном исходе: у файла без
+          // расширения в имени [fileExtension] отдаёт свой дефолтный `jpg`,
+          // бакет принимает клип как `image/jpeg` — и в ленте остаётся слайд
+          // с `media_type = 'video'`, постером и кнопкой play, которая не
+          // проигрывает ничего.
+          if (!videoExtensions.contains(fileExtension(file.name))) {
+            skippedBadVideoFormat = true;
+            continue;
+          }
           final controller = VideoPlayerController.file(File(file.path));
           Duration duration;
           try {
@@ -342,6 +368,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.unsupportedImageFormatError)));
+    } else if (skippedBadVideoFormat) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.unsupportedVideoFormatError)));
     } else if (failed) {
       ScaffoldMessenger.of(
         context,

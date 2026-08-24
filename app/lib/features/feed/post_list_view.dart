@@ -248,9 +248,25 @@ class _PostListViewState extends ConsumerState<PostListView> {
       await ref
           .read(feedRepositoryProvider)
           .deletePost(postId: post.id, mediaStoragePaths: mediaPaths);
+      if (!mounted) return;
       // Remove by id, not the captured index: the list may have shifted (a
       // refresh, another delete) while the request was in flight.
-      if (mounted) setState(() => _posts.removeWhere((p) => p.id == post.id));
+      setState(() => _posts.removeWhere((p) => p.id == post.id));
+      // Убрать из СВОЕГО списка мало. Живых PostListView одновременно
+      // несколько: лента и профиль — две ветки shell'а в IndexedStack, плюс
+      // FriendProfileScreen сверху. Удалили пост из профиля — во вкладке
+      // ленты он остаётся, и остаётся кликабельным: реакцию по нему RLS
+      // отбивает («Users can like posts they can see» требует существования
+      // строки в posts), а [_react] эту ошибку молча откатывает, комментарии
+      // открываются пустыми, повторное «Удалить» задевает ноль строк и
+      // считается успехом.
+      //
+      // Ровно та несогласованность, ради которой заведён
+      // [feedRefreshTickProvider] — и правка поста, и mute/block, и новый
+      // пост через него уже проходят. Удаление было единственной мутацией
+      // ленты, которая его не дёргала. Локальное removeWhere выше при этом
+      // остаётся: оно убирает карточку сразу, не дожидаясь перезапроса.
+      ref.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -270,6 +286,27 @@ class _PostListViewState extends ConsumerState<PostListView> {
     if (saved == true) {
       ref.read(feedRefreshTickProvider.notifier).bump();
     }
+  }
+
+  /// Ставит на карточку то число комментариев, которое [CommentsScreen] только
+  /// что увидел у сервера.
+  ///
+  /// Без этого счётчик не менялся вообще никогда: экран комментариев
+  /// открывался без `.then`, ничего не возвращал и тик обновления не дёргал,
+  /// так что человек писал комментарий, возвращался — и видел прежнее число.
+  /// Удаление своего комментария оставляло число завышенным. До первого
+  /// pull-to-refresh.
+  ///
+  /// По id, а не по индексу, и с проверкой [mounted] — экран висит поверх
+  /// списка сколько угодно долго, за это время список мог обновиться целиком
+  /// или уехать вместе с вкладкой (та же причина, что у [_deletePost] и
+  /// [_react]).
+  void _updateCommentCount(String postId, int count) {
+    if (!mounted) return;
+    final at = _posts.indexWhere((p) => p.id == postId);
+    if (at == -1) return;
+    if (_posts[at].commentCount == count) return;
+    setState(() => _posts[at] = _posts[at].copyWith(commentCount: count));
   }
 
   /// Tapping a reaction toggles it: tapping the one you already have clears it,
@@ -371,7 +408,11 @@ class _PostListViewState extends ConsumerState<PostListView> {
                   onDelete: () => _deletePost(post),
                   onOpenComments: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => CommentsScreen(postId: post.id),
+                      builder: (_) => CommentsScreen(
+                        postId: post.id,
+                        onCountChanged: (count) =>
+                            _updateCommentCount(post.id, count),
+                      ),
                     ),
                   ),
                 );

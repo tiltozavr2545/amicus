@@ -21,8 +21,13 @@ class _FakeProfileRepository implements ProfileRepository {
   Future<Profile> fetchProfile(String userId) async =>
       Profile(id: userId, name: name);
 
+  /// Сколько раз галерею перечитали — на этом стоит проверка про возврат с
+  /// экрана удаления.
+  int fetchPhotosCalls = 0;
+
   @override
   Future<List<ProfilePhoto>> fetchPhotos(String userId) async {
+    fetchPhotosCalls++;
     if (photosThrow) throw Exception('offline');
     return photos;
   }
@@ -162,5 +167,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Failed to load photos. Please try again.'), findsNothing);
+  });
+
+  // Галерея перечитывается при ЛЮБОМ возврате с экрана удаления, а не только
+  // когда тот вернул `true`. `true` он возвращает лишь на полном успехе, а
+  // `.timeout()` перестаёт ждать, не отменяя запрос: строки в
+  // `profile_photos` могли уже уйти (deleteRowsThenObjects удаляет их
+  // первыми), экран показал ошибку и остался открытым, и сюда возвращаются с
+  // `null`. Со старым `if (changed == true)` список на профиле оставался со
+  // строками, которых нет, и `reorder_profile_photos()` после этого навсегда
+  // отвечал PT422 — экран профиля живёт веткой shell'а и сам себя не
+  // перечитывает.
+  testWidgets('backing out of the delete screen still re-reads the gallery', (
+    tester,
+  ) async {
+    final repo = _FakeProfileRepository()
+      ..photos = const [
+        ProfilePhoto(
+          id: 'ph1',
+          position: 0,
+          storagePath: 'avatars/user-1/a.jpg',
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    final before = repo.fetchPhotosCalls;
+
+    await tester.tap(find.text('Delete photo'));
+    await tester.pumpAndSettle();
+    // Уходим без единой мутации — маршрут отдаёт `null`.
+    Navigator.of(tester.element(find.byType(Scaffold).last)).pop();
+    await tester.pumpAndSettle();
+
+    expect(repo.fetchPhotosCalls, greaterThan(before));
   });
 }

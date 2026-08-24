@@ -9,9 +9,24 @@ import 'comment_thread.dart';
 import 'feed_repository.dart';
 
 class CommentsScreen extends ConsumerStatefulWidget {
-  const CommentsScreen({super.key, required this.postId});
+  const CommentsScreen({super.key, required this.postId, this.onCountChanged});
 
   final String postId;
+
+  /// Сообщает открывшему экрану, сколько комментариев у поста на самом деле —
+  /// после каждой успешной загрузки списка, то есть и после отправки, и после
+  /// удаления.
+  ///
+  /// Колбэк, а не возвращаемое значение маршрута: экран закрывают системной
+  /// кнопкой «назад», у которой результата нет, а перехватывать её через
+  /// PopScope ради счётчика — вмешательство в жест, который в этом проекте
+  /// проверить нечем (см. «Грабли» в CLAUDE.md). Заодно карточка под
+  /// экраном обновляется сразу, а не при выходе.
+  ///
+  /// Дёргать [FeedRefreshTick] здесь было бы неверно по цене: он перезагружает
+  /// первую страницу КАЖДОГО открытого списка, а изменилось одно число на
+  /// одной карточке.
+  final ValueChanged<int>? onCountChanged;
 
   @override
   ConsumerState<CommentsScreen> createState() => _CommentsScreenState();
@@ -74,6 +89,12 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         _comments = threadComments(comments);
         _errorMessage = null;
       });
+      // Из СЫРОГО списка, не из threadComments(): счётчик на карточке рисует
+      // `comment_summary()`, а он считает `count(*) … where deleted_at is
+      // null` — то есть ровно видимые нетомбстоненные строки. threadComments()
+      // сверх этого прячет ответы без корня и заглушки без ответов, так что
+      // его длина дала бы другое число.
+      widget.onCountChanged?.call(comments.where((c) => !c.isDeleted).length);
       return true;
     } catch (e) {
       if (!mounted) return false;

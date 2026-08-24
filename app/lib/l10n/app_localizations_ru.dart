@@ -269,6 +269,10 @@ class AppLocalizationsRu extends AppLocalizations {
       'Формат изображения не поддерживается. Подойдут JPEG, PNG, WebP или HEIC.';
 
   @override
+  String get unsupportedVideoFormatError =>
+      'Формат видео не поддерживается. Подойдут MP4, MOV, M4V, 3GP, WebM или MKV.';
+
+  @override
   String get addTextOrPhotoError => 'Добавьте текст, фото или видео';
 
   @override

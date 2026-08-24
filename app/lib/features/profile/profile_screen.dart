@@ -141,8 +141,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await ref
           .read(profileRepositoryProvider)
           .addPhotos(userId: userId, items: items, existing: existing);
-      ref.invalidate(_profileProvider);
-      ref.invalidate(_profilePhotosProvider);
       if (usable.length < picked.take(remaining).length) {
         // ignore: use_build_context_synchronously
         _showError(context, (l10n) => l10n.unsupportedImageFormatError);
@@ -151,32 +149,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // ignore: use_build_context_synchronously
       _showError(context, (l10n) => l10n.failedToAddPhotosError);
     } finally {
-      if (mounted) setState(() => _isAddingPhotos = false);
+      // Перечитывается и на ошибке тоже, а не только на успехе — в этом вся
+      // правка. `.timeout()` перестаёт ждать, не отменяя запрос, поэтому
+      // upsert в `profile_photos` мог закоммититься уже после того, как этот
+      // экран показал «не удалось добавить фото». Без инвалидации здесь
+      // `photosAsync.value` остаётся тем, чем был ДО попытки, и это не
+      // косметика: [ProfileRepository.addPhotos] считает `position` от него,
+      // так что следующее добавление целится в занятые позиции и упирается в
+      // `profile_photos_user_position_key`. Арбитр upsert'а —
+      // `(user_id, storage_path)`, а пути у новых файлов свои, поэтому
+      // конфликт по position не гасится, а падает.
+      //
+      // Само по себе это было бы «повторите» — но повторить нечем: обе
+      // кнопки, которые могли бы вернуть экран в согласованное состояние,
+      // отключены по тому же устаревшему списку («Переставить» — при
+      // `length < 2`, «Удалить» — при `isEmpty`), а ProfileScreen живёт
+      // веткой StatefulShellRoute и не пересоздаётся при переключении
+      // вкладок. То есть autoDispose-провайдер не умирает никогда, и выйти из
+      // тупика можно было только перезапуском приложения.
+      if (mounted) {
+        ref.invalidate(_profileProvider);
+        ref.invalidate(_profilePhotosProvider);
+        setState(() => _isAddingPhotos = false);
+      }
     }
   }
 
-  Future<void> _openReorder(List<ProfilePhoto> photos) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ProfilePhotoReorderScreen(photos: photos),
-      ),
-    );
-    if (changed == true) {
-      ref.invalidate(_profileProvider);
-      ref.invalidate(_profilePhotosProvider);
-    }
-  }
-
-  Future<void> _openDelete(List<ProfilePhoto> photos) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ProfilePhotoDeleteScreen(photos: photos),
-      ),
-    );
-    if (changed == true) {
-      ref.invalidate(_profileProvider);
-      ref.invalidate(_profilePhotosProvider);
-    }
+  /// Открывает экран, который может изменить галерею, и перечитывает её после
+  /// возврата.
+  ///
+  /// Безусловно, а не по `changed == true`, как было у обоих вызовов до этого.
+  /// `true` возвращается только когда мутация ДОШЛА до конца: и
+  /// [ProfilePhotoDeleteScreen], и [ProfilePhotoReorderScreen] на ошибке
+  /// показывают снекбар и остаются открытыми, а `pop(true)` не выполняют. Но
+  /// «ошибка» и «ничего не произошло» — не одно и то же: `.timeout()`
+  /// перестаёт ждать, не отменяя запрос, а удаление фотографий вдобавок
+  /// устроено как [deleteRowsThenObjects] — сначала строки, потом объекты, —
+  /// так что строк в `profile_photos` может уже не быть.
+  ///
+  /// Сюда тогда возвращаются с `null`, список на экране профиля остаётся со
+  /// строками, которых больше нет, и это запирает перестановку насовсем:
+  /// `reorder_profile_photos()` требует ВЕСЬ набор, удалённые id отваливаются
+  /// на join'е внутри, длины не сходятся — и функция отвечает `PT422` при
+  /// каждой попытке. Экран профиля живёт веткой StatefulShellRoute, то есть
+  /// autoDispose-провайдер не умирает при переключении вкладок и сам себя не
+  /// перечитает.
+  ///
+  /// Цена — один лишний запрос галереи, когда человек зашёл на экран и вышел,
+  /// ничего не поменяв.
+  Future<void> _openGalleryEditor(Widget screen) async {
+    await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => screen));
+    if (!mounted) return;
+    ref.invalidate(_profileProvider);
+    ref.invalidate(_profilePhotosProvider);
   }
 
   void _openViewer(List<ProfilePhoto> photos) {
@@ -287,14 +314,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               label: l10n.reorderPhotosButton,
                               onPressed: !photosLoaded || photos.length < 2
                                   ? null
-                                  : () => _openReorder(photos),
+                                  : () => _openGalleryEditor(
+                                      ProfilePhotoReorderScreen(photos: photos),
+                                    ),
                             ),
                             _PhotoActionButton(
                               icon: Icons.delete_outline,
                               label: l10n.deletePhotoButton,
                               onPressed: !photosLoaded || photos.isEmpty
                                   ? null
-                                  : () => _openDelete(photos),
+                                  : () => _openGalleryEditor(
+                                      ProfilePhotoDeleteScreen(photos: photos),
+                                    ),
                             ),
                           ],
                         ),

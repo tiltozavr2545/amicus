@@ -572,6 +572,12 @@ abstract class AppLocalizations {
   /// **'Unsupported image format. Use JPEG, PNG, WebP or HEIC.'**
   String get unsupportedImageFormatError;
 
+  /// No description provided for @unsupportedVideoFormatError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported video format. Use MP4, MOV, M4V, 3GP, WebM or MKV.'**
+  String get unsupportedVideoFormatError;
+
   /// No description provided for @addTextOrPhotoError.
   ///
   /// In en, this message translates to:

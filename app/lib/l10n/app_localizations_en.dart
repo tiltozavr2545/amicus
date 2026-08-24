@@ -272,6 +272,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Unsupported image format. Use JPEG, PNG, WebP or HEIC.';
 
   @override
+  String get unsupportedVideoFormatError =>
+      'Unsupported video format. Use MP4, MOV, M4V, 3GP, WebM or MKV.';
+
+  @override
   String get addTextOrPhotoError => 'Add text, a photo, or a video';
 
   @override

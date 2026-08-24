@@ -22,11 +22,35 @@ class _FakeFeedRepository implements FeedRepository {
   /// prefetch tests assert on.
   final signedPaths = <String>[];
 
+  /// Ids handed to [deletePost], and the comments one post has — both only
+  /// for the two tests about what happens to the *rest* of the app when a
+  /// post is deleted or commented on.
+  final deletedPostIds = <String>[];
+  List<Comment> commentsToReturn = const [];
+
   @override
   Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
     if (throwOnFetch) throw Exception('offline');
     return pageToReturn;
   }
+
+  @override
+  Future<void> deletePost({
+    required String postId,
+    List<String> mediaStoragePaths = const [],
+  }) async {
+    deletedPostIds.add(postId);
+    // Как сервер: следующая страница этот пост уже не отдаёт. Без этого
+    // перезагрузка по тику вернула бы его обратно, и тест не отличил бы
+    // «список перечитан» от «список не тронут».
+    pageToReturn = [
+      for (final post in pageToReturn)
+        if (post.id != postId) post,
+    ];
+  }
+
+  @override
+  Future<List<Comment>> fetchComments(String postId) async => commentsToReturn;
 
   @override
   Future<Map<String, String>> resolveMediaUrls(
@@ -346,6 +370,94 @@ void main() {
         .toList();
     expect(urls.first, 'https://example.invalid/signed?p=new');
     expect(urls, hasLength(2));
+  });
+
+  // Лента и профиль — два живых PostListView в IndexedStack'е shell'а.
+  // Удаление убирало пост только из своего списка, и во втором он оставался
+  // кликабельной карточкой: реакцию по нему отбивает RLS (и [_react] эту
+  // ошибку молча откатывает), комментарии открываются пустыми. Правка поста,
+  // mute/block и новый пост через этот тик уже проходили — удаление было
+  // единственной мутацией ленты, которая его не дёргала.
+  testWidgets('deleting a post bumps the tick the other lists listen on', (
+    tester,
+  ) async {
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [
+        Post(
+          id: 'p1',
+          // Меню «⋮» рисуется только на своём посте.
+          authorId: 'test-user',
+          authorName: 'Me',
+          createdAt: DateTime(2026, 1, 1, 12),
+          text: 'mine',
+        ),
+      ];
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_wrap(repo, container: container));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    final before = container.read(feedRefreshTickProvider);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+    // Подтверждение — вторая «Delete», уже в диалоге.
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+
+    expect(repo.deletedPostIds, ['p1']);
+    expect(find.text('mine'), findsNothing);
+    expect(container.read(feedRefreshTickProvider), greaterThan(before));
+  });
+
+  // Экран комментариев открывался без `.then`, ничего не возвращал и тик не
+  // дёргал, поэтому число на карточке не менялось никогда: написал коммент,
+  // вернулся — прежняя цифра, до первого pull-to-refresh.
+  testWidgets('the comment count on the card follows what the thread loaded', (
+    tester,
+  ) async {
+    final repo = _FakeFeedRepository()
+      // Стартовое число заведомо не совпадает ни с одним счётчиком реакций
+      // (те по нулям), чтобы обе проверки ниже били в нужный Text.
+      ..pageToReturn = [_post('p1').copyWith(commentCount: 5)]
+      ..commentsToReturn = [
+        for (var i = 0; i < 2; i++)
+          Comment(
+            id: 'c$i',
+            authorId: 'author-1',
+            authorName: 'Alice',
+            text: 'comment $i',
+            createdAt: DateTime(2026, 1, 1, 13),
+          ),
+        // Заглушка удалённого комментария: `comment_summary()` считает
+        // `deleted_at is null`, так что в число она не попадает.
+        Comment(
+          id: 'c-gone',
+          authorId: 'author-1',
+          authorName: 'Alice',
+          text: '',
+          createdAt: DateTime(2026, 1, 1, 14),
+          isDeleted: true,
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('5'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.mode_comment_outlined));
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byType(Scaffold).last)).pop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('5'), findsNothing);
   });
 
   testWidgets('a single-media post shows no position counter', (tester) async {
