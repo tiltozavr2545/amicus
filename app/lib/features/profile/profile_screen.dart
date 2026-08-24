@@ -104,13 +104,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
+    // Выставляется ДО пикера — та же правка и та же причина, что у
+    // `_pickMedia` в композере: пока пикер поднимает свою activity, кнопка
+    // «Добавить фото» остаётся включённой (её `onPressed` смотрит на
+    // `_isAddingPhotos` и на `photos.length`, то и другое — доpick-овое
+    // состояние), второй тап открывает второй пикер, и оба батча режутся по
+    // одному и тому же `remaining`, посчитанному до первого выбора.
+    setState(() => _isAddingPhotos = true);
+
     // Not `limit: remaining`: the picker rejects a limit below 2 outright,
     // which made the 80th photo unreachable. See [pickerLimit].
-    final picked = await ImagePicker().pickMultiImage(
-      maxWidth: 1600,
-      limit: pickerLimit(remaining),
-    );
-    if (picked.isEmpty) return;
+    final List<XFile> picked;
+    try {
+      picked = await ImagePicker().pickMultiImage(
+        maxWidth: 1600,
+        limit: pickerLimit(remaining),
+      );
+    } catch (_) {
+      // Иначе бросок отсюда запирал бы кнопку насовсем: ProfileScreen живёт
+      // веткой StatefulShellRoute и не пересоздаётся. И это ещё
+      // необработанная асинхронная ошибка — `_addPhotos` зовут как
+      // `VoidCallback`.
+      if (!mounted) return;
+      setState(() => _isAddingPhotos = false);
+      _showError(context, (l10n) => l10n.failedToAddPhotosError);
+      return;
+    }
+    if (picked.isEmpty) {
+      if (mounted) setState(() => _isAddingPhotos = false);
+      return;
+    }
     // The picker runs in its own activity, so this State can be gone by the
     // time it resolves — the same guard every other `await` here already has.
     if (!mounted) return;
@@ -124,11 +147,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         if (imageExtensions.contains(fileExtension(file.name))) file,
     ];
     if (usable.isEmpty) {
+      setState(() => _isAddingPhotos = false);
       _showError(context, (l10n) => l10n.unsupportedImageFormatError);
       return;
     }
 
-    setState(() => _isAddingPhotos = true);
     try {
       final items = [
         for (final file in usable)
@@ -140,7 +163,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ];
       await ref
           .read(profileRepositoryProvider)
-          .addPhotos(userId: userId, items: items, existing: existing);
+          .addPhotos(userId: userId, items: items);
       if (usable.length < picked.take(remaining).length) {
         // ignore: use_build_context_synchronously
         _showError(context, (l10n) => l10n.unsupportedImageFormatError);
@@ -149,24 +172,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // ignore: use_build_context_synchronously
       _showError(context, (l10n) => l10n.failedToAddPhotosError);
     } finally {
-      // Перечитывается и на ошибке тоже, а не только на успехе — в этом вся
-      // правка. `.timeout()` перестаёт ждать, не отменяя запрос, поэтому
-      // upsert в `profile_photos` мог закоммититься уже после того, как этот
-      // экран показал «не удалось добавить фото». Без инвалидации здесь
-      // `photosAsync.value` остаётся тем, чем был ДО попытки, и это не
-      // косметика: [ProfileRepository.addPhotos] считает `position` от него,
-      // так что следующее добавление целится в занятые позиции и упирается в
-      // `profile_photos_user_position_key`. Арбитр upsert'а —
-      // `(user_id, storage_path)`, а пути у новых файлов свои, поэтому
-      // конфликт по position не гасится, а падает.
+      // Перечитывается и на ошибке тоже, а не только на успехе. `.timeout()`
+      // перестаёт ждать, не отменяя запрос, поэтому вставка в
+      // `profile_photos` могла закоммититься уже после того, как этот экран
+      // показал «не удалось добавить фото». Без инвалидации здесь
+      // `photosAsync.value` остаётся тем, чем был ДО попытки, а на нём висят
+      // и лимит в 80, и доступность обеих кнопок («Переставить» — при
+      // `length < 2`, «Удалить» — при `isEmpty`). ProfileScreen живёт веткой
+      // StatefulShellRoute и не пересоздаётся при переключении вкладок, то
+      // есть autoDispose-провайдер не умирает никогда и сам себя не
+      // перечитает.
       //
-      // Само по себе это было бы «повторите» — но повторить нечем: обе
-      // кнопки, которые могли бы вернуть экран в согласованное состояние,
-      // отключены по тому же устаревшему списку («Переставить» — при
-      // `length < 2`, «Удалить» — при `isEmpty`), а ProfileScreen живёт
-      // веткой StatefulShellRoute и не пересоздаётся при переключении
-      // вкладок. То есть autoDispose-провайдер не умирает никогда, и выйти из
-      // тупика можно было только перезапуском приложения.
+      // Раньше цена отставшего списка была выше: от него считался `position`
+      // новых строк, так что следующее добавление целилось в занятые позиции
+      // и падало на `profile_photos_user_position_key` — насовсем, до
+      // перезапуска приложения. Позиции теперь раздаёт сервер
+      // (`append_profile_photos()`, 20260824130000), и этого тупика больше
+      // нет; перечитать список всё равно надо, чтобы человек видел, что на
+      // самом деле долетело.
       if (mounted) {
         ref.invalidate(_profileProvider);
         ref.invalidate(_profilePhotosProvider);

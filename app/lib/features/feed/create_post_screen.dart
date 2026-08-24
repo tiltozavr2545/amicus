@@ -90,17 +90,33 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   bool _isPicking = false;
   String? _errorMessage;
 
-  /// Idempotency key for the submission/edit in flight, and the content
-  /// fingerprint it was minted for.
+  /// Idempotency key for this composer session's submission.
   ///
-  /// Kept across retries so a resend after a timeout can't create (or
-  /// re-apply) a second time — see [FeedRepository.createPost] — but tied to
-  /// *what's being sent*: the server answers a repeat token by doing nothing,
-  /// so reusing one after the text changed or the media list was edited would
-  /// silently keep the old version while the screen closed as if the new one
-  /// had been saved.
-  String? _pendingToken;
-  String? _pendingFingerprint;
+  /// Minted once, when the screen opens, and deliberately *not* re-minted when
+  /// the draft changes. `create_post_with_media()` treats a repeat token as
+  /// "the same submission, here is its current content" and rewrites the post
+  /// to whatever arrived last (migration 20260824100000), so one token per
+  /// composer session is both safe to retry and incapable of duplicating.
+  ///
+  /// It used to be re-minted whenever the text or the media list changed,
+  /// because the server answered a repeat token by doing nothing and reusing
+  /// one would then have discarded the edit. That traded a lost edit for
+  /// something worse. `.timeout()` stops waiting without cancelling, so a
+  /// publish regularly commits *after* this screen has reported that it
+  /// failed — the post is already in every connection's feed and its push has
+  /// already gone out. The composer stays open on the draft, and the only
+  /// sensible next move (fix the typo, drop a photo, publish again) arrived
+  /// under a fresh token and published a **second** post, with a second push
+  /// to everyone. The rule about what counts as one submission now lives in
+  /// the function, which is the only place that can see both attempts.
+  ///
+  /// In edit mode this is not an idempotency key at all — [updatePost] sends
+  /// the full final state, so a resend is naturally idempotent — and it serves
+  /// only as the upload prefix for a legacy post that predates `client_token`
+  /// (see [Post.clientToken]). Minting it once matters there too: a token that
+  /// changed mid-session moved the prefix, orphaning whatever the previous
+  /// attempt had already uploaded.
+  late final String _submissionToken = const Uuid().v4();
 
   @override
   void initState() {
@@ -191,18 +207,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     });
   }
 
-  String get _fingerprint {
-    final ids = _slots
-        .map(
-          (slot) => switch (slot) {
-            _ExistingSlot(:final media) => 'existing:${media.id}',
-            _PickedSlot(:final pending) => 'picked:${pending.mediaClientToken}',
-          },
-        )
-        .join(',');
-    return '${_textController.text.trim()}|$ids';
-  }
-
   bool _looksLikeVideo(XFile file) {
     final mime = file.mimeType;
     if (mime != null) return mime.startsWith('video/');
@@ -219,19 +223,45 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       return;
     }
 
+    // Раньше стояло ПОСЛЕ пикера. Пока пикер поднимает свою activity, кнопка
+    // «Добавить» оставалась включённой (её `onPressed` смотрит на `_isPicking`
+    // и на `_slots.length`, и то и другое — доpick-овое состояние), так что
+    // второй тап открывал второй пикер. Оба батча потом обрезались через
+    // `take(remaining)` по ОДНОМУ И ТОМУ ЖЕ `remaining`, посчитанному до
+    // первого выбора, и вместе могли перевалить за [_maxMediaCount] —
+    // публикация после этого падала на серверном `post_media_limit_exceeded`,
+    // а композер умел показать только общее «не удалось опубликовать».
+    setState(() => _isPicking = true);
+
     // Not `limit: remaining`: the picker rejects a limit below 2 outright.
     // See [pickerLimit] — `take(remaining)` below is the real cap either way.
-    final picked = await ImagePicker().pickMultipleMedia(
-      maxWidth: 1600,
-      limit: pickerLimit(remaining),
-    );
-    if (picked.isEmpty) return;
+    final List<XFile> picked;
+    try {
+      picked = await ImagePicker().pickMultipleMedia(
+        maxWidth: 1600,
+        limit: pickerLimit(remaining),
+      );
+    } catch (_) {
+      // Теперь, когда флаг выставлен заранее, бросок отсюда запирал бы кнопку
+      // до конца сессии композера. Заодно перестаёт быть необработанной
+      // асинхронной ошибкой: `_pickMedia` зовут как `VoidCallback`, так что
+      // ловить этот Future некому.
+      if (!mounted) return;
+      setState(() => _isPicking = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.failedToAddMediaError)));
+      return;
+    }
+    if (picked.isEmpty) {
+      if (mounted) setState(() => _isPicking = false);
+      return;
+    }
     // The picker hands control to a separate activity, so this State can be
     // gone by the time it resolves — same window every other `await` on this
     // screen already guards against, and the only one that did not.
     if (!mounted) return;
 
-    setState(() => _isPicking = true);
     var skippedTooLong = false;
     var skippedTooLarge = false;
     var skippedBadFormat = false;
@@ -402,11 +432,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     });
     try {
       final userId = ref.read(currentUserIdProvider)!;
-      final fingerprint = _fingerprint;
-      if (_pendingToken == null || _pendingFingerprint != fingerprint) {
-        _pendingToken = const Uuid().v4();
-        _pendingFingerprint = fingerprint;
-      }
       final repo = ref.read(feedRepositoryProvider);
       if (_isEditing) {
         final existingPost = widget.existingPost!;
@@ -414,9 +439,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           postId: existingPost.id,
           authorId: userId,
           // A legacy post from before `client_token` existed has none of its
-          // own to reuse as the upload prefix for newly added media — mint
-          // one for this edit session instead (see [Post.clientToken]).
-          postClientToken: existingPost.clientToken ?? _pendingToken!,
+          // own to reuse as the upload prefix for newly added media — this
+          // session's token stands in instead (see [Post.clientToken]).
+          postClientToken: existingPost.clientToken ?? _submissionToken,
           text: text,
           finalMedia: [
             for (final slot in _slots)
@@ -428,7 +453,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         );
       } else {
         await repo.createPost(
-          clientToken: _pendingToken!,
+          clientToken: _submissionToken,
           authorId: userId,
           text: text,
           media: [

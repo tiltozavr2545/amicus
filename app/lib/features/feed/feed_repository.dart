@@ -702,10 +702,19 @@ class FeedRepository {
   /// told the author nothing had been saved. `purge_empty_posts` could not
   /// clean that up either — it only removes posts with *no* text.
   ///
-  /// Retrying is still a no-op rather than a second post: the server arbitrates
-  /// on the same `(author_id, client_token)` index as before, and each media
-  /// item's own retry-tolerant upload (409) plus `(post_id, storage_path)` make
-  /// the whole multi-file submission safe to retry as a unit.
+  /// Retrying never produces a second post: the server arbitrates on the same
+  /// `(author_id, client_token)` index as before, and each media item's own
+  /// retry-tolerant upload (409) makes the whole multi-file submission safe to
+  /// retry as a unit.
+  ///
+  /// A repeat token is no longer answered by doing *nothing*, though — since
+  /// migration 20260824100000 it rewrites the post to whatever this call sent.
+  /// That is what lets the composer mint one token per session instead of one
+  /// per version of the draft: a retry whose content changed in between (fix a
+  /// typo after a publish that timed out but committed anyway) updates the
+  /// post that already exists rather than publishing a rival copy of it. See
+  /// the note on `_submissionToken` in the composer for the failure this
+  /// closes.
   Future<void> createPost({
     required String clientToken,
     required String authorId,
@@ -743,10 +752,10 @@ class FeedRepository {
   ///
   /// [finalMedia] is the composer's final ordered list — a mix of items kept
   /// from the original post ([KeptMedia]) and freshly picked ones
-  /// ([NewMedia]). New files are uploaded first, then the whole media set is
-  /// handed to `set_post_media()`, which replaces `post_media` for this post
-  /// in **one transaction** and returns the storage paths nothing references
-  /// any more, for this method to delete afterwards.
+  /// ([NewMedia]). New files are uploaded first, then the caption and the
+  /// whole media set are handed to `update_post_with_media()`, which applies
+  /// both in **one transaction** and returns the storage paths nothing
+  /// references any more, for this method to delete afterwards.
   ///
   /// The server does the diffing (which is why the post's original media is
   /// no longer a parameter) for a reason that is not tidiness. This used to
@@ -757,12 +766,12 @@ class FeedRepository {
   /// left the post with *no media rows at all*, while its files sat on in
   /// Storage referenced by nothing.
   ///
-  /// Storage deletions come last, after *both* row writes are already
-  /// correct, and are best-effort — [deleteRowsThenObjects] states the rule
-  /// and this is one of its call sites. An object nothing points at is wasted
-  /// bucket space, whereas a row pointing at a deleted object is a broken
-  /// image in everyone's feed, and a failed cleanup must never be reported as
-  /// a failed save.
+  /// Storage deletions come last, after the row write has already committed,
+  /// and are best-effort — [deleteRowsThenObjects] states the rule and this is
+  /// one of its call sites. An object nothing points at is wasted bucket
+  /// space, whereas a row pointing at a deleted object is a broken image in
+  /// everyone's feed, and a failed cleanup must never be reported as a failed
+  /// save.
   ///
   /// [postClientToken] is the prefix new media is uploaded under — normally
   /// the post's own [Post.clientToken], but the caller mints a fresh one for
@@ -798,45 +807,41 @@ class FeedRepository {
         },
     ];
 
-    // Both halves of the save are rows, and the bucket cleanup is the object
-    // half — the same shape [deleteRowsThenObjects] exists for, so it runs
-    // through it rather than open-coding a third variant of the rule.
+    // The row half of the save is now a single statement, and the bucket
+    // cleanup is the object half — the shape [deleteRowsThenObjects] exists
+    // for, so it runs through it rather than open-coding a third variant of
+    // the rule.
     //
-    // The cleanup used to sit *between* the two row writes, un-guarded. An
-    // edit that changed the caption and dropped a photo would then commit the
-    // media change, fail on a timed-out `remove()`, and never reach the
-    // caption at all — while the composer reported that nothing had been
-    // saved. Orphaned bytes are wasted space nobody sees; a half-applied edit
-    // reported as a failure is a lie the user acts on.
+    // The caption and the media set used to be two PostgREST calls, i.e. two
+    // transactions, and their ordering had already been reversed once to stop
+    // a timed-out caption update from stranding a dropped file in the bucket
+    // with nothing left able to name it (`set_post_media` had by then returned
+    // its removed-list to a call that threw). What that reordering could not
+    // fix is the pair itself: a caption that lands followed by a failed media
+    // rewrite reports failure with the caption already applied.
     //
-    // The caption now goes FIRST, and that ordering is load-bearing rather
-    // than cosmetic. With it last, a timed-out text update threw out of
-    // `rows()` *after* `set_post_media` had already committed — so `objects()`
-    // never ran and the dropped file was left in the bucket. The retry could
-    // not clean it up either: `set_post_media` saw the media rows already
-    // correct and returned an empty removed-list, so `orphanedPaths` was empty
-    // and nothing ever deleted those bytes again. Putting the caption first
-    // means the only statement that can populate `orphanedPaths` is the last
-    // one in `rows()`, so a successful media rewrite is always followed by its
-    // own cleanup.
+    // `update_post_with_media()` (migration 20260824120000) takes both halves,
+    // so there is no longer a between. It also enforces, on this path, the
+    // "a post needs text or media" rule that `create_post_with_media()` has
+    // enforced on the publish path since 20260823120000 — the check was not
+    // expressible while the two halves arrived separately, because neither
+    // call could see the other's contribution.
     //
-    // What is still not atomic is the pair itself: a caption that lands
-    // followed by a failed media rewrite reports failure with the caption
-    // applied. That one is self-healing — the composer keeps the draft, and
-    // the retry re-sends both halves — and it leaks nothing.
+    // Storage deletions still come last and are still best-effort. An object
+    // nothing points at is wasted bucket space; a row pointing at a deleted
+    // object is a broken image in everyone's feed, and a failed cleanup must
+    // never be reported as a failed save.
     var orphanedPaths = const <String>[];
     await deleteRowsThenObjects(
       rows: () async {
-        await _client
-            .from('posts')
-            .update({'text': (text != null && text.isNotEmpty) ? text : null})
-            .eq('id', postId)
-            .timeout(networkTimeout);
-
         final orphaned = await _client
             .rpc(
-              'set_post_media',
-              params: {'p_post_id': postId, 'p_items': items},
+              'update_post_with_media',
+              params: {
+                'p_post_id': postId,
+                'p_text': (text != null && text.isNotEmpty) ? text : null,
+                'p_items': items,
+              },
             )
             .timeout(networkTimeout);
 

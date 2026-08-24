@@ -111,20 +111,32 @@ class ProfileRepository {
     return rows.map(ProfilePhoto.fromRow).toList();
   }
 
-  /// Uploads [items] and appends them to the end of the gallery, after
-  /// whatever [existing] photos are already there. `users.avatar_path` is
-  /// updated automatically by a DB trigger, not here — see
-  /// `sync_avatar_path_from_profile_photos()` in the migration.
+  /// Uploads [items] and appends them to the end of the gallery.
+  /// `users.avatar_path` is updated automatically by a DB trigger, not here —
+  /// see `sync_avatar_path_from_profile_photos()` in the migration.
   ///
   /// Uploads go through [uploadTolerant] for the same reason post media does:
   /// `.timeout()` stops waiting without cancelling, so a batch can be half
   /// landed when the screen reports failure, and the natural retry re-sends
   /// items whose objects are already there. A plain `uploadBinary` answers
   /// that with 409 and failed the whole batch every single time, forever.
+  ///
+  /// The rows go through `append_profile_photos()` rather than a direct
+  /// upsert, and the caller no longer passes the gallery in. `position` used
+  /// to be computed here, from the screen's cached list — which is stale in
+  /// exactly the situations the retry tolerance above exists for. A previous
+  /// batch that committed after this method reported failure (or a second
+  /// device) leaves that list short, the new rows aim at positions that are
+  /// already taken, and `profile_photos_user_position_key` rejects them. The
+  /// upsert cannot absorb that: it arbitrates on `(user_id, storage_path)`,
+  /// and a fresh file has a path of its own, so the position clash is a hard
+  /// error that takes the whole batch with it. The server assigns positions
+  /// from the table it is inserting into, in the same transaction, so a stale
+  /// client has nothing to be stale about — the same move migration
+  /// 20260820150000 made for reordering.
   Future<void> addPhotos({
     required String userId,
     required List<PendingPhoto> items,
-    required List<ProfilePhoto> existing,
   }) async {
     if (items.isEmpty) return;
     for (final item in items) {
@@ -139,27 +151,21 @@ class ProfileRepository {
         bytes: item.bytes,
       );
     }
-    final nextPosition = existing.isEmpty
-        ? 0
-        : existing.map((p) => p.position).reduce((a, b) => a > b ? a : b) + 1;
-    final rows = [
-      for (var i = 0; i < items.length; i++)
-        {
-          'user_id': userId,
-          'position': nextPosition + i,
-          'storage_path': profilePhotoPath(
-            userId: userId,
-            photoClientToken: items[i].photoClientToken,
-            ext: items[i].ext,
-          ),
-        },
-    ];
     await _client
-        .from('profile_photos')
-        .upsert(
-          rows,
-          onConflict: 'user_id,storage_path',
-          ignoreDuplicates: true,
+        .rpc(
+          'append_profile_photos',
+          params: {
+            'p_items': [
+              for (final item in items)
+                {
+                  'storage_path': profilePhotoPath(
+                    userId: userId,
+                    photoClientToken: item.photoClientToken,
+                    ext: item.ext,
+                  ),
+                },
+            ],
+          },
         )
         .timeout(networkTimeout);
   }
