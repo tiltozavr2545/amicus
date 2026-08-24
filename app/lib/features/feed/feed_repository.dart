@@ -662,15 +662,15 @@ class FeedRepository {
     }
   }
 
-  Map<String, dynamic> _pendingMediaRow({
-    required String postId,
+  /// One entry of the `p_items` array both `create_post_with_media()` and
+  /// `set_post_media()` take: what this media slot *is*, with no `post_id` and
+  /// no `position` — the server derives the position from the array order, so
+  /// the client's job is only to send them in the order it wants them shown.
+  Map<String, dynamic> _pendingMediaItem({
     required String authorId,
     required String postClientToken,
-    required int position,
     required PendingMedia item,
   }) => {
-    'post_id': postId,
-    'position': position,
     'media_type': item.mediaType.dbValue,
     'storage_path': postMediaPath(
       authorId: authorId,
@@ -691,13 +691,21 @@ class FeedRepository {
   /// also doubles as the storage-path prefix shared by every one of [media]'s
   /// items (see [postMediaPath]).
   ///
-  /// `.timeout()` doesn't cancel the underlying request, it only stops waiting,
-  /// so a slow-but-live connection can commit the insert after the screen has
-  /// already reported failure and offered a retry. The unique
-  /// `(author_id, client_token)` index turns that retry into a no-op instead of
-  /// a second post, and each media item's own retry-tolerant upload (409) plus
-  /// `post_media`'s `(post_id, storage_path)` unique index make the whole
-  /// multi-file submission safe to retry as a unit.
+  /// The post row and its `post_media` rows are written by ONE call to
+  /// `create_post_with_media()`, so they land in one transaction or not at all.
+  /// This used to be three PostgREST calls — insert the post, read its id back,
+  /// insert the media — which is three transactions, and `.timeout()` stops
+  /// waiting without cancelling. A commit of the first followed by a lost
+  /// second published a post that had text and no photographs: live in every
+  /// connection's feed, its "new post" push already sent by
+  /// `enqueue_post_notifications`, while this method threw and the composer
+  /// told the author nothing had been saved. `purge_empty_posts` could not
+  /// clean that up either — it only removes posts with *no* text.
+  ///
+  /// Retrying is still a no-op rather than a second post: the server arbitrates
+  /// on the same `(author_id, client_token)` index as before, and each media
+  /// item's own retry-tolerant upload (409) plus `(post_id, storage_path)` make
+  /// the whole multi-file submission safe to retry as a unit.
   Future<void> createPost({
     required String clientToken,
     required String authorId,
@@ -713,49 +721,20 @@ class FeedRepository {
     }
 
     await _client
-        .from('posts')
-        .upsert(
-          {
-            'client_token': clientToken,
-            'author_id': authorId,
-            if (text != null && text.isNotEmpty) 'text': text,
+        .rpc(
+          'create_post_with_media',
+          params: {
+            'p_client_token': clientToken,
+            'p_text': (text != null && text.isNotEmpty) ? text : null,
+            'p_items': [
+              for (final item in media)
+                _pendingMediaItem(
+                  authorId: authorId,
+                  postClientToken: clientToken,
+                  item: item,
+                ),
+            ],
           },
-          onConflict: 'author_id,client_token',
-          ignoreDuplicates: true,
-        )
-        .timeout(networkTimeout);
-
-    if (media.isEmpty) return;
-
-    // `ignoreDuplicates` upserts return nothing for a conflicting (i.e.
-    // already-landed-on-a-previous-attempt) row, so the id has to be read
-    // back separately regardless of whether this call just inserted the post
-    // or a retry found it already there.
-    final postRow = await _client
-        .from('posts')
-        .select('id')
-        .eq('author_id', authorId)
-        .eq('client_token', clientToken)
-        .single()
-        .timeout(networkTimeout);
-    final postId = postRow['id'] as String;
-
-    final rows = [
-      for (var i = 0; i < media.length; i++)
-        _pendingMediaRow(
-          postId: postId,
-          authorId: authorId,
-          postClientToken: clientToken,
-          position: i,
-          item: media[i],
-        ),
-    ];
-    await _client
-        .from('post_media')
-        .upsert(
-          rows,
-          onConflict: 'post_id,storage_path',
-          ignoreDuplicates: true,
         )
         .timeout(networkTimeout);
   }
@@ -811,21 +790,11 @@ class FeedRepository {
             'storage_path': media.storagePath,
             if (media.posterPath != null) 'poster_path': media.posterPath,
           },
-          NewMedia(:final pending) => {
-            'media_type': pending.mediaType.dbValue,
-            'storage_path': postMediaPath(
-              authorId: authorId,
-              postClientToken: postClientToken,
-              mediaClientToken: pending.mediaClientToken,
-              ext: pending.ext,
-            ),
-            if (pending.posterBytes != null)
-              'poster_path': postMediaPosterPath(
-                authorId: authorId,
-                postClientToken: postClientToken,
-                mediaClientToken: pending.mediaClientToken,
-              ),
-          },
+          NewMedia(:final pending) => _pendingMediaItem(
+            authorId: authorId,
+            postClientToken: postClientToken,
+            item: pending,
+          ),
         },
     ];
 
@@ -839,9 +808,31 @@ class FeedRepository {
     // caption at all — while the composer reported that nothing had been
     // saved. Orphaned bytes are wasted space nobody sees; a half-applied edit
     // reported as a failure is a lie the user acts on.
+    //
+    // The caption now goes FIRST, and that ordering is load-bearing rather
+    // than cosmetic. With it last, a timed-out text update threw out of
+    // `rows()` *after* `set_post_media` had already committed — so `objects()`
+    // never ran and the dropped file was left in the bucket. The retry could
+    // not clean it up either: `set_post_media` saw the media rows already
+    // correct and returned an empty removed-list, so `orphanedPaths` was empty
+    // and nothing ever deleted those bytes again. Putting the caption first
+    // means the only statement that can populate `orphanedPaths` is the last
+    // one in `rows()`, so a successful media rewrite is always followed by its
+    // own cleanup.
+    //
+    // What is still not atomic is the pair itself: a caption that lands
+    // followed by a failed media rewrite reports failure with the caption
+    // applied. That one is self-healing — the composer keeps the draft, and
+    // the retry re-sends both halves — and it leaks nothing.
     var orphanedPaths = const <String>[];
     await deleteRowsThenObjects(
       rows: () async {
+        await _client
+            .from('posts')
+            .update({'text': (text != null && text.isNotEmpty) ? text : null})
+            .eq('id', postId)
+            .timeout(networkTimeout);
+
         final orphaned = await _client
             .rpc(
               'set_post_media',
@@ -855,12 +846,6 @@ class FeedRepository {
           for (final row in (orphaned as List<dynamic>? ?? const []))
             (row as Map<String, dynamic>)['storage_path'] as String,
         ];
-
-        await _client
-            .from('posts')
-            .update({'text': (text != null && text.isNotEmpty) ? text : null})
-            .eq('id', postId)
-            .timeout(networkTimeout);
       },
       objects: () async {
         if (orphanedPaths.isEmpty) return;

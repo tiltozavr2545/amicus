@@ -12,6 +12,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
+import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
@@ -29,7 +30,6 @@ const _maxVideoDuration = Duration(seconds: 60);
 /// publish" for it, so the clip looked like a flaky upload rather than one
 /// that can never succeed, and retrying could not help.
 const _maxVideoBytes = 100 * 1024 * 1024;
-const _videoExtensions = {'mp4', 'mov', 'm4v', '3gp', 'webm', 'mkv'};
 
 /// One tile in the composer's media grid: either a photo/video already on
 /// the post being edited ([_ExistingSlot]) or one freshly picked in this
@@ -206,7 +206,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   bool _looksLikeVideo(XFile file) {
     final mime = file.mimeType;
     if (mime != null) return mime.startsWith('video/');
-    return _videoExtensions.contains(fileExtension(file.name));
+    return videoExtensions.contains(fileExtension(file.name));
   }
 
   Future<void> _pickMedia() async {
@@ -226,10 +226,15 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       limit: pickerLimit(remaining),
     );
     if (picked.isEmpty) return;
+    // The picker hands control to a separate activity, so this State can be
+    // gone by the time it resolves — same window every other `await` on this
+    // screen already guards against, and the only one that did not.
+    if (!mounted) return;
 
     setState(() => _isPicking = true);
     var skippedTooLong = false;
     var skippedTooLarge = false;
+    var skippedBadFormat = false;
     var failed = false;
     final newSlots = <_Slot>[];
     // Per file, not per batch: one unreadable file (an unsupported codec
@@ -292,6 +297,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             ),
           );
         } else {
+          // Checked before the bytes are read, and for the same reason the
+          // video branch checks duration and size first: the bucket decides an
+          // object's content type from the extension in its name, so a format
+          // it doesn't accept is refused on upload no matter what the file
+          // actually contains — and refused every retry too. See
+          // [imageExtensions].
+          if (!imageExtensions.contains(fileExtension(file.name))) {
+            skippedBadFormat = true;
+            continue;
+          }
           final bytes = await file.readAsBytes();
           newSlots.add(
             _PickedSlot(
@@ -323,6 +338,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.videoTooLargeError)));
+    } else if (skippedBadFormat) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.unsupportedImageFormatError)));
     } else if (failed) {
       ScaffoldMessenger.of(
         context,

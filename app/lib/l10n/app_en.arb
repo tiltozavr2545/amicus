@@ -104,6 +104,7 @@
   "videoTooLongError": "Video must be under 60 seconds",
   "videoTooLargeError": "Video must be under 100 MB",
   "failedToAddMediaError": "Some files couldn't be added",
+  "unsupportedImageFormatError": "Unsupported image format. Use JPEG, PNG, WebP or HEIC.",
   "addTextOrPhotoError": "Add text, a photo, or a video",
   "failedToPublishError": "Failed to publish. Please try again.",
   "failedToSaveChangesError": "Failed to save changes. Please try again.",

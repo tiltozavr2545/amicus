@@ -268,6 +268,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get failedToAddMediaError => 'Some files couldn\'t be added';
 
   @override
+  String get unsupportedImageFormatError =>
+      'Unsupported image format. Use JPEG, PNG, WebP or HEIC.';
+
+  @override
   String get addTextOrPhotoError => 'Add text, a photo, or a video';
 
   @override

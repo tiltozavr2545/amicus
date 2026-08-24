@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
+import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
@@ -110,11 +111,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       limit: pickerLimit(remaining),
     );
     if (picked.isEmpty) return;
+    // The picker runs in its own activity, so this State can be gone by the
+    // time it resolves — the same guard every other `await` here already has.
+    if (!mounted) return;
+
+    // The bucket takes an object's content type from the extension in its
+    // name, so a format it doesn't accept fails on upload and fails again on
+    // every retry. Rejected here, with a reason, rather than as a bare
+    // "failed to add photos" — see [imageExtensions].
+    final usable = [
+      for (final file in picked.take(remaining))
+        if (imageExtensions.contains(fileExtension(file.name))) file,
+    ];
+    if (usable.isEmpty) {
+      _showError(context, (l10n) => l10n.unsupportedImageFormatError);
+      return;
+    }
 
     setState(() => _isAddingPhotos = true);
     try {
       final items = [
-        for (final file in picked.take(remaining))
+        for (final file in usable)
           PendingPhoto(
             photoClientToken: const Uuid().v4(),
             bytes: await file.readAsBytes(),
@@ -126,6 +143,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .addPhotos(userId: userId, items: items, existing: existing);
       ref.invalidate(_profileProvider);
       ref.invalidate(_profilePhotosProvider);
+      if (usable.length < picked.take(remaining).length) {
+        // ignore: use_build_context_synchronously
+        _showError(context, (l10n) => l10n.unsupportedImageFormatError);
+      }
     } catch (e) {
       // ignore: use_build_context_synchronously
       _showError(context, (l10n) => l10n.failedToAddPhotosError);

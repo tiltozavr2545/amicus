@@ -566,6 +566,12 @@ abstract class AppLocalizations {
   /// **'Some files couldn\'t be added'**
   String get failedToAddMediaError;
 
+  /// No description provided for @unsupportedImageFormatError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported image format. Use JPEG, PNG, WebP or HEIC.'**
+  String get unsupportedImageFormatError;
+
   /// No description provided for @addTextOrPhotoError.
   ///
   /// In en, this message translates to:

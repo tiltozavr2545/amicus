@@ -265,6 +265,10 @@ class AppLocalizationsRu extends AppLocalizations {
   String get failedToAddMediaError => 'Некоторые файлы не удалось добавить';
 
   @override
+  String get unsupportedImageFormatError =>
+      'Формат изображения не поддерживается. Подойдут JPEG, PNG, WebP или HEIC.';
+
+  @override
   String get addTextOrPhotoError => 'Добавьте текст, фото или видео';
 
   @override
