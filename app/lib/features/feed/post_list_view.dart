@@ -74,6 +74,28 @@ class _PostListViewState extends ConsumerState<PostListView> {
   // appending it onto the freshly-cleared list.
   int _loadEpoch = 0;
 
+  // Reaction taps on one post are not serialised — nothing stops a second tap
+  // while the first request is still in flight — so a failure has to be able to
+  // tell whether it is still the one that owns the card. These two maps are
+  // what [_react] needs to answer that.
+  //
+  // `_reactionSeq` is the number of the newest request issued for a post: an
+  // older one that fails must stay silent, or it repaints over a newer request
+  // that has already succeeded.
+  //
+  // `_confirmedReaction` is the last reaction the *server* acknowledged for a
+  // post (seeded from what was on screen at the first tap, when nothing was yet
+  // in flight). Rolling back to it, rather than to a Post captured before the
+  // tap, is what makes two failed taps in a row land back on the real state
+  // instead of on the state between them.
+  //
+  // Both grow only for posts this session actually reacted to — a handful of
+  // uuids — and are deliberately not cleared on refresh: a refresh that failed
+  // offline leaves the optimistic values on screen, and re-seeding from those
+  // would be worse than keeping what the server last confirmed.
+  final _reactionSeq = <String, int>{};
+  final _confirmedReaction = <String, ReactionType?>{};
+
   @override
   void initState() {
     super.initState();
@@ -248,9 +270,25 @@ class _PostListViewState extends ConsumerState<PostListView> {
       await ref
           .read(feedRepositoryProvider)
           .deletePost(postId: post.id, mediaStoragePaths: mediaPaths);
+      if (!mounted) return;
       // Remove by id, not the captured index: the list may have shifted (a
       // refresh, another delete) while the request was in flight.
-      if (mounted) setState(() => _posts.removeWhere((p) => p.id == post.id));
+      setState(() => _posts.removeWhere((p) => p.id == post.id));
+      // Убрать из СВОЕГО списка мало. Живых PostListView одновременно
+      // несколько: лента и профиль — две ветки shell'а в IndexedStack, плюс
+      // FriendProfileScreen сверху. Удалили пост из профиля — во вкладке
+      // ленты он остаётся, и остаётся кликабельным: реакцию по нему RLS
+      // отбивает («Users can like posts they can see» требует существования
+      // строки в posts), а [_react] эту ошибку молча откатывает, комментарии
+      // открываются пустыми, повторное «Удалить» задевает ноль строк и
+      // считается успехом.
+      //
+      // Ровно та несогласованность, ради которой заведён
+      // [feedRefreshTickProvider] — и правка поста, и mute/block, и новый
+      // пост через него уже проходят. Удаление было единственной мутацией
+      // ленты, которая его не дёргала. Локальное removeWhere выше при этом
+      // остаётся: оно убирает карточку сразу, не дожидаясь перезапроса.
+      ref.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -272,19 +310,65 @@ class _PostListViewState extends ConsumerState<PostListView> {
     }
   }
 
+  /// Ставит на карточку то число комментариев, которое [CommentsScreen] только
+  /// что увидел у сервера.
+  ///
+  /// Без этого счётчик не менялся вообще никогда: экран комментариев
+  /// открывался без `.then`, ничего не возвращал и тик обновления не дёргал,
+  /// так что человек писал комментарий, возвращался — и видел прежнее число.
+  /// Удаление своего комментария оставляло число завышенным. До первого
+  /// pull-to-refresh.
+  ///
+  /// По id, а не по индексу, и с проверкой [mounted] — экран висит поверх
+  /// списка сколько угодно долго, за это время список мог обновиться целиком
+  /// или уехать вместе с вкладкой (та же причина, что у [_deletePost] и
+  /// [_react]).
+  void _updateCommentCount(String postId, int count) {
+    if (!mounted) return;
+    final at = _posts.indexWhere((p) => p.id == postId);
+    if (at == -1) return;
+    if (_posts[at].commentCount == count) return;
+    setState(() => _posts[at] = _posts[at].copyWith(commentCount: count));
+  }
+
   /// Tapping a reaction toggles it: tapping the one you already have clears it,
   /// tapping a different one switches to it. Applied optimistically, rolled
   /// back on error.
+  ///
+  /// The rollback is a *transition* applied to whatever is on screen now, not
+  /// the restoration of a snapshot taken before the tap, and it only happens
+  /// when this is still the newest request for the post. Restoring a snapshot
+  /// was wrong on the path that matters most: `.timeout()` stops waiting
+  /// without cancelling, so on a bad connection a tap regularly "fails" while a
+  /// second one lands. 👍 then 👎, with the 👍 timing out, restored the state
+  /// from before the 👍 — no reaction at all — while the server was holding the
+  /// dislike the user could plainly see they had left. It stayed that way until
+  /// the next pull-to-refresh.
   Future<void> _react(Post post, ReactionType type) async {
     final userId = ref.read(currentUserIdProvider);
     // The session can end while this list is still mounted — sign-out
     // redirects the router, it does not tear this widget down synchronously.
     // A tap landing in that window has nobody to attribute the reaction to.
     if (userId == null) return;
-    final next = post.myReaction == type ? null : type;
     final at = _posts.indexWhere((p) => p.id == post.id);
     if (at == -1) return;
-    setState(() => _posts[at] = applyReaction(post, next));
+
+    // The transition is read off the list, not off the captured [post]: a
+    // card's callbacks are built once and then live inside the list item, so
+    // [post] can be a frame behind — and "tapping the one you already have
+    // clears it" gives the wrong answer the moment it is decided from a stale
+    // reading.
+    final shown = _posts[at];
+    final next = shown.myReaction == type ? null : type;
+
+    // Seeded at the first tap, while nothing is in flight — at that moment what
+    // is on screen is what the server holds. After that only a confirmed
+    // response moves it, which is what makes it a safe rollback target.
+    _confirmedReaction.putIfAbsent(post.id, () => shown.myReaction);
+    final seq = (_reactionSeq[post.id] ?? 0) + 1;
+    _reactionSeq[post.id] = seq;
+
+    setState(() => _posts[at] = applyReaction(shown, next));
     try {
       final repo = ref.read(feedRepositoryProvider);
       if (next == null) {
@@ -292,12 +376,22 @@ class _PostListViewState extends ConsumerState<PostListView> {
       } else {
         await repo.setReaction(postId: post.id, userId: userId, type: next);
       }
+      _confirmedReaction[post.id] = next;
     } catch (_) {
+      if (!mounted) return;
+      // Superseded: a newer tap owns the card now, and this request has no idea
+      // what has happened since it went out. Staying quiet is the whole fix.
+      if (_reactionSeq[post.id] != seq) return;
       // Roll back by id, not the captured index: the list may have been
       // refreshed or had a post removed while the request was in flight.
-      if (!mounted) return;
       final current = _posts.indexWhere((p) => p.id == post.id);
-      if (current != -1) setState(() => _posts[current] = post);
+      if (current == -1) return;
+      setState(
+        () => _posts[current] = applyReaction(
+          _posts[current],
+          _confirmedReaction[post.id],
+        ),
+      );
     }
   }
 
@@ -371,7 +465,11 @@ class _PostListViewState extends ConsumerState<PostListView> {
                   onDelete: () => _deletePost(post),
                   onOpenComments: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => CommentsScreen(postId: post.id),
+                      builder: (_) => CommentsScreen(
+                        postId: post.id,
+                        onCountChanged: (count) =>
+                            _updateCommentCount(post.id, count),
+                      ),
                     ),
                   ),
                 );

@@ -23,7 +23,7 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
 
   @override
   Future<ActivatedConnection> activateInviteLink(String code) async {
-    return const ActivatedConnection(ownerId: 'owner-1', ownerName: 'Owner');
+    return const ActivatedConnection(ownerName: 'Owner');
   }
 
   @override
@@ -101,13 +101,7 @@ void main() {
   testWidgets('Lists blocked users and unblocks without a confirmation '
       'dialog', (tester) async {
     final repo = _FakeConnectionsRepository()
-      ..blockedUsers = [
-        BlockedUser(
-          userId: 'blocked-1',
-          name: 'Bob',
-          blockedAt: DateTime(2026, 1, 1),
-        ),
-      ];
+      ..blockedUsers = [BlockedUser(userId: 'blocked-1', name: 'Bob')];
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 
@@ -123,13 +117,7 @@ void main() {
   testWidgets('Unblocking bumps the feed refresh tick so their posts come '
       'back', (tester) async {
     final repo = _FakeConnectionsRepository()
-      ..blockedUsers = [
-        BlockedUser(
-          userId: 'blocked-1',
-          name: 'Bob',
-          blockedAt: DateTime(2026, 1, 1),
-        ),
-      ];
+      ..blockedUsers = [BlockedUser(userId: 'blocked-1', name: 'Bob')];
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 

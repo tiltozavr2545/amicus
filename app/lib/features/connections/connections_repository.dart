@@ -5,10 +5,14 @@ import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
 import '../auth/auth_providers.dart';
 
+/// Who the caller just became a Connection with — the only thing the screen
+/// needs in order to say so. `activate_invite_link()` also returns the
+/// owner's id; reading it back out bound this model to a column nothing
+/// displays, and made the parse fail on a shape change that could not
+/// otherwise have mattered.
 class ActivatedConnection {
-  const ActivatedConnection({required this.ownerId, required this.ownerName});
+  const ActivatedConnection({required this.ownerName});
 
-  final String ownerId;
   final String ownerName;
 }
 
@@ -36,17 +40,22 @@ class Friend {
   final bool isFavorite;
 }
 
+/// A user the caller has blocked, as the "Blocked users" screen shows them.
+///
+/// No `blockedAt`: the list is ordered newest-first server-side and the screen
+/// renders avatar, name and an Unblock button. The field existed, was parsed
+/// through `parseTimestamp` for every row, and was never read — if the date
+/// is ever worth showing, it belongs next to `formatConnectionSummary`, which
+/// already does this for the Connections list.
 class BlockedUser {
   const BlockedUser({
     required this.userId,
     required this.name,
-    required this.blockedAt,
     this.avatarPath,
   });
 
   final String userId;
   final String name;
-  final DateTime blockedAt;
   final String? avatarPath;
 }
 
@@ -95,10 +104,7 @@ class ConnectionsRepository {
       throw StateError('activate_invite_link returned no inviter row');
     }
     final row = rows.first as Map<String, dynamic>;
-    return ActivatedConnection(
-      ownerId: row['owner_id'] as String,
-      ownerName: row['owner_name'] as String,
-    );
+    return ActivatedConnection(ownerName: row['owner_name'] as String);
   }
 
   Future<List<Friend>> fetchFriends(String currentUserId) async {
@@ -235,8 +241,10 @@ class ConnectionsRepository {
   Future<List<BlockedUser>> fetchBlockedUsers(String currentUserId) async {
     final rows = await _client
         .from('blocked_users')
+        // `created_at` is ordered on but not selected — PostgREST orders by
+        // any column, and nothing on the screen shows the date.
         .select(
-          'blocked_id, created_at, '
+          'blocked_id, '
           'blocked:users!blocked_users_blocked_id_fkey(name, avatar_path)',
         )
         .eq('blocker_id', currentUserId)
@@ -248,7 +256,6 @@ class ConnectionsRepository {
       return BlockedUser(
         userId: row['blocked_id'] as String,
         name: blocked['name'] as String,
-        blockedAt: parseTimestamp(row['created_at'] as String),
         avatarPath: blocked['avatar_path'] as String?,
       );
     }).toList();

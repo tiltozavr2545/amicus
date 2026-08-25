@@ -151,7 +151,7 @@ void main() {
       expect(repo.tokens[0], repo.tokens[1]);
     });
 
-    testWidgets('editing the text after a failure mints a new token', (
+    testWidgets('editing the text after a failure keeps the same token', (
       tester,
     ) async {
       final repo = _FakeFeedRepository()..createThrows = true;
@@ -160,14 +160,18 @@ void main() {
       await tester.enterText(find.byType(TextField), 'my post');
       await _tapPublish(tester);
 
-      // Reusing the token here would let the server answer the correction with
-      // "already have that one" and silently publish the original wording.
       repo.createThrows = false;
       await tester.enterText(find.byType(TextField), 'my corrected post');
       await _tapPublish(tester);
 
+      // The token used to be re-minted here, because the server answered a
+      // repeat token by doing nothing and would have published the original
+      // wording. It answers one now by rewriting the post it already has
+      // (migration 20260824100000), so the correction lands *and* the first
+      // attempt — which may well have committed after the screen gave up on
+      // it — can no longer become a second post with a second push.
       expect(repo.tokens, hasLength(2));
-      expect(repo.tokens[0], isNot(repo.tokens[1]));
+      expect(repo.tokens[0], repo.tokens[1]);
       expect(repo.texts.last, 'my corrected post');
     });
   });

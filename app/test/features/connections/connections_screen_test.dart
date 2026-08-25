@@ -55,7 +55,7 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
     activateCalls++;
     lastCode = code;
     if (activateError != null) throw activateError!;
-    return const ActivatedConnection(ownerId: 'owner-1', ownerName: 'Owner');
+    return const ActivatedConnection(ownerName: 'Owner');
   }
 
   @override
@@ -483,13 +483,7 @@ void main() {
           isBlocked: true,
         ),
       ]
-      ..blockedUsers = [
-        BlockedUser(
-          userId: 'friend-1',
-          name: 'Alice',
-          blockedAt: DateTime(2026, 1, 1),
-        ),
-      ];
+      ..blockedUsers = [BlockedUser(userId: 'friend-1', name: 'Alice')];
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 

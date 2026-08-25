@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,39 +27,56 @@ class Profile {
   }
 }
 
-/// One photo in a user's profile gallery (up to 80 — see
-/// `profile_photos` in the migration). [position] orders the gallery; the
-/// lowest [position] is what `users.avatar_path` mirrors (kept in sync by a
-/// DB trigger), so it's also what every other screen's small avatar shows.
+/// One photo in a user's profile gallery (up to 80 — see `profile_photos` in
+/// the migration).
+///
+/// Display order is `profile_photos.position`, and it stays there: the server
+/// hands rows back already ordered ([ProfileRepository.fetchPhotos]) and
+/// assigns the numbers itself on append (`append_profile_photos()`,
+/// 20260824130000) and on reorder (`reorder_profile_photos()`, which takes
+/// ids, not positions). A `position` field here carried nothing anyone read
+/// and invited the next reader to believe the order was the client's to
+/// decide — which is exactly the mistake 20260824130000 was written to undo.
+/// The lowest position is what `users.avatar_path` mirrors, kept in sync by a
+/// DB trigger, so it is also what every other screen's small avatar shows.
 class ProfilePhoto {
-  const ProfilePhoto({
-    required this.id,
-    required this.position,
-    required this.storagePath,
-  });
+  const ProfilePhoto({required this.id, required this.storagePath});
 
   final String id;
-  final int position;
   final String storagePath;
 
   factory ProfilePhoto.fromRow(Map<String, dynamic> row) => ProfilePhoto(
     id: row['id'] as String,
-    position: (row['position'] as num).toInt(),
     storagePath: row['storage_path'] as String,
   );
 }
 
 /// One picked-but-not-yet-uploaded profile photo, held by the profile
 /// screen's local state while [ProfileRepository.addPhotos] uploads it.
+///
+/// Carries the picked file's *path*, not its bytes — the same choice
+/// `MediaFile` makes for video in the composer, and for the same reason. A
+/// batch here can be up to 80 photos, the screen paints none of them before
+/// they are uploaded, and [ProfileRepository.addPhotos] sends them one at a
+/// time. Holding bytes meant every slot was read at pick time and kept
+/// resident for the whole upload — 80 files at `maxWidth: 1600` is tens to
+/// well over a hundred megabytes standing in memory during a sequential
+/// upload that takes minutes on a mobile uplink, on top of the copy
+/// `MultipartFile.fromBytes` makes for the file actually in flight. It bounds
+/// concurrent residency, not the read itself: each file is still fully read
+/// when its turn comes (see [uploadTolerantFile]), then released.
 class PendingPhoto {
   const PendingPhoto({
     required this.photoClientToken,
-    required this.bytes,
+    required this.path,
     required this.ext,
   });
 
   final String photoClientToken;
-  final Uint8List bytes;
+
+  /// Where the picked file sits on disk until its turn to upload comes.
+  final String path;
+
   final String ext;
 }
 
@@ -111,24 +129,37 @@ class ProfileRepository {
     return rows.map(ProfilePhoto.fromRow).toList();
   }
 
-  /// Uploads [items] and appends them to the end of the gallery, after
-  /// whatever [existing] photos are already there. `users.avatar_path` is
-  /// updated automatically by a DB trigger, not here — see
-  /// `sync_avatar_path_from_profile_photos()` in the migration.
+  /// Uploads [items] and appends them to the end of the gallery.
+  /// `users.avatar_path` is updated automatically by a DB trigger, not here —
+  /// see `sync_avatar_path_from_profile_photos()` in the migration.
   ///
-  /// Uploads go through [uploadTolerant] for the same reason post media does:
+  /// Uploads go through [uploadTolerantFile] for the same reason post media
+  /// does:
   /// `.timeout()` stops waiting without cancelling, so a batch can be half
   /// landed when the screen reports failure, and the natural retry re-sends
   /// items whose objects are already there. A plain `uploadBinary` answers
   /// that with 409 and failed the whole batch every single time, forever.
+  ///
+  /// The rows go through `append_profile_photos()` rather than a direct
+  /// upsert, and the caller no longer passes the gallery in. `position` used
+  /// to be computed here, from the screen's cached list — which is stale in
+  /// exactly the situations the retry tolerance above exists for. A previous
+  /// batch that committed after this method reported failure (or a second
+  /// device) leaves that list short, the new rows aim at positions that are
+  /// already taken, and `profile_photos_user_position_key` rejects them. The
+  /// upsert cannot absorb that: it arbitrates on `(user_id, storage_path)`,
+  /// and a fresh file has a path of its own, so the position clash is a hard
+  /// error that takes the whole batch with it. The server assigns positions
+  /// from the table it is inserting into, in the same transaction, so a stale
+  /// client has nothing to be stale about — the same move migration
+  /// 20260820150000 made for reordering.
   Future<void> addPhotos({
     required String userId,
     required List<PendingPhoto> items,
-    required List<ProfilePhoto> existing,
   }) async {
     if (items.isEmpty) return;
     for (final item in items) {
-      await uploadTolerant(
+      await uploadTolerantFile(
         _client,
         bucket: mediaBucket,
         path: profilePhotoPath(
@@ -136,30 +167,24 @@ class ProfileRepository {
           photoClientToken: item.photoClientToken,
           ext: item.ext,
         ),
-        bytes: item.bytes,
+        file: File(item.path),
       );
     }
-    final nextPosition = existing.isEmpty
-        ? 0
-        : existing.map((p) => p.position).reduce((a, b) => a > b ? a : b) + 1;
-    final rows = [
-      for (var i = 0; i < items.length; i++)
-        {
-          'user_id': userId,
-          'position': nextPosition + i,
-          'storage_path': profilePhotoPath(
-            userId: userId,
-            photoClientToken: items[i].photoClientToken,
-            ext: items[i].ext,
-          ),
-        },
-    ];
     await _client
-        .from('profile_photos')
-        .upsert(
-          rows,
-          onConflict: 'user_id,storage_path',
-          ignoreDuplicates: true,
+        .rpc(
+          'append_profile_photos',
+          params: {
+            'p_items': [
+              for (final item in items)
+                {
+                  'storage_path': profilePhotoPath(
+                    userId: userId,
+                    photoClientToken: item.photoClientToken,
+                    ext: item.ext,
+                  ),
+                },
+            ],
+          },
         )
         .timeout(networkTimeout);
   }

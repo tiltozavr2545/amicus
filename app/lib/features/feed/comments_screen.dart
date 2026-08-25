@@ -9,9 +9,24 @@ import 'comment_thread.dart';
 import 'feed_repository.dart';
 
 class CommentsScreen extends ConsumerStatefulWidget {
-  const CommentsScreen({super.key, required this.postId});
+  const CommentsScreen({super.key, required this.postId, this.onCountChanged});
 
   final String postId;
+
+  /// Сообщает открывшему экрану, сколько комментариев у поста на самом деле —
+  /// после каждой успешной загрузки списка, то есть и после отправки, и после
+  /// удаления.
+  ///
+  /// Колбэк, а не возвращаемое значение маршрута: экран закрывают системной
+  /// кнопкой «назад», у которой результата нет, а перехватывать её через
+  /// PopScope ради счётчика — вмешательство в жест, который в этом проекте
+  /// проверить нечем (см. «Грабли» в CLAUDE.md). Заодно карточка под
+  /// экраном обновляется сразу, а не при выходе.
+  ///
+  /// Дёргать [FeedRefreshTick] здесь было бы неверно по цене: он перезагружает
+  /// первую страницу КАЖДОГО открытого списка, а изменилось одно число на
+  /// одной карточке.
+  final ValueChanged<int>? onCountChanged;
 
   @override
   ConsumerState<CommentsScreen> createState() => _CommentsScreenState();
@@ -74,6 +89,12 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         _comments = threadComments(comments);
         _errorMessage = null;
       });
+      // Из СЫРОГО списка, не из threadComments(): счётчик на карточке рисует
+      // `comment_summary()`, а он считает `count(*) … where deleted_at is
+      // null` — то есть ровно видимые нетомбстоненные строки. threadComments()
+      // сверх этого прячет ответы без корня и заглушки без ответов, так что
+      // его длина дала бы другое число.
+      widget.onCountChanged?.call(comments.where((c) => !c.isDeleted).length);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -193,12 +214,30 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         _pendingSignature = null;
       }
     } catch (e) {
+      if (!mounted) return;
+      // Re-read the thread before reporting the failure. `.timeout()` stops
+      // waiting without cancelling, so "failed to send" routinely means "we
+      // stopped listening", not "nothing landed" — and this list is the only
+      // place the user can tell the two apart. Without the reload they are
+      // told it failed while their comment sits one refresh away, and the
+      // natural response — retype it, a little differently — changes the
+      // signature, mints a fresh `_pendingToken` and posts it a second time.
+      //
+      // This narrows that window; it does not close it. A resend whose text
+      // changed still cannot be arbitrated server-side the way a re-published
+      // post now is (`create_post_with_media()` rewrites its row on a repeat
+      // token, migration 20260824100000), because `comments` has no UPDATE
+      // policy on purpose — see data-model.md. Between the two outcomes, a
+      // duplicate comment is something its author can delete, whereas an
+      // edit discarded under a reused token is gone with no sign it existed.
+      // Hence the trade stays this way round.
+      await _load();
+      if (!mounted) return;
       // A snackbar, not _errorMessage: that field is rendered only in place of
       // the list, so once comments have loaded — which is the normal state when
       // sending — assigning to it puts the message nowhere. The composer would
       // just stop, and the server rejects a reply for several ordinary reasons
       // (its target was deleted or blocked while the reply was being typed).
-      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.failedToSendCommentError)));

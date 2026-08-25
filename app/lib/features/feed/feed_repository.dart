@@ -662,15 +662,15 @@ class FeedRepository {
     }
   }
 
-  Map<String, dynamic> _pendingMediaRow({
-    required String postId,
+  /// One entry of the `p_items` array both `create_post_with_media()` and
+  /// `set_post_media()` take: what this media slot *is*, with no `post_id` and
+  /// no `position` — the server derives the position from the array order, so
+  /// the client's job is only to send them in the order it wants them shown.
+  Map<String, dynamic> _pendingMediaItem({
     required String authorId,
     required String postClientToken,
-    required int position,
     required PendingMedia item,
   }) => {
-    'post_id': postId,
-    'position': position,
     'media_type': item.mediaType.dbValue,
     'storage_path': postMediaPath(
       authorId: authorId,
@@ -691,13 +691,41 @@ class FeedRepository {
   /// also doubles as the storage-path prefix shared by every one of [media]'s
   /// items (see [postMediaPath]).
   ///
-  /// `.timeout()` doesn't cancel the underlying request, it only stops waiting,
-  /// so a slow-but-live connection can commit the insert after the screen has
-  /// already reported failure and offered a retry. The unique
-  /// `(author_id, client_token)` index turns that retry into a no-op instead of
-  /// a second post, and each media item's own retry-tolerant upload (409) plus
-  /// `post_media`'s `(post_id, storage_path)` unique index make the whole
-  /// multi-file submission safe to retry as a unit.
+  /// The post row and its `post_media` rows are written by ONE call to
+  /// `create_post_with_media()`, so they land in one transaction or not at all.
+  /// This used to be three PostgREST calls — insert the post, read its id back,
+  /// insert the media — which is three transactions, and `.timeout()` stops
+  /// waiting without cancelling. A commit of the first followed by a lost
+  /// second published a post that had text and no photographs: live in every
+  /// connection's feed, its "new post" push already sent by
+  /// `enqueue_post_notifications`, while this method threw and the composer
+  /// told the author nothing had been saved. `purge_empty_posts` could not
+  /// clean that up either — it only removes posts with *no* text.
+  ///
+  /// Retrying never produces a second post: the server arbitrates on the same
+  /// `(author_id, client_token)` index as before, and each media item's own
+  /// retry-tolerant upload (409) makes the whole multi-file submission safe to
+  /// retry as a unit.
+  ///
+  /// A repeat token is no longer answered by doing *nothing*, though — since
+  /// migration 20260824100000 it rewrites the post to whatever this call sent.
+  /// That is what lets the composer mint one token per session instead of one
+  /// per version of the draft: a retry whose content changed in between (fix a
+  /// typo after a publish that timed out but committed anyway) updates the
+  /// post that already exists rather than publishing a rival copy of it. See
+  /// the note on `_submissionToken` in the composer for the failure this
+  /// closes.
+  ///
+  /// A rewrite can therefore *drop* media the first attempt had already
+  /// uploaded — remove a photo from the draft before publishing again and its
+  /// object is left in the bucket with no row naming it. So this goes through
+  /// [deleteRowsThenObjects] exactly like [updatePost]: since migration
+  /// 20260825110000 `create_post_with_media()` returns the storage paths its
+  /// rewrite orphaned, and the bucket cleanup runs after the row write has
+  /// committed and is best-effort. `reap_orphaned_media()` is the backstop for
+  /// when this never runs at all — it only collects objects older than 24 h,
+  /// a hundred at a time, which is the wrong instrument for a 100 MB clip the
+  /// author removed from the draft a second ago.
   Future<void> createPost({
     required String clientToken,
     required String authorId,
@@ -712,62 +740,53 @@ class FeedRepository {
       );
     }
 
-    await _client
-        .from('posts')
-        .upsert(
-          {
-            'client_token': clientToken,
-            'author_id': authorId,
-            if (text != null && text.isNotEmpty) 'text': text,
-          },
-          onConflict: 'author_id,client_token',
-          ignoreDuplicates: true,
-        )
-        .timeout(networkTimeout);
+    var orphanedPaths = const <String>[];
+    await deleteRowsThenObjects(
+      rows: () async {
+        final orphaned = await _client
+            .rpc(
+              'create_post_with_media',
+              params: {
+                'p_client_token': clientToken,
+                'p_text': (text != null && text.isNotEmpty) ? text : null,
+                'p_items': [
+                  for (final item in media)
+                    _pendingMediaItem(
+                      authorId: authorId,
+                      postClientToken: clientToken,
+                      item: item,
+                    ),
+                ],
+              },
+            )
+            .timeout(networkTimeout);
 
-    if (media.isEmpty) return;
-
-    // `ignoreDuplicates` upserts return nothing for a conflicting (i.e.
-    // already-landed-on-a-previous-attempt) row, so the id has to be read
-    // back separately regardless of whether this call just inserted the post
-    // or a retry found it already there.
-    final postRow = await _client
-        .from('posts')
-        .select('id')
-        .eq('author_id', authorId)
-        .eq('client_token', clientToken)
-        .single()
-        .timeout(networkTimeout);
-    final postId = postRow['id'] as String;
-
-    final rows = [
-      for (var i = 0; i < media.length; i++)
-        _pendingMediaRow(
-          postId: postId,
-          authorId: authorId,
-          postClientToken: clientToken,
-          position: i,
-          item: media[i],
-        ),
-    ];
-    await _client
-        .from('post_media')
-        .upsert(
-          rows,
-          onConflict: 'post_id,storage_path',
-          ignoreDuplicates: true,
-        )
-        .timeout(networkTimeout);
+        // `returns table (storage_path text)`, so PostgREST hands these back
+        // as rows — the same shape as [updatePost]'s half of this rule. Empty
+        // on a first publish, which is the ordinary case.
+        orphanedPaths = [
+          for (final row in (orphaned as List<dynamic>? ?? const []))
+            (row as Map<String, dynamic>)['storage_path'] as String,
+        ];
+      },
+      objects: () async {
+        if (orphanedPaths.isEmpty) return;
+        await _client.storage
+            .from(mediaBucket)
+            .remove(orphanedPaths)
+            .timeout(networkTimeout);
+      },
+    );
   }
 
   /// Saves edits to a post the current user owns: [text] and/or its media.
   ///
   /// [finalMedia] is the composer's final ordered list — a mix of items kept
   /// from the original post ([KeptMedia]) and freshly picked ones
-  /// ([NewMedia]). New files are uploaded first, then the whole media set is
-  /// handed to `set_post_media()`, which replaces `post_media` for this post
-  /// in **one transaction** and returns the storage paths nothing references
-  /// any more, for this method to delete afterwards.
+  /// ([NewMedia]). New files are uploaded first, then the caption and the
+  /// whole media set are handed to `update_post_with_media()`, which applies
+  /// both in **one transaction** and returns the storage paths nothing
+  /// references any more, for this method to delete afterwards.
   ///
   /// The server does the diffing (which is why the post's original media is
   /// no longer a parameter) for a reason that is not tidiness. This used to
@@ -778,12 +797,12 @@ class FeedRepository {
   /// left the post with *no media rows at all*, while its files sat on in
   /// Storage referenced by nothing.
   ///
-  /// Storage deletions come last, after *both* row writes are already
-  /// correct, and are best-effort — [deleteRowsThenObjects] states the rule
-  /// and this is one of its call sites. An object nothing points at is wasted
-  /// bucket space, whereas a row pointing at a deleted object is a broken
-  /// image in everyone's feed, and a failed cleanup must never be reported as
-  /// a failed save.
+  /// Storage deletions come last, after the row write has already committed,
+  /// and are best-effort — [deleteRowsThenObjects] states the rule and this is
+  /// one of its call sites. An object nothing points at is wasted bucket
+  /// space, whereas a row pointing at a deleted object is a broken image in
+  /// everyone's feed, and a failed cleanup must never be reported as a failed
+  /// save.
   ///
   /// [postClientToken] is the prefix new media is uploaded under — normally
   /// the post's own [Post.clientToken], but the caller mints a fresh one for
@@ -811,41 +830,49 @@ class FeedRepository {
             'storage_path': media.storagePath,
             if (media.posterPath != null) 'poster_path': media.posterPath,
           },
-          NewMedia(:final pending) => {
-            'media_type': pending.mediaType.dbValue,
-            'storage_path': postMediaPath(
-              authorId: authorId,
-              postClientToken: postClientToken,
-              mediaClientToken: pending.mediaClientToken,
-              ext: pending.ext,
-            ),
-            if (pending.posterBytes != null)
-              'poster_path': postMediaPosterPath(
-                authorId: authorId,
-                postClientToken: postClientToken,
-                mediaClientToken: pending.mediaClientToken,
-              ),
-          },
+          NewMedia(:final pending) => _pendingMediaItem(
+            authorId: authorId,
+            postClientToken: postClientToken,
+            item: pending,
+          ),
         },
     ];
 
-    // Both halves of the save are rows, and the bucket cleanup is the object
-    // half — the same shape [deleteRowsThenObjects] exists for, so it runs
-    // through it rather than open-coding a third variant of the rule.
+    // The row half of the save is now a single statement, and the bucket
+    // cleanup is the object half — the shape [deleteRowsThenObjects] exists
+    // for, so it runs through it rather than open-coding a third variant of
+    // the rule.
     //
-    // The cleanup used to sit *between* the two row writes, un-guarded. An
-    // edit that changed the caption and dropped a photo would then commit the
-    // media change, fail on a timed-out `remove()`, and never reach the
-    // caption at all — while the composer reported that nothing had been
-    // saved. Orphaned bytes are wasted space nobody sees; a half-applied edit
-    // reported as a failure is a lie the user acts on.
+    // The caption and the media set used to be two PostgREST calls, i.e. two
+    // transactions, and their ordering had already been reversed once to stop
+    // a timed-out caption update from stranding a dropped file in the bucket
+    // with nothing left able to name it (`set_post_media` had by then returned
+    // its removed-list to a call that threw). What that reordering could not
+    // fix is the pair itself: a caption that lands followed by a failed media
+    // rewrite reports failure with the caption already applied.
+    //
+    // `update_post_with_media()` (migration 20260824120000) takes both halves,
+    // so there is no longer a between. It also enforces, on this path, the
+    // "a post needs text or media" rule that `create_post_with_media()` has
+    // enforced on the publish path since 20260823120000 — the check was not
+    // expressible while the two halves arrived separately, because neither
+    // call could see the other's contribution.
+    //
+    // Storage deletions still come last and are still best-effort. An object
+    // nothing points at is wasted bucket space; a row pointing at a deleted
+    // object is a broken image in everyone's feed, and a failed cleanup must
+    // never be reported as a failed save.
     var orphanedPaths = const <String>[];
     await deleteRowsThenObjects(
       rows: () async {
         final orphaned = await _client
             .rpc(
-              'set_post_media',
-              params: {'p_post_id': postId, 'p_items': items},
+              'update_post_with_media',
+              params: {
+                'p_post_id': postId,
+                'p_text': (text != null && text.isNotEmpty) ? text : null,
+                'p_items': items,
+              },
             )
             .timeout(networkTimeout);
 
@@ -855,12 +882,6 @@ class FeedRepository {
           for (final row in (orphaned as List<dynamic>? ?? const []))
             (row as Map<String, dynamic>)['storage_path'] as String,
         ];
-
-        await _client
-            .from('posts')
-            .update({'text': (text != null && text.isNotEmpty) ? text : null})
-            .eq('id', postId)
-            .timeout(networkTimeout);
       },
       objects: () async {
         if (orphanedPaths.isEmpty) return;

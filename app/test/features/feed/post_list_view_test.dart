@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -22,11 +23,59 @@ class _FakeFeedRepository implements FeedRepository {
   /// prefetch tests assert on.
   final signedPaths = <String>[];
 
+  /// Ids handed to [deletePost], and the comments one post has — both only
+  /// for the two tests about what happens to the *rest* of the app when a
+  /// post is deleted or commented on.
+  final deletedPostIds = <String>[];
+  List<Comment> commentsToReturn = const [];
+
   @override
   Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
     if (throwOnFetch) throw Exception('offline');
     return pageToReturn;
   }
+
+  @override
+  Future<void> deletePost({
+    required String postId,
+    List<String> mediaStoragePaths = const [],
+  }) async {
+    deletedPostIds.add(postId);
+    // Как сервер: следующая страница этот пост уже не отдаёт. Без этого
+    // перезагрузка по тику вернула бы его обратно, и тест не отличил бы
+    // «список перечитан» от «список не тронут».
+    pageToReturn = [
+      for (final post in pageToReturn)
+        if (post.id != postId) post,
+    ];
+  }
+
+  @override
+  Future<List<Comment>> fetchComments(String postId) async => commentsToReturn;
+
+  /// Reaction requests in call order, each held open until the test decides
+  /// its fate — which is the whole point: the bug being guarded against only
+  /// exists while two of them are in flight at once.
+  final reactionCalls = <Completer<void>>[];
+
+  Future<void> _pendingReaction() {
+    final completer = Completer<void>();
+    reactionCalls.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<void> setReaction({
+    required String postId,
+    required String userId,
+    required ReactionType type,
+  }) => _pendingReaction();
+
+  @override
+  Future<void> removeReaction({
+    required String postId,
+    required String userId,
+  }) => _pendingReaction();
 
   @override
   Future<Map<String, String>> resolveMediaUrls(
@@ -98,9 +147,73 @@ const _cacheKey = 'feed_cache_test-user_main';
 
 const _failedToLoad = 'Failed to load feed. Please try again.';
 
+const _likeTooltip = 'Like';
+const _dislikeTooltip = 'Dislike';
+
+/// Pumps a fresh list holding one reaction-less post, then leaves 👍 and 👎
+/// both in flight — the state every test below starts from.
+Future<_FakeFeedRepository> _twoReactionsInFlight(WidgetTester tester) async {
+  final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+  await tester.pumpWidget(_wrap(repo));
+  await tester.pump();
+  await tester.pump();
+
+  await tester.tap(find.byTooltip(_likeTooltip));
+  await tester.pump();
+  await tester.tap(find.byTooltip(_dislikeTooltip));
+  await tester.pump();
+
+  expect(repo.reactionCalls, hasLength(2));
+  return repo;
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  group('a reaction that fails while another is in flight', () {
+    // `.timeout()` stops waiting without cancelling, so "the request failed"
+    // and "the request landed" are routinely indistinguishable from here —
+    // which makes two reactions in flight at once an ordinary Tuesday rather
+    // than a stress test.
+
+    testWidgets('does not undo a newer one that already succeeded', (
+      tester,
+    ) async {
+      final repo = await _twoReactionsInFlight(tester);
+
+      // The 👎 lands...
+      repo.reactionCalls[1].complete();
+      await tester.pump();
+      // ...and only then does the 👍 give up.
+      repo.reactionCalls[0].completeError(Exception('timeout'));
+      await tester.pump();
+
+      // The old code restored the Post captured before the 👍 — no reaction at
+      // all — over a dislike the server was holding and the user could see.
+      expect(find.byIcon(Icons.thumb_down), findsOneWidget);
+      expect(find.byIcon(Icons.thumb_up_outlined), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+    });
+
+    testWidgets('lands back on the server state when both fail', (
+      tester,
+    ) async {
+      final repo = await _twoReactionsInFlight(tester);
+
+      repo.reactionCalls[0].completeError(Exception('timeout'));
+      await tester.pump();
+      repo.reactionCalls[1].completeError(Exception('timeout'));
+      await tester.pump();
+
+      // Nothing was ever confirmed, so the card has to end where it started —
+      // not on the state between the two taps, which is what rolling back to
+      // "whatever this request saw" would give.
+      expect(find.byIcon(Icons.thumb_up_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.thumb_down_outlined), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+    });
   });
 
   testWidgets(
@@ -346,6 +459,94 @@ void main() {
         .toList();
     expect(urls.first, 'https://example.invalid/signed?p=new');
     expect(urls, hasLength(2));
+  });
+
+  // Лента и профиль — два живых PostListView в IndexedStack'е shell'а.
+  // Удаление убирало пост только из своего списка, и во втором он оставался
+  // кликабельной карточкой: реакцию по нему отбивает RLS (и [_react] эту
+  // ошибку молча откатывает), комментарии открываются пустыми. Правка поста,
+  // mute/block и новый пост через этот тик уже проходили — удаление было
+  // единственной мутацией ленты, которая его не дёргала.
+  testWidgets('deleting a post bumps the tick the other lists listen on', (
+    tester,
+  ) async {
+    final repo = _FakeFeedRepository()
+      ..pageToReturn = [
+        Post(
+          id: 'p1',
+          // Меню «⋮» рисуется только на своём посте.
+          authorId: 'test-user',
+          authorName: 'Me',
+          createdAt: DateTime(2026, 1, 1, 12),
+          text: 'mine',
+        ),
+      ];
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_wrap(repo, container: container));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    final before = container.read(feedRefreshTickProvider);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+    // Подтверждение — вторая «Delete», уже в диалоге.
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+
+    expect(repo.deletedPostIds, ['p1']);
+    expect(find.text('mine'), findsNothing);
+    expect(container.read(feedRefreshTickProvider), greaterThan(before));
+  });
+
+  // Экран комментариев открывался без `.then`, ничего не возвращал и тик не
+  // дёргал, поэтому число на карточке не менялось никогда: написал коммент,
+  // вернулся — прежняя цифра, до первого pull-to-refresh.
+  testWidgets('the comment count on the card follows what the thread loaded', (
+    tester,
+  ) async {
+    final repo = _FakeFeedRepository()
+      // Стартовое число заведомо не совпадает ни с одним счётчиком реакций
+      // (те по нулям), чтобы обе проверки ниже били в нужный Text.
+      ..pageToReturn = [_post('p1').copyWith(commentCount: 5)]
+      ..commentsToReturn = [
+        for (var i = 0; i < 2; i++)
+          Comment(
+            id: 'c$i',
+            authorId: 'author-1',
+            authorName: 'Alice',
+            text: 'comment $i',
+            createdAt: DateTime(2026, 1, 1, 13),
+          ),
+        // Заглушка удалённого комментария: `comment_summary()` считает
+        // `deleted_at is null`, так что в число она не попадает.
+        Comment(
+          id: 'c-gone',
+          authorId: 'author-1',
+          authorName: 'Alice',
+          text: '',
+          createdAt: DateTime(2026, 1, 1, 14),
+          isDeleted: true,
+        ),
+      ];
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('5'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.mode_comment_outlined));
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byType(Scaffold).last)).pop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('5'), findsNothing);
   });
 
   testWidgets('a single-media post shows no position counter', (tester) async {

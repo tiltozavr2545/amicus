@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
+import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
@@ -103,59 +104,134 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
+    // Выставляется ДО пикера — та же правка и та же причина, что у
+    // `_pickMedia` в композере: пока пикер поднимает свою activity, кнопка
+    // «Добавить фото» остаётся включённой (её `onPressed` смотрит на
+    // `_isAddingPhotos` и на `photos.length`, то и другое — доpick-овое
+    // состояние), второй тап открывает второй пикер, и оба батча режутся по
+    // одному и тому же `remaining`, посчитанному до первого выбора.
+    setState(() => _isAddingPhotos = true);
+
     // Not `limit: remaining`: the picker rejects a limit below 2 outright,
     // which made the 80th photo unreachable. See [pickerLimit].
-    final picked = await ImagePicker().pickMultiImage(
-      maxWidth: 1600,
-      limit: pickerLimit(remaining),
-    );
-    if (picked.isEmpty) return;
-
-    setState(() => _isAddingPhotos = true);
+    final List<XFile> picked;
     try {
+      picked = await ImagePicker().pickMultiImage(
+        maxWidth: 1600,
+        limit: pickerLimit(remaining),
+      );
+    } catch (_) {
+      // Иначе бросок отсюда запирал бы кнопку насовсем: ProfileScreen живёт
+      // веткой StatefulShellRoute и не пересоздаётся. И это ещё
+      // необработанная асинхронная ошибка — `_addPhotos` зовут как
+      // `VoidCallback`.
+      if (!mounted) return;
+      setState(() => _isAddingPhotos = false);
+      _showError(context, (l10n) => l10n.failedToAddPhotosError);
+      return;
+    }
+    if (picked.isEmpty) {
+      if (mounted) setState(() => _isAddingPhotos = false);
+      return;
+    }
+    // The picker runs in its own activity, so this State can be gone by the
+    // time it resolves — the same guard every other `await` here already has.
+    if (!mounted) return;
+
+    // The bucket takes an object's content type from the extension in its
+    // name, so a format it doesn't accept fails on upload and fails again on
+    // every retry. Rejected here, with a reason, rather than as a bare
+    // "failed to add photos" — see [imageExtensions].
+    final usable = [
+      for (final file in picked.take(remaining))
+        if (imageExtensions.contains(fileExtension(file.name))) file,
+    ];
+    if (usable.isEmpty) {
+      setState(() => _isAddingPhotos = false);
+      _showError(context, (l10n) => l10n.unsupportedImageFormatError);
+      return;
+    }
+
+    try {
+      // Пути, а не байты: раньше здесь стоял `await file.readAsBytes()` на
+      // каждый файл, и весь батч — до 80 фотографий при `maxWidth: 1600` —
+      // материализовался в памяти целиком и держался там всю последовательную
+      // загрузку. См. [PendingPhoto]. Заодно список перестал быть
+      // асинхронным: читать нечего.
       final items = [
-        for (final file in picked.take(remaining))
+        for (final file in usable)
           PendingPhoto(
             photoClientToken: const Uuid().v4(),
-            bytes: await file.readAsBytes(),
+            path: file.path,
             ext: fileExtension(file.name),
           ),
       ];
       await ref
           .read(profileRepositoryProvider)
-          .addPhotos(userId: userId, items: items, existing: existing);
-      ref.invalidate(_profileProvider);
-      ref.invalidate(_profilePhotosProvider);
+          .addPhotos(userId: userId, items: items);
+      if (usable.length < picked.take(remaining).length) {
+        // ignore: use_build_context_synchronously
+        _showError(context, (l10n) => l10n.unsupportedImageFormatError);
+      }
     } catch (e) {
       // ignore: use_build_context_synchronously
       _showError(context, (l10n) => l10n.failedToAddPhotosError);
     } finally {
-      if (mounted) setState(() => _isAddingPhotos = false);
+      // Перечитывается и на ошибке тоже, а не только на успехе. `.timeout()`
+      // перестаёт ждать, не отменяя запрос, поэтому вставка в
+      // `profile_photos` могла закоммититься уже после того, как этот экран
+      // показал «не удалось добавить фото». Без инвалидации здесь
+      // `photosAsync.value` остаётся тем, чем был ДО попытки, а на нём висят
+      // и лимит в 80, и доступность обеих кнопок («Переставить» — при
+      // `length < 2`, «Удалить» — при `isEmpty`). ProfileScreen живёт веткой
+      // StatefulShellRoute и не пересоздаётся при переключении вкладок, то
+      // есть autoDispose-провайдер не умирает никогда и сам себя не
+      // перечитает.
+      //
+      // Раньше цена отставшего списка была выше: от него считался `position`
+      // новых строк, так что следующее добавление целилось в занятые позиции
+      // и падало на `profile_photos_user_position_key` — насовсем, до
+      // перезапуска приложения. Позиции теперь раздаёт сервер
+      // (`append_profile_photos()`, 20260824130000), и этого тупика больше
+      // нет; перечитать список всё равно надо, чтобы человек видел, что на
+      // самом деле долетело.
+      if (mounted) {
+        ref.invalidate(_profileProvider);
+        ref.invalidate(_profilePhotosProvider);
+        setState(() => _isAddingPhotos = false);
+      }
     }
   }
 
-  Future<void> _openReorder(List<ProfilePhoto> photos) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ProfilePhotoReorderScreen(photos: photos),
-      ),
-    );
-    if (changed == true) {
-      ref.invalidate(_profileProvider);
-      ref.invalidate(_profilePhotosProvider);
-    }
-  }
-
-  Future<void> _openDelete(List<ProfilePhoto> photos) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ProfilePhotoDeleteScreen(photos: photos),
-      ),
-    );
-    if (changed == true) {
-      ref.invalidate(_profileProvider);
-      ref.invalidate(_profilePhotosProvider);
-    }
+  /// Открывает экран, который может изменить галерею, и перечитывает её после
+  /// возврата.
+  ///
+  /// Безусловно, а не по `changed == true`, как было у обоих вызовов до этого.
+  /// `true` возвращается только когда мутация ДОШЛА до конца: и
+  /// [ProfilePhotoDeleteScreen], и [ProfilePhotoReorderScreen] на ошибке
+  /// показывают снекбар и остаются открытыми, а `pop(true)` не выполняют. Но
+  /// «ошибка» и «ничего не произошло» — не одно и то же: `.timeout()`
+  /// перестаёт ждать, не отменяя запрос, а удаление фотографий вдобавок
+  /// устроено как [deleteRowsThenObjects] — сначала строки, потом объекты, —
+  /// так что строк в `profile_photos` может уже не быть.
+  ///
+  /// Сюда тогда возвращаются с `null`, список на экране профиля остаётся со
+  /// строками, которых больше нет, и это запирает перестановку насовсем:
+  /// `reorder_profile_photos()` требует ВЕСЬ набор, удалённые id отваливаются
+  /// на join'е внутри, длины не сходятся — и функция отвечает `PT422` при
+  /// каждой попытке. Экран профиля живёт веткой StatefulShellRoute, то есть
+  /// autoDispose-провайдер не умирает при переключении вкладок и сам себя не
+  /// перечитает.
+  ///
+  /// Цена — один лишний запрос галереи, когда человек зашёл на экран и вышел,
+  /// ничего не поменяв.
+  Future<void> _openGalleryEditor(Widget screen) async {
+    await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => screen));
+    if (!mounted) return;
+    ref.invalidate(_profileProvider);
+    ref.invalidate(_profilePhotosProvider);
   }
 
   void _openViewer(List<ProfilePhoto> photos) {
@@ -266,14 +342,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               label: l10n.reorderPhotosButton,
                               onPressed: !photosLoaded || photos.length < 2
                                   ? null
-                                  : () => _openReorder(photos),
+                                  : () => _openGalleryEditor(
+                                      ProfilePhotoReorderScreen(photos: photos),
+                                    ),
                             ),
                             _PhotoActionButton(
                               icon: Icons.delete_outline,
                               label: l10n.deletePhotoButton,
                               onPressed: !photosLoaded || photos.isEmpty
                                   ? null
-                                  : () => _openDelete(photos),
+                                  : () => _openGalleryEditor(
+                                      ProfilePhotoDeleteScreen(photos: photos),
+                                    ),
                             ),
                           ],
                         ),

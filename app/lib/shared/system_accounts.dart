@@ -32,6 +32,33 @@ class SystemAccounts {
 
   List<String>? _cached;
 
+  /// The lookup currently in flight, shared by everyone who asks while it
+  /// runs. [FeedRepository.fetchPage] asks on *every* page, and pagination
+  /// routinely has more than one page going at once, so without this each of
+  /// them opened its own round trip for the same constant.
+  Future<List<String>>? _inFlight;
+
+  /// When the last attempt gave up, or null if the last one succeeded (or
+  /// none has run yet). See [_retryAfterFailure].
+  DateTime? _failedAt;
+
+  /// How long a failed lookup is taken at its word before it is worth asking
+  /// again.
+  ///
+  /// The failure needs remembering for the same reason the success does, and
+  /// the old code remembered only the success. `fetchPage` awaits this
+  /// *before* it can even issue the posts query, so with no connection the
+  /// feed paid a full [networkTimeout] here and then another one on the query
+  /// itself — about 24 s before "failed to load" and the cached page
+  /// appeared, and the same 24 s again on every pull-to-refresh and every
+  /// page of pagination, because nothing recorded that the lookup had just
+  /// failed.
+  ///
+  /// A minute rather than the rest of the session: the fallback below is
+  /// today's right answer, but it is compiled in, and a session that happened
+  /// to start offline must not keep using it after the account is rotated.
+  static const _retryAfterFailure = Duration(minutes: 1);
+
   /// The server's list, or `[systemAccountId]` if the lookup failed.
   ///
   /// Falling back rather than throwing is deliberate — a feed must not fail to
@@ -42,13 +69,28 @@ class SystemAccounts {
   Future<List<String>> ids() async {
     final cached = _cached;
     if (cached != null) return cached;
+
+    final failedAt = _failedAt;
+    if (failedAt != null &&
+        DateTime.now().difference(failedAt) < _retryAfterFailure) {
+      return const [systemAccountId];
+    }
+
+    return _inFlight ??= _fetch();
+  }
+
+  Future<List<String>> _fetch() async {
     try {
       final rows = await _client
           .rpc('system_account_ids')
           .timeout(networkTimeout);
+      _failedAt = null;
       return _cached = (rows as List<dynamic>).cast<String>();
     } catch (_) {
+      _failedAt = DateTime.now();
       return const [systemAccountId];
+    } finally {
+      _inFlight = null;
     }
   }
 }
