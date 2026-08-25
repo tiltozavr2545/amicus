@@ -153,11 +153,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     try {
+      // Пути, а не байты: раньше здесь стоял `await file.readAsBytes()` на
+      // каждый файл, и весь батч — до 80 фотографий при `maxWidth: 1600` —
+      // материализовался в памяти целиком и держался там всю последовательную
+      // загрузку. См. [PendingPhoto]. Заодно список перестал быть
+      // асинхронным: читать нечего.
       final items = [
         for (final file in usable)
           PendingPhoto(
             photoClientToken: const Uuid().v4(),
-            bytes: await file.readAsBytes(),
+            path: file.path,
             ext: fileExtension(file.name),
           ),
       ];

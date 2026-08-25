@@ -74,6 +74,28 @@ class _PostListViewState extends ConsumerState<PostListView> {
   // appending it onto the freshly-cleared list.
   int _loadEpoch = 0;
 
+  // Reaction taps on one post are not serialised — nothing stops a second tap
+  // while the first request is still in flight — so a failure has to be able to
+  // tell whether it is still the one that owns the card. These two maps are
+  // what [_react] needs to answer that.
+  //
+  // `_reactionSeq` is the number of the newest request issued for a post: an
+  // older one that fails must stay silent, or it repaints over a newer request
+  // that has already succeeded.
+  //
+  // `_confirmedReaction` is the last reaction the *server* acknowledged for a
+  // post (seeded from what was on screen at the first tap, when nothing was yet
+  // in flight). Rolling back to it, rather than to a Post captured before the
+  // tap, is what makes two failed taps in a row land back on the real state
+  // instead of on the state between them.
+  //
+  // Both grow only for posts this session actually reacted to — a handful of
+  // uuids — and are deliberately not cleared on refresh: a refresh that failed
+  // offline leaves the optimistic values on screen, and re-seeding from those
+  // would be worse than keeping what the server last confirmed.
+  final _reactionSeq = <String, int>{};
+  final _confirmedReaction = <String, ReactionType?>{};
+
   @override
   void initState() {
     super.initState();
@@ -312,16 +334,41 @@ class _PostListViewState extends ConsumerState<PostListView> {
   /// Tapping a reaction toggles it: tapping the one you already have clears it,
   /// tapping a different one switches to it. Applied optimistically, rolled
   /// back on error.
+  ///
+  /// The rollback is a *transition* applied to whatever is on screen now, not
+  /// the restoration of a snapshot taken before the tap, and it only happens
+  /// when this is still the newest request for the post. Restoring a snapshot
+  /// was wrong on the path that matters most: `.timeout()` stops waiting
+  /// without cancelling, so on a bad connection a tap regularly "fails" while a
+  /// second one lands. 👍 then 👎, with the 👍 timing out, restored the state
+  /// from before the 👍 — no reaction at all — while the server was holding the
+  /// dislike the user could plainly see they had left. It stayed that way until
+  /// the next pull-to-refresh.
   Future<void> _react(Post post, ReactionType type) async {
     final userId = ref.read(currentUserIdProvider);
     // The session can end while this list is still mounted — sign-out
     // redirects the router, it does not tear this widget down synchronously.
     // A tap landing in that window has nobody to attribute the reaction to.
     if (userId == null) return;
-    final next = post.myReaction == type ? null : type;
     final at = _posts.indexWhere((p) => p.id == post.id);
     if (at == -1) return;
-    setState(() => _posts[at] = applyReaction(post, next));
+
+    // The transition is read off the list, not off the captured [post]: a
+    // card's callbacks are built once and then live inside the list item, so
+    // [post] can be a frame behind — and "tapping the one you already have
+    // clears it" gives the wrong answer the moment it is decided from a stale
+    // reading.
+    final shown = _posts[at];
+    final next = shown.myReaction == type ? null : type;
+
+    // Seeded at the first tap, while nothing is in flight — at that moment what
+    // is on screen is what the server holds. After that only a confirmed
+    // response moves it, which is what makes it a safe rollback target.
+    _confirmedReaction.putIfAbsent(post.id, () => shown.myReaction);
+    final seq = (_reactionSeq[post.id] ?? 0) + 1;
+    _reactionSeq[post.id] = seq;
+
+    setState(() => _posts[at] = applyReaction(shown, next));
     try {
       final repo = ref.read(feedRepositoryProvider);
       if (next == null) {
@@ -329,12 +376,22 @@ class _PostListViewState extends ConsumerState<PostListView> {
       } else {
         await repo.setReaction(postId: post.id, userId: userId, type: next);
       }
+      _confirmedReaction[post.id] = next;
     } catch (_) {
+      if (!mounted) return;
+      // Superseded: a newer tap owns the card now, and this request has no idea
+      // what has happened since it went out. Staying quiet is the whole fix.
+      if (_reactionSeq[post.id] != seq) return;
       // Roll back by id, not the captured index: the list may have been
       // refreshed or had a post removed while the request was in flight.
-      if (!mounted) return;
       final current = _posts.indexWhere((p) => p.id == post.id);
-      if (current != -1) setState(() => _posts[current] = post);
+      if (current == -1) return;
+      setState(
+        () => _posts[current] = applyReaction(
+          _posts[current],
+          _confirmedReaction[post.id],
+        ),
+      );
     }
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -51,6 +52,30 @@ class _FakeFeedRepository implements FeedRepository {
 
   @override
   Future<List<Comment>> fetchComments(String postId) async => commentsToReturn;
+
+  /// Reaction requests in call order, each held open until the test decides
+  /// its fate — which is the whole point: the bug being guarded against only
+  /// exists while two of them are in flight at once.
+  final reactionCalls = <Completer<void>>[];
+
+  Future<void> _pendingReaction() {
+    final completer = Completer<void>();
+    reactionCalls.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<void> setReaction({
+    required String postId,
+    required String userId,
+    required ReactionType type,
+  }) => _pendingReaction();
+
+  @override
+  Future<void> removeReaction({
+    required String postId,
+    required String userId,
+  }) => _pendingReaction();
 
   @override
   Future<Map<String, String>> resolveMediaUrls(
@@ -122,9 +147,73 @@ const _cacheKey = 'feed_cache_test-user_main';
 
 const _failedToLoad = 'Failed to load feed. Please try again.';
 
+const _likeTooltip = 'Like';
+const _dislikeTooltip = 'Dislike';
+
+/// Pumps a fresh list holding one reaction-less post, then leaves 👍 and 👎
+/// both in flight — the state every test below starts from.
+Future<_FakeFeedRepository> _twoReactionsInFlight(WidgetTester tester) async {
+  final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+  await tester.pumpWidget(_wrap(repo));
+  await tester.pump();
+  await tester.pump();
+
+  await tester.tap(find.byTooltip(_likeTooltip));
+  await tester.pump();
+  await tester.tap(find.byTooltip(_dislikeTooltip));
+  await tester.pump();
+
+  expect(repo.reactionCalls, hasLength(2));
+  return repo;
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  group('a reaction that fails while another is in flight', () {
+    // `.timeout()` stops waiting without cancelling, so "the request failed"
+    // and "the request landed" are routinely indistinguishable from here —
+    // which makes two reactions in flight at once an ordinary Tuesday rather
+    // than a stress test.
+
+    testWidgets('does not undo a newer one that already succeeded', (
+      tester,
+    ) async {
+      final repo = await _twoReactionsInFlight(tester);
+
+      // The 👎 lands...
+      repo.reactionCalls[1].complete();
+      await tester.pump();
+      // ...and only then does the 👍 give up.
+      repo.reactionCalls[0].completeError(Exception('timeout'));
+      await tester.pump();
+
+      // The old code restored the Post captured before the 👍 — no reaction at
+      // all — over a dislike the server was holding and the user could see.
+      expect(find.byIcon(Icons.thumb_down), findsOneWidget);
+      expect(find.byIcon(Icons.thumb_up_outlined), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+    });
+
+    testWidgets('lands back on the server state when both fail', (
+      tester,
+    ) async {
+      final repo = await _twoReactionsInFlight(tester);
+
+      repo.reactionCalls[0].completeError(Exception('timeout'));
+      await tester.pump();
+      repo.reactionCalls[1].completeError(Exception('timeout'));
+      await tester.pump();
+
+      // Nothing was ever confirmed, so the card has to end where it started —
+      // not on the state between the two taps, which is what rolling back to
+      // "whatever this request saw" would give.
+      expect(find.byIcon(Icons.thumb_up_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.thumb_down_outlined), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+    });
   });
 
   testWidgets(

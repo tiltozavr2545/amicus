@@ -35,7 +35,7 @@ class _FakeProfileRepository implements ProfileRepository {
 
 List<ProfilePhoto> _photos(int n) => [
   for (var i = 0; i < n; i++)
-    ProfilePhoto(id: 'p$i', position: i, storagePath: 'avatars/user-1/p$i.jpg'),
+    ProfilePhoto(id: 'p$i', storagePath: 'avatars/user-1/p$i.jpg'),
 ];
 
 /// Pushes [child] through a route so the screens' `Navigator.pop(true)` has

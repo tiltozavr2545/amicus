@@ -183,11 +183,7 @@ void main() {
   ) async {
     final repo = _FakeProfileRepository()
       ..photos = const [
-        ProfilePhoto(
-          id: 'ph1',
-          position: 0,
-          storagePath: 'avatars/user-1/a.jpg',
-        ),
+        ProfilePhoto(id: 'ph1', storagePath: 'avatars/user-1/a.jpg'),
       ];
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();

@@ -715,6 +715,17 @@ class FeedRepository {
   /// post that already exists rather than publishing a rival copy of it. See
   /// the note on `_submissionToken` in the composer for the failure this
   /// closes.
+  ///
+  /// A rewrite can therefore *drop* media the first attempt had already
+  /// uploaded — remove a photo from the draft before publishing again and its
+  /// object is left in the bucket with no row naming it. So this goes through
+  /// [deleteRowsThenObjects] exactly like [updatePost]: since migration
+  /// 20260825110000 `create_post_with_media()` returns the storage paths its
+  /// rewrite orphaned, and the bucket cleanup runs after the row write has
+  /// committed and is best-effort. `reap_orphaned_media()` is the backstop for
+  /// when this never runs at all — it only collects objects older than 24 h,
+  /// a hundred at a time, which is the wrong instrument for a 100 MB clip the
+  /// author removed from the draft a second ago.
   Future<void> createPost({
     required String clientToken,
     required String authorId,
@@ -729,23 +740,43 @@ class FeedRepository {
       );
     }
 
-    await _client
-        .rpc(
-          'create_post_with_media',
-          params: {
-            'p_client_token': clientToken,
-            'p_text': (text != null && text.isNotEmpty) ? text : null,
-            'p_items': [
-              for (final item in media)
-                _pendingMediaItem(
-                  authorId: authorId,
-                  postClientToken: clientToken,
-                  item: item,
-                ),
-            ],
-          },
-        )
-        .timeout(networkTimeout);
+    var orphanedPaths = const <String>[];
+    await deleteRowsThenObjects(
+      rows: () async {
+        final orphaned = await _client
+            .rpc(
+              'create_post_with_media',
+              params: {
+                'p_client_token': clientToken,
+                'p_text': (text != null && text.isNotEmpty) ? text : null,
+                'p_items': [
+                  for (final item in media)
+                    _pendingMediaItem(
+                      authorId: authorId,
+                      postClientToken: clientToken,
+                      item: item,
+                    ),
+                ],
+              },
+            )
+            .timeout(networkTimeout);
+
+        // `returns table (storage_path text)`, so PostgREST hands these back
+        // as rows — the same shape as [updatePost]'s half of this rule. Empty
+        // on a first publish, which is the ordinary case.
+        orphanedPaths = [
+          for (final row in (orphaned as List<dynamic>? ?? const []))
+            (row as Map<String, dynamic>)['storage_path'] as String,
+        ];
+      },
+      objects: () async {
+        if (orphanedPaths.isEmpty) return;
+        await _client.storage
+            .from(mediaBucket)
+            .remove(orphanedPaths)
+            .timeout(networkTimeout);
+      },
+    );
   }
 
   /// Saves edits to a post the current user owns: [text] and/or its media.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,39 +27,56 @@ class Profile {
   }
 }
 
-/// One photo in a user's profile gallery (up to 80 — see
-/// `profile_photos` in the migration). [position] orders the gallery; the
-/// lowest [position] is what `users.avatar_path` mirrors (kept in sync by a
-/// DB trigger), so it's also what every other screen's small avatar shows.
+/// One photo in a user's profile gallery (up to 80 — see `profile_photos` in
+/// the migration).
+///
+/// Display order is `profile_photos.position`, and it stays there: the server
+/// hands rows back already ordered ([ProfileRepository.fetchPhotos]) and
+/// assigns the numbers itself on append (`append_profile_photos()`,
+/// 20260824130000) and on reorder (`reorder_profile_photos()`, which takes
+/// ids, not positions). A `position` field here carried nothing anyone read
+/// and invited the next reader to believe the order was the client's to
+/// decide — which is exactly the mistake 20260824130000 was written to undo.
+/// The lowest position is what `users.avatar_path` mirrors, kept in sync by a
+/// DB trigger, so it is also what every other screen's small avatar shows.
 class ProfilePhoto {
-  const ProfilePhoto({
-    required this.id,
-    required this.position,
-    required this.storagePath,
-  });
+  const ProfilePhoto({required this.id, required this.storagePath});
 
   final String id;
-  final int position;
   final String storagePath;
 
   factory ProfilePhoto.fromRow(Map<String, dynamic> row) => ProfilePhoto(
     id: row['id'] as String,
-    position: (row['position'] as num).toInt(),
     storagePath: row['storage_path'] as String,
   );
 }
 
 /// One picked-but-not-yet-uploaded profile photo, held by the profile
 /// screen's local state while [ProfileRepository.addPhotos] uploads it.
+///
+/// Carries the picked file's *path*, not its bytes — the same choice
+/// `MediaFile` makes for video in the composer, and for the same reason. A
+/// batch here can be up to 80 photos, the screen paints none of them before
+/// they are uploaded, and [ProfileRepository.addPhotos] sends them one at a
+/// time. Holding bytes meant every slot was read at pick time and kept
+/// resident for the whole upload — 80 files at `maxWidth: 1600` is tens to
+/// well over a hundred megabytes standing in memory during a sequential
+/// upload that takes minutes on a mobile uplink, on top of the copy
+/// `MultipartFile.fromBytes` makes for the file actually in flight. It bounds
+/// concurrent residency, not the read itself: each file is still fully read
+/// when its turn comes (see [uploadTolerantFile]), then released.
 class PendingPhoto {
   const PendingPhoto({
     required this.photoClientToken,
-    required this.bytes,
+    required this.path,
     required this.ext,
   });
 
   final String photoClientToken;
-  final Uint8List bytes;
+
+  /// Where the picked file sits on disk until its turn to upload comes.
+  final String path;
+
   final String ext;
 }
 
@@ -115,7 +133,8 @@ class ProfileRepository {
   /// `users.avatar_path` is updated automatically by a DB trigger, not here —
   /// see `sync_avatar_path_from_profile_photos()` in the migration.
   ///
-  /// Uploads go through [uploadTolerant] for the same reason post media does:
+  /// Uploads go through [uploadTolerantFile] for the same reason post media
+  /// does:
   /// `.timeout()` stops waiting without cancelling, so a batch can be half
   /// landed when the screen reports failure, and the natural retry re-sends
   /// items whose objects are already there. A plain `uploadBinary` answers
@@ -140,7 +159,7 @@ class ProfileRepository {
   }) async {
     if (items.isEmpty) return;
     for (final item in items) {
-      await uploadTolerant(
+      await uploadTolerantFile(
         _client,
         bucket: mediaBucket,
         path: profilePhotoPath(
@@ -148,7 +167,7 @@ class ProfileRepository {
           photoClientToken: item.photoClientToken,
           ext: item.ext,
         ),
-        bytes: item.bytes,
+        file: File(item.path),
       );
     }
     await _client
