@@ -94,6 +94,22 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name} прокомментировал(а) в ответ вам',
       'Вам ответил(а) {author_name}',
     ],
+    // Названия комнаты в тексте нет намеренно: оно у каждого своё (у комнаты
+    // без названия — перечисление остальных участников), собирает его клиент,
+    // и вторая копия этого правила разошлась бы с первой при первом же
+    // переименовании. В payload при этом едет room_id — под будущий deep link.
+    room_message: [
+      'Новое сообщение от {author_name}',
+      '{author_name} написал(а) в комнате',
+      'Вам пишут в комнате: {author_name}',
+      'В комнате новое сообщение от {author_name}',
+    ],
+    room_post: [
+      '{author_name} опубликовал(а) пост в комнате',
+      'Новый пост от {author_name} в комнате',
+      'В комнате новый пост — от {author_name}',
+      '{author_name} поделился(ась) постом в комнате',
+    ],
   },
   en: {
     new_post: [
@@ -131,6 +147,18 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'New reply from {author_name} to your comment',
       '{author_name} replied to you',
       '{author_name} answered your comment',
+    ],
+    room_message: [
+      'New message from {author_name}',
+      '{author_name} wrote in a room',
+      '{author_name} sent a message in a room',
+      'A room has a new message from {author_name}',
+    ],
+    room_post: [
+      '{author_name} posted in a room',
+      'New post from {author_name} in a room',
+      'A room has a new post from {author_name}',
+      '{author_name} shared something in a room',
     ],
   },
 };

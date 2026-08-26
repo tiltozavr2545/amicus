@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/feed/create_post_screen.dart';
 import 'package:amicus/features/feed/feed_repository.dart';
+import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
 /// Only the member CreatePostScreen calls needs real behaviour; the rest
@@ -14,6 +15,11 @@ class _FakeFeedRepository implements FeedRepository {
   /// the token exists for what happens across a *failed* submit, so it is
   /// recorded before [createThrows] gets its say.
   final List<String> tokens = [];
+
+  /// Destinations each publish was sent with — the composer's checkboxes are
+  /// only meaningful if what they tick actually reaches the repository.
+  final List<List<String>> roomIdsSent = [];
+  final List<bool> generalFeedFlags = [];
   final List<String?> texts = [];
 
   /// Stands in for the server (or the network) refusing the submission.
@@ -43,9 +49,13 @@ class _FakeFeedRepository implements FeedRepository {
     required String authorId,
     String? text,
     List<PendingMedia> media = const [],
+    List<String> roomIds = const [],
+    bool inGeneralFeed = true,
   }) async {
     tokens.add(clientToken);
     texts.add(text);
+    roomIdsSent.add(roomIds);
+    generalFeedFlags.add(inGeneralFeed);
     if (createThrows) throw Exception('rejected');
   }
 
@@ -67,19 +77,42 @@ class _FakeFeedRepository implements FeedRepository {
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Widget _wrap(_FakeFeedRepository repo, {Post? existingPost}) {
+Widget _wrap(
+  _FakeFeedRepository repo, {
+  Post? existingPost,
+  String? initialRoomId,
+  List<Room> rooms = const [],
+}) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
+      // Empty by default, which is the composer as it was before rooms
+      // existed: no destination section at all.
+      myRoomsProvider.overrideWith((ref) => rooms),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: CreatePostScreen(existingPost: existingPost),
+      home: CreatePostScreen(
+        existingPost: existingPost,
+        initialRoomId: initialRoomId,
+      ),
     ),
   );
 }
+
+Room _room({required String id, required String name}) => Room(
+  id: id,
+  name: name,
+  isDirect: false,
+  ownerId: 'test-user',
+  createdAt: DateTime.utc(2026, 8, 26),
+  members: const [
+    RoomMember(userId: 'test-user', name: 'Me'),
+    RoomMember(userId: 'friend', name: 'Аня'),
+  ],
+);
 
 Future<void> _tapPublish(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(TextButton, 'Publish'));
@@ -280,6 +313,74 @@ void main() {
         find.text('Failed to save changes. Please try again.'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('destinations', () {
+    testWidgets('a ticked room travels with the publish call', (tester) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(
+        _wrap(
+          repo,
+          rooms: [_room(id: 'room-1', name: 'Room A')],
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.tap(find.text('Room A'));
+      await tester.pump();
+      await _tapPublish(tester);
+
+      expect(repo.roomIdsSent.single, ['room-1']);
+      // Still the main feed as well: ticking a room adds a destination, it
+      // does not move the post out of the feed.
+      expect(repo.generalFeedFlags.single, isTrue);
+    });
+
+    testWidgets('composing from a room posts to that room only', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(
+        _wrap(
+          repo,
+          initialRoomId: 'room-1',
+          rooms: [_room(id: 'room-1', name: 'Room A')],
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      await _tapPublish(tester);
+
+      expect(repo.roomIdsSent.single, ['room-1']);
+      expect(repo.generalFeedFlags.single, isFalse);
+    });
+
+    testWidgets('a post with every destination unticked is not sent', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(
+        _wrap(
+          repo,
+          initialRoomId: 'room-1',
+          rooms: [_room(id: 'room-1', name: 'Room A')],
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.tap(find.text('Room A'));
+      await tester.pump();
+      await _tapPublish(tester);
+
+      expect(
+        find.text('Pick at least one place to publish to.'),
+        findsOneWidget,
+      );
+      expect(repo.tokens, isEmpty);
     });
   });
 }

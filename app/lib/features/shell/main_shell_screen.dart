@@ -11,11 +11,15 @@ import '../notifications/user_activity_repository.dart';
 /// Destination index of the "new post" button in the bottom bar. It doesn't
 /// correspond to a shell branch — tapping it pushes [CreatePostScreen] on top
 /// instead of switching tabs.
-const _addPostDestinationIndex = 2;
+///
+/// Second from the left, with rooms in the middle: the bar reads
+/// feed · new post · rooms · connections · profile.
+const _addPostDestinationIndex = 1;
 
-/// Bottom-nav shell wrapping the three tab branches (feed/connections/profile)
-/// registered on [routerProvider]. [navigationShell] preserves each branch's
-/// own navigation stack and scroll/form state when switching tabs.
+/// Bottom-nav shell wrapping the four tab branches
+/// (feed/rooms/connections/profile) registered on [routerProvider].
+/// [navigationShell] preserves each branch's own navigation stack and
+/// scroll/form state when switching tabs.
 class MainShellScreen extends ConsumerWidget {
   const MainShellScreen({super.key, required this.navigationShell});
 
@@ -49,6 +53,11 @@ class MainShellScreen extends ConsumerWidget {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
+        // Icons only. The labels stay in the tree (`label` is what a screen
+        // reader announces and what the long-press tooltip shows), they are
+        // just not painted — five of them across a phone would either wrap or
+        // shrink to unreadable.
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         selectedIndex: _destinationIndexForBranch(navigationShell.currentIndex),
         onDestinationSelected: (index) {
           if (index == _addPostDestinationIndex) {
@@ -70,13 +79,18 @@ class MainShellScreen extends ConsumerWidget {
             label: l10n.feedTabLabel,
           ),
           NavigationDestination(
+            icon: const Icon(Icons.add_circle_outline),
+            label: l10n.newPostTitle,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.forum_outlined),
+            selectedIcon: const Icon(Icons.forum),
+            label: l10n.roomsTitle,
+          ),
+          NavigationDestination(
             icon: const Icon(Icons.people_outline),
             selectedIcon: const Icon(Icons.people),
             label: l10n.connectionsTitle,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.add_circle_outline),
-            label: l10n.newPostTitle,
           ),
           NavigationDestination(
             icon: const Icon(Icons.person_outline),

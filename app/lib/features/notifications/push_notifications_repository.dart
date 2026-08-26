@@ -83,6 +83,22 @@ class PushNotificationsRepository {
   /// signing in on the same device afterward doesn't keep receiving pushes
   /// meant for [userId]. Call before signing out, while the session (and thus
   /// the RLS check `user_id = auth.uid()`) is still valid.
+  ///
+  /// This is the fast path, no longer the guarantee. It cannot be one: the
+  /// caller treats it as best-effort (it must — sign-out has to work offline),
+  /// and once the session is gone there is nobody left who is allowed to
+  /// delete the row. A sign-out with no connection, or one where the token had
+  /// already rotated so `getToken()` no longer names the registered row, left
+  /// it behind for good — and the next account on that phone then received the
+  /// previous user's notifications, commenter names and digests included,
+  /// because `send-push` only prunes a token FCM reports as `UNREGISTERED` and
+  /// this one is alive.
+  ///
+  /// The invariant now belongs to the server: `claim_device_token()` deletes
+  /// any row carrying this `fcm_token` under a different user the moment a new
+  /// registration arrives (migration 20260826120000). A token identifies an
+  /// *install*, and only one account can be signed in here at a time, so the
+  /// account that registered last is the only one that may hold it.
   Future<void> unregisterDevice({required String userId}) async {
     final token = await FirebaseMessaging.instance.getToken();
     if (token == null) return;

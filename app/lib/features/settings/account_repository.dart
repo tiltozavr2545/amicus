@@ -132,13 +132,7 @@ class AccountRepository {
     // photo they had.
     await deleteRowsThenObjects(
       rows: () => _client.rpc('delete_own_account').timeout(networkTimeout),
-      objects: () async {
-        if (paths.isEmpty) return;
-        await _client.storage
-            .from(mediaBucket)
-            .remove(paths.toList())
-            .timeout(networkTimeout);
-      },
+      objects: () => _removeInChunks(paths.toList()),
     );
 
     // Not best-effort, and not conditional on the cleanup above: the cached
@@ -152,6 +146,35 @@ class AccountRepository {
     // has nothing left to revoke — local-only clears this device's session
     // without depending on that call succeeding.
     await _client.auth.signOut(scope: SignOutScope.local);
+  }
+
+  /// Removes [paths] from the bucket a bounded batch at a time.
+  ///
+  /// The one caller is account deletion, and it is the only cleanup in the app
+  /// whose input has no ceiling: the other two are capped by their own limits
+  /// (20 media plus posters for a post, 80 photos for a gallery), but this one
+  /// is every object the account ever uploaded — 50 posts of media is already
+  /// several hundred paths in a single request body. Sent whole, an oversized
+  /// request is refused outright, and because this half is best-effort by
+  /// design ([deleteRowsThenObjects]) the refusal is swallowed and *nothing*
+  /// gets deleted. The rows have cascaded away by then, so the only thing that
+  /// could still find those objects is `reap_orphaned_media()`, which takes
+  /// 100 an hour.
+  ///
+  /// Chunked, a request that is refused costs its own batch instead of the
+  /// whole account's media. Failures are deliberately not caught here — the
+  /// caller's [deleteRowsThenObjects] owns that rule, and swallowing per chunk
+  /// would mean a systematic failure (an expired token) looked like success
+  /// while quietly doing nothing.
+  Future<void> _removeInChunks(List<String> paths) async {
+    const chunkSize = 100;
+    for (var i = 0; i < paths.length; i += chunkSize) {
+      final end = i + chunkSize < paths.length ? i + chunkSize : paths.length;
+      await _client.storage
+          .from(mediaBucket)
+          .remove(paths.sublist(i, end))
+          .timeout(networkTimeout);
+    }
   }
 }
 

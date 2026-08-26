@@ -424,6 +424,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get failedToSendCommentError => 'Failed to send. Please try again.';
 
   @override
+  String commentsTruncatedNotice(int count) {
+    return 'Showing the first $count comments. Newer ones are not shown.';
+  }
+
+  @override
   String get connectionKnownLessThanDay => 'Known for less than a day';
 
   @override
@@ -535,4 +540,183 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get failedToDeleteAccountError =>
       'Failed to delete account. Please try again.';
+
+  @override
+  String get roomsTitle => 'Rooms';
+
+  @override
+  String get roomFallbackName => 'Room';
+
+  @override
+  String get noRoomsYetMessage =>
+      'No rooms yet. A room is a separate feed for the people you invite into it.';
+
+  @override
+  String get newRoomTitle => 'New room';
+
+  @override
+  String get createRoomButton => 'Create room';
+
+  @override
+  String get openRoomFeedTooltip => 'Room feed';
+
+  @override
+  String get roomEmptyFeedMessage => 'Nothing posted in this room yet.';
+
+  @override
+  String get failedToLoadRoomsError =>
+      'Failed to load rooms. Please try again.';
+
+  @override
+  String get selectRoomMembersMessage =>
+      'Pick who joins. One person makes a room just for the two of you, and it can never take a third.';
+
+  @override
+  String get pickAtLeastOneMemberError => 'Pick at least one person.';
+
+  @override
+  String get roomNameLabel => 'Room name';
+
+  @override
+  String get roomNameHint => 'Leave it empty to use the members\' names';
+
+  @override
+  String get failedToCreateRoomError =>
+      'Failed to create the room. Please try again.';
+
+  @override
+  String get notYourConnectionError =>
+      'You can only add your own connections to a room.';
+
+  @override
+  String get roomMembersTitle => 'Members';
+
+  @override
+  String roomMembersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count members',
+      one: '1 member',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get roomOwnerLabel => 'Owner';
+
+  @override
+  String get addMemberButton => 'Add member';
+
+  @override
+  String get noConnectionsToAddMessage =>
+      'Everyone you know is already in this room.';
+
+  @override
+  String get removeMemberTooltip => 'Remove from room';
+
+  @override
+  String removeMemberDialogTitle(String name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String get removeMemberDialogContent =>
+      'They lose access to this room\'s feed. You can add them again later.';
+
+  @override
+  String get failedToUpdateRoomMembersError =>
+      'Failed to change the room\'s members. Please try again.';
+
+  @override
+  String get renameRoomTitle => 'Rename room';
+
+  @override
+  String get failedToRenameRoomError =>
+      'Failed to rename the room. Please try again.';
+
+  @override
+  String get leaveRoomButton => 'Leave room';
+
+  @override
+  String get leaveRoomDialogTitle => 'Leave room?';
+
+  @override
+  String get leaveRoomDialogContent =>
+      'The room disappears from your list and its feed goes with it. Only the owner can bring you back.';
+
+  @override
+  String get leaveDirectRoomDialogContent =>
+      'This room is just the two of you, so it goes for both — along with everything posted in it.';
+
+  @override
+  String get failedToLeaveRoomError =>
+      'Failed to leave the room. Please try again.';
+
+  @override
+  String get postDestinationsLabel => 'Where to publish';
+
+  @override
+  String get generalFeedLabel => 'Main feed';
+
+  @override
+  String get pickDestinationError => 'Pick at least one place to publish to.';
+
+  @override
+  String get openRoomChatTooltip => 'Room chat';
+
+  @override
+  String get roomChatTitle => 'Chat';
+
+  @override
+  String get messageHint => 'Message';
+
+  @override
+  String get sendMessageTooltip => 'Send';
+
+  @override
+  String get noMessagesYetMessage => 'Quiet in here. Send the first message.';
+
+  @override
+  String get deletedMessageLabel => 'Message deleted';
+
+  @override
+  String get deleteMessageDialogTitle => 'Delete message?';
+
+  @override
+  String get deleteMessageDialogContent =>
+      'It disappears for everyone in the room, leaving only a note.';
+
+  @override
+  String get formerMemberLabel => 'Former member';
+
+  @override
+  String get failedToLoadMessagesError =>
+      'Failed to load messages. Please try again.';
+
+  @override
+  String get failedToSendMessageError => 'Failed to send. Please try again.';
+
+  @override
+  String get failedToDeleteMessageError =>
+      'Failed to delete the message. Please try again.';
+
+  @override
+  String get notifyRoomMessagesLabel => 'Messages in rooms';
+
+  @override
+  String get notifyRoomPostsLabel => 'Posts in rooms';
+
+  @override
+  String get roomAvatarLabel => 'Room picture';
+
+  @override
+  String get changeRoomAvatarButton => 'Change picture';
+
+  @override
+  String get removeRoomAvatarButton => 'Remove picture';
+
+  @override
+  String get failedToUpdateRoomAvatarError =>
+      'Failed to change the room picture. Please try again.';
 }

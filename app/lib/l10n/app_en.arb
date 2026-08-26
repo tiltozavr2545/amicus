@@ -160,6 +160,10 @@
   "failedToLoadCommentsError": "Failed to load comments. Please try again.",
   "failedToDeleteCommentError": "Failed to delete comment. Please try again.",
   "failedToSendCommentError": "Failed to send. Please try again.",
+  "commentsTruncatedNotice": "Showing the first {count} comments. Newer ones are not shown.",
+  "@commentsTruncatedNotice": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "connectionKnownLessThanDay": "Known for less than a day",
   "connectionKnownDays": "Known for {days, plural, one{{days} day} other{{days} days}}",
@@ -211,5 +215,70 @@
   "deleteAccountLabel": "Delete account",
   "deleteAccountDialogTitle": "Delete account?",
   "deleteAccountDialogContent": "This is permanent: your profile, posts, comments, and connections will all be deleted. This can't be undone.",
-  "failedToDeleteAccountError": "Failed to delete account. Please try again."
+  "failedToDeleteAccountError": "Failed to delete account. Please try again.",
+
+  "roomsTitle": "Rooms",
+  "roomFallbackName": "Room",
+  "noRoomsYetMessage": "No rooms yet. A room is a separate feed for the people you invite into it.",
+  "newRoomTitle": "New room",
+  "createRoomButton": "Create room",
+  "openRoomFeedTooltip": "Room feed",
+  "roomEmptyFeedMessage": "Nothing posted in this room yet.",
+  "failedToLoadRoomsError": "Failed to load rooms. Please try again.",
+
+  "selectRoomMembersMessage": "Pick who joins. One person makes a room just for the two of you, and it can never take a third.",
+  "pickAtLeastOneMemberError": "Pick at least one person.",
+  "roomNameLabel": "Room name",
+  "roomNameHint": "Leave it empty to use the members' names",
+  "failedToCreateRoomError": "Failed to create the room. Please try again.",
+  "notYourConnectionError": "You can only add your own connections to a room.",
+
+  "roomMembersTitle": "Members",
+  "roomMembersCount": "{count, plural, =1{1 member} other{{count} members}}",
+  "@roomMembersCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "roomOwnerLabel": "Owner",
+  "addMemberButton": "Add member",
+  "noConnectionsToAddMessage": "Everyone you know is already in this room.",
+  "removeMemberTooltip": "Remove from room",
+  "removeMemberDialogTitle": "Remove {name}?",
+  "@removeMemberDialogTitle": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "removeMemberDialogContent": "They lose access to this room's feed. You can add them again later.",
+  "failedToUpdateRoomMembersError": "Failed to change the room's members. Please try again.",
+
+  "renameRoomTitle": "Rename room",
+  "failedToRenameRoomError": "Failed to rename the room. Please try again.",
+  "leaveRoomButton": "Leave room",
+  "leaveRoomDialogTitle": "Leave room?",
+  "leaveRoomDialogContent": "The room disappears from your list and its feed goes with it. Only the owner can bring you back.",
+  "leaveDirectRoomDialogContent": "This room is just the two of you, so it goes for both — along with everything posted in it.",
+  "failedToLeaveRoomError": "Failed to leave the room. Please try again.",
+
+  "postDestinationsLabel": "Where to publish",
+  "generalFeedLabel": "Main feed",
+  "pickDestinationError": "Pick at least one place to publish to.",
+
+  "openRoomChatTooltip": "Room chat",
+  "roomChatTitle": "Chat",
+  "messageHint": "Message",
+  "sendMessageTooltip": "Send",
+  "noMessagesYetMessage": "Quiet in here. Send the first message.",
+  "deletedMessageLabel": "Message deleted",
+  "deleteMessageDialogTitle": "Delete message?",
+  "deleteMessageDialogContent": "It disappears for everyone in the room, leaving only a note.",
+  "formerMemberLabel": "Former member",
+  "failedToLoadMessagesError": "Failed to load messages. Please try again.",
+  "failedToSendMessageError": "Failed to send. Please try again.",
+  "failedToDeleteMessageError": "Failed to delete the message. Please try again.",
+
+  "notifyRoomMessagesLabel": "Messages in rooms",
+  "notifyRoomPostsLabel": "Posts in rooms",
+
+  "roomAvatarLabel": "Room picture",
+  "changeRoomAvatarButton": "Change picture",
+  "removeRoomAvatarButton": "Remove picture",
+  "failedToUpdateRoomAvatarError": "Failed to change the room picture. Please try again."
 }

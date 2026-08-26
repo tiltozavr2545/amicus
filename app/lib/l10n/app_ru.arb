@@ -145,6 +145,10 @@
   "failedToLoadCommentsError": "Не удалось загрузить комментарии. Попробуйте ещё раз.",
   "failedToDeleteCommentError": "Не удалось удалить комментарий. Попробуйте ещё раз.",
   "failedToSendCommentError": "Не удалось отправить. Попробуйте ещё раз.",
+  "commentsTruncatedNotice": "Показаны первые {count} комментариев. Более новые не показаны.",
+  "@commentsTruncatedNotice": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "connectionKnownLessThanDay": "Знакомы меньше дня",
   "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",
@@ -175,5 +179,70 @@
   "deleteAccountLabel": "Удалить аккаунт",
   "deleteAccountDialogTitle": "Удалить аккаунт?",
   "deleteAccountDialogContent": "Это необратимо: профиль, посты, комментарии и знакомства будут удалены навсегда. Отменить не получится.",
-  "failedToDeleteAccountError": "Не удалось удалить аккаунт. Попробуйте ещё раз."
+  "failedToDeleteAccountError": "Не удалось удалить аккаунт. Попробуйте ещё раз.",
+
+  "roomsTitle": "Комнаты",
+  "roomFallbackName": "Комната",
+  "noRoomsYetMessage": "Пока нет ни одной комнаты. Комната — это отдельная лента для тех, кого вы в неё позвали.",
+  "newRoomTitle": "Новая комната",
+  "createRoomButton": "Создать комнату",
+  "openRoomFeedTooltip": "Лента комнаты",
+  "roomEmptyFeedMessage": "В этой комнате пока ничего не опубликовано.",
+  "failedToLoadRoomsError": "Не удалось загрузить комнаты. Попробуйте ещё раз.",
+
+  "selectRoomMembersMessage": "Выберите, кого позвать. Один человек — комната на двоих, и её уже нельзя будет расширить.",
+  "pickAtLeastOneMemberError": "Выберите хотя бы одного человека.",
+  "roomNameLabel": "Название комнаты",
+  "roomNameHint": "Оставьте пустым — будут имена участников",
+  "failedToCreateRoomError": "Не удалось создать комнату. Попробуйте ещё раз.",
+  "notYourConnectionError": "Добавить в комнату можно только своих знакомых.",
+
+  "roomMembersTitle": "Участники",
+  "roomMembersCount": "{count, plural, one{{count} участник} few{{count} участника} many{{count} участников} other{{count} участника}}",
+  "@roomMembersCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "roomOwnerLabel": "Владелец",
+  "addMemberButton": "Добавить участника",
+  "noConnectionsToAddMessage": "Все ваши знакомые уже в этой комнате.",
+  "removeMemberTooltip": "Исключить из комнаты",
+  "removeMemberDialogTitle": "Исключить {name}?",
+  "@removeMemberDialogTitle": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "removeMemberDialogContent": "Лента комнаты станет ему недоступна. Позже его можно добавить снова.",
+  "failedToUpdateRoomMembersError": "Не удалось изменить состав комнаты. Попробуйте ещё раз.",
+
+  "renameRoomTitle": "Переименовать комнату",
+  "failedToRenameRoomError": "Не удалось переименовать комнату. Попробуйте ещё раз.",
+  "leaveRoomButton": "Выйти из комнаты",
+  "leaveRoomDialogTitle": "Выйти из комнаты?",
+  "leaveRoomDialogContent": "Комната пропадёт из списка, а её лента станет недоступна. Вернуть вас сможет только владелец.",
+  "leaveDirectRoomDialogContent": "Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всем, что в ней опубликовано.",
+  "failedToLeaveRoomError": "Не удалось выйти из комнаты. Попробуйте ещё раз.",
+
+  "postDestinationsLabel": "Куда опубликовать",
+  "generalFeedLabel": "Общая лента",
+  "pickDestinationError": "Выберите хотя бы одно место для публикации.",
+
+  "openRoomChatTooltip": "Чат комнаты",
+  "roomChatTitle": "Чат",
+  "messageHint": "Сообщение",
+  "sendMessageTooltip": "Отправить",
+  "noMessagesYetMessage": "Здесь пока тихо. Напишите первое сообщение.",
+  "deletedMessageLabel": "Сообщение удалено",
+  "deleteMessageDialogTitle": "Удалить сообщение?",
+  "deleteMessageDialogContent": "Оно исчезнет у всех в комнате, останется только пометка.",
+  "formerMemberLabel": "Бывший участник",
+  "failedToLoadMessagesError": "Не удалось загрузить сообщения. Попробуйте ещё раз.",
+  "failedToSendMessageError": "Не удалось отправить. Попробуйте ещё раз.",
+  "failedToDeleteMessageError": "Не удалось удалить сообщение. Попробуйте ещё раз.",
+
+  "notifyRoomMessagesLabel": "Сообщения в комнатах",
+  "notifyRoomPostsLabel": "Посты в комнатах",
+
+  "roomAvatarLabel": "Аватарка комнаты",
+  "changeRoomAvatarButton": "Сменить аватарку",
+  "removeRoomAvatarButton": "Убрать аватарку",
+  "failedToUpdateRoomAvatarError": "Не удалось изменить аватарку комнаты. Попробуйте ещё раз."
 }

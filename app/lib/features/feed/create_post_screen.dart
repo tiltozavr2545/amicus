@@ -16,6 +16,7 @@ import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
+import '../rooms/rooms_repository.dart';
 import 'feed_repository.dart';
 
 const _maxMediaCount = 20;
@@ -67,9 +68,15 @@ class _PickedSlot extends _Slot {
 /// both, since publishing and saving edits differ only in which repository
 /// call they end in and a couple of labels.
 class CreatePostScreen extends ConsumerStatefulWidget {
-  const CreatePostScreen({super.key, this.existingPost});
+  const CreatePostScreen({super.key, this.existingPost, this.initialRoomId});
 
   final Post? existingPost;
+
+  /// Opened from a room's feed: that room starts ticked and the main feed
+  /// starts unticked, so the obvious action (write something in this room)
+  /// needs no extra tap and cannot accidentally publish to everyone. Null
+  /// when composing from the bottom bar, where the main feed is the default.
+  final String? initialRoomId;
 
   @override
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -85,6 +92,19 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   ];
 
   bool get _isEditing => widget.existingPost != null;
+
+  /// The rooms this post is addressed to, and whether it also goes to the main
+  /// feed — a post can go to both, to several rooms at once, or to rooms only,
+  /// in which case it exists nowhere else: not in anyone's main feed, not on
+  /// the author's own profile wall.
+  ///
+  /// Editing does not touch destinations in this version: [updatePost] sends
+  /// text and media only, and the section stays off screen rather than showing
+  /// checkboxes that would silently do nothing.
+  late final Set<String> _roomIds = {
+    if (widget.initialRoomId != null) widget.initialRoomId!,
+  };
+  late bool _inGeneralFeed = widget.initialRoomId == null;
 
   bool _isSubmitting = false;
   bool _isPicking = false;
@@ -425,6 +445,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       setState(() => _errorMessage = l10n.addTextOrPhotoError);
       return;
     }
+    // The server refuses a post with no destination too (PT422) — this is here
+    // so the answer comes before the uploads, not after them.
+    if (!_isEditing && !_inGeneralFeed && _roomIds.isEmpty) {
+      setState(() => _errorMessage = l10n.pickDestinationError);
+      return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -460,7 +486,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             for (final slot in _slots)
               if (slot is _PickedSlot) slot.pending,
           ],
+          roomIds: _roomIds.toList(),
+          inGeneralFeed: _inGeneralFeed,
         );
+        // The room list is ordered by last activity, and this just changed it.
+        if (_roomIds.isNotEmpty) {
+          ref.read(roomsRefreshTickProvider.notifier).bump();
+        }
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -477,6 +509,60 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  /// The destination checkboxes — hidden entirely for someone with no rooms,
+  /// who has only one place to post to and does not need to be told so.
+  ///
+  /// Reads the room list from the same provider the rooms tab uses, so it is
+  /// already loaded by the time anyone opens this screen from a room. While it
+  /// is loading (or failed to), the section stays out of the way and the post
+  /// goes where the caller intended it to: [_inGeneralFeed] and [_roomIds] are
+  /// already set from [CreatePostScreen.initialRoomId] and are not touched by
+  /// this widget's absence.
+  Widget _destinations(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final rooms = ref.watch(myRoomsProvider).value ?? const <Room>[];
+    if (rooms.isEmpty) return const SizedBox.shrink();
+    final viewerId = ref.read(currentUserIdProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 12),
+        Text(
+          l10n.postDestinationsLabel,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        CheckboxListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          value: _inGeneralFeed,
+          title: Text(l10n.generalFeedLabel),
+          onChanged: _isSubmitting
+              ? null
+              : (value) => setState(() => _inGeneralFeed = value ?? false),
+        ),
+        for (final room in rooms)
+          CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: _roomIds.contains(room.id),
+            title: Text(
+              roomDisplayName(room, viewerId, fallback: l10n.roomFallbackName),
+            ),
+            onChanged: _isSubmitting
+                ? null
+                : (value) => setState(() {
+                    if (value ?? false) {
+                      _roomIds.add(room.id);
+                    } else {
+                      _roomIds.remove(room.id);
+                    }
+                  }),
+          ),
+      ],
+    );
   }
 
   @override
@@ -512,6 +598,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
+            if (!_isEditing) _destinations(context),
             const SizedBox(height: 12),
             if (_slots.isNotEmpty)
               _MediaGrid(

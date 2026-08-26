@@ -6,9 +6,13 @@ import '../auth/auth_providers.dart';
 
 /// One on/off switch per notification producer that already writes to
 /// `notification_outbox` server-side (posts, favorites, comments/replies,
-/// digest, inactivity nudge) — see migration `20260819180000`. All default to
-/// on, matching how every one of these already behaved before this screen
-/// existed.
+/// digest, inactivity nudge, and both room kinds) — see migrations
+/// `20260819180000` and `20260826200000`. All default to on, matching how
+/// every one of these already behaved before this screen existed.
+///
+/// Rooms get two switches rather than one on purpose: chat messages arrive
+/// often and room posts rarely, and silencing the first would otherwise cost
+/// the second.
 class NotificationPreferences {
   const NotificationPreferences({
     this.systemAccount = true,
@@ -16,6 +20,8 @@ class NotificationPreferences {
     this.comments = true,
     this.digest = true,
     this.inactiveWeek = true,
+    this.roomMessages = true,
+    this.roomPosts = true,
   });
 
   final bool systemAccount;
@@ -23,6 +29,8 @@ class NotificationPreferences {
   final bool comments;
   final bool digest;
   final bool inactiveWeek;
+  final bool roomMessages;
+  final bool roomPosts;
 
   /// [row] is null when the user has never visited Settings — no row exists
   /// yet, and the server-side triggers read that same absence as "all on" via
@@ -35,6 +43,8 @@ class NotificationPreferences {
       comments: row['notify_comments'] as bool? ?? true,
       digest: row['notify_digest'] as bool? ?? true,
       inactiveWeek: row['notify_inactive_week'] as bool? ?? true,
+      roomMessages: row['notify_room_messages'] as bool? ?? true,
+      roomPosts: row['notify_room_posts'] as bool? ?? true,
     );
   }
 
@@ -44,12 +54,16 @@ class NotificationPreferences {
     bool? comments,
     bool? digest,
     bool? inactiveWeek,
+    bool? roomMessages,
+    bool? roomPosts,
   }) => NotificationPreferences(
     systemAccount: systemAccount ?? this.systemAccount,
     favorites: favorites ?? this.favorites,
     comments: comments ?? this.comments,
     digest: digest ?? this.digest,
     inactiveWeek: inactiveWeek ?? this.inactiveWeek,
+    roomMessages: roomMessages ?? this.roomMessages,
+    roomPosts: roomPosts ?? this.roomPosts,
   );
 }
 
@@ -68,7 +82,7 @@ class NotificationPreferencesRepository {
     return NotificationPreferences.fromRow(row);
   }
 
-  /// Upserts the whole row — five booleans is little enough that writing all
+  /// Upserts the whole row — seven booleans is little enough that writing all
   /// of them on every toggle is simpler than tracking which one column
   /// changed, and it's what creates the row on a user's first-ever toggle.
   Future<void> save(String userId, NotificationPreferences prefs) {
@@ -81,6 +95,8 @@ class NotificationPreferencesRepository {
           'notify_comments': prefs.comments,
           'notify_digest': prefs.digest,
           'notify_inactive_week': prefs.inactiveWeek,
+          'notify_room_messages': prefs.roomMessages,
+          'notify_room_posts': prefs.roomPosts,
         })
         .timeout(networkTimeout);
   }

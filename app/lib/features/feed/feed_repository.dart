@@ -333,6 +333,29 @@ class Comment {
   }
 }
 
+/// How many comments one [FeedRepository.fetchComments] call will return.
+///
+/// Not a page size — there is no "load more" behind it, and deliberately so:
+/// this is a ceiling that keeps one request finishing, not pagination. Set far
+/// above any thread this app is expected to grow (a private feed of real
+/// acquaintances), so reaching it is the pathological case rather than the
+/// normal one.
+const commentFetchLimit = 500;
+
+/// One [FeedRepository.fetchComments] result: the comments, and whether the
+/// post has more than [commentFetchLimit] of them.
+///
+/// [isTruncated] is not cosmetic. The comment counter on a post's card comes
+/// from `comment_summary()`, which counts every visible non-tombstoned row
+/// server-side — so once the list is cut, its length stops being that number
+/// and must not be reported as it. See [CommentsScreen.onCountChanged].
+class CommentPage {
+  const CommentPage({required this.comments, required this.isTruncated});
+
+  final List<Comment> comments;
+  final bool isTruncated;
+}
+
 /// One picked-but-not-yet-uploaded photo or video, held by the composer
 /// screen's local state. Distinct from [PostMedia] (a *server* row): this
 /// models a pending upload, before it has a `post_media` id at all.
@@ -481,14 +504,31 @@ class FeedRepository {
   /// can carry up to 20 items and resolving all of them for every post on
   /// every page would multiply this call's cost by up to 20x for slides most
   /// users never see.
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    String? roomId,
+  }) async {
+    // The room feed asks for the same post rows through the join table, as an
+    // inner embed: `post_rooms!inner(room_id)` turns the embed into a join and
+    // `.eq('post_rooms.room_id', …)` filters on it, so one room's feed is the
+    // posts addressed to it and nothing else. Every other scope is the general
+    // feed and says so explicitly — a post addressed only to a room is visible
+    // to its members by RLS, and without this filter it would surface in their
+    // main feed and on the author's profile wall, which is exactly what "room
+    // feed" is supposed to rule out.
     var query = _client
         .from('posts')
         .select(
-          '*, author:users(name, dislikes_disabled), media:post_media(*)',
+          roomId != null
+              ? '*, author:users(name, dislikes_disabled), media:post_media(*), '
+                    'post_rooms!inner(room_id)'
+              : '*, author:users(name, dislikes_disabled), media:post_media(*)',
         );
-    if (authorId != null) {
-      query = query.eq('author_id', authorId);
+    if (roomId != null) {
+      query = query.eq('post_rooms.room_id', roomId);
+    } else if (authorId != null) {
+      query = query.eq('author_id', authorId).eq('in_general_feed', true);
     } else {
       final excluded = await _systemAccounts.ids();
       // Skipped rather than sent empty: `not.in.()` is not a filter PostgREST
@@ -499,6 +539,7 @@ class FeedRepository {
       if (excluded.isNotEmpty) {
         query = query.not('author_id', 'in', '(${excluded.join(',')})');
       }
+      query = query.eq('in_general_feed', true);
     }
     final filter = keysetFilter(cursor);
     if (filter != null) {
@@ -726,11 +767,19 @@ class FeedRepository {
   /// when this never runs at all — it only collects objects older than 24 h,
   /// a hundred at a time, which is the wrong instrument for a 100 MB clip the
   /// author removed from the draft a second ago.
+  /// [roomIds] and [inGeneralFeed] are the post's destinations: the main feed,
+  /// any number of rooms, or both. They travel with the same call that writes
+  /// the post, so a post is never briefly visible under the wrong audience —
+  /// and a retry of the same [clientToken] rewrites the destinations along
+  /// with the text and media, since the server treats a repeat token as "the
+  /// same submission, here is its current state".
   Future<void> createPost({
     required String clientToken,
     required String authorId,
     String? text,
     List<PendingMedia> media = const [],
+    List<String> roomIds = const [],
+    bool inGeneralFeed = true,
   }) async {
     for (final item in media) {
       await _uploadMediaItem(
@@ -749,6 +798,8 @@ class FeedRepository {
               params: {
                 'p_client_token': clientToken,
                 'p_text': (text != null && text.isNotEmpty) ? text : null,
+                'p_room_ids': roomIds,
+                'p_in_general_feed': inGeneralFeed,
                 'p_items': [
                   for (final item in media)
                     _pendingMediaItem(
@@ -929,15 +980,37 @@ class FeedRepository {
   /// `ascending: true` is spelled out because postgrest-dart's `order()`
   /// defaults to *descending*; `id` is a deterministic tiebreak for comments
   /// sharing a timestamp, same as the feed's keyset paging.
-  Future<List<Comment>> fetchComments(String postId) async {
+  ///
+  /// Capped at [commentFetchLimit]. This used to be unbounded — the one query
+  /// in the app that was, while the feed right above it went to the trouble of
+  /// keyset paging — so a post with thousands of comments pulled all of them,
+  /// with their author join, into a single response. Past a certain size that
+  /// simply cannot finish inside [networkTimeout], and the screen then reports
+  /// "failed to load comments" on every attempt with no way through: not a slow
+  /// load, a dead end, the same shape [uploadTimeout] was written to close for
+  /// video.
+  ///
+  /// The cut is at the *end* on purpose. Comments arrive oldest-first, so
+  /// dropping the tail can orphan a reply from its root but never a root from
+  /// its replies, and [threadComments] already hides a reply whose root is
+  /// missing. Cutting the other way — newest N — would strand replies whose
+  /// root fell outside the window, which is most of them.
+  Future<CommentPage> fetchComments(String postId) async {
+    // One more than the cap: the extra row is how "there are more" is known
+    // without a second count query.
     final rows = await _client
         .from('comments')
         .select('*, author:users(name)')
         .eq('post_id', postId)
         .order('created_at', ascending: true)
         .order('id', ascending: true)
+        .limit(commentFetchLimit + 1)
         .timeout(networkTimeout);
-    return rows.map(Comment.fromRow).toList();
+    final isTruncated = rows.length > commentFetchLimit;
+    return CommentPage(
+      comments: rows.take(commentFetchLimit).map(Comment.fromRow).toList(),
+      isTruncated: isTruncated,
+    );
   }
 
   /// Adds a comment, or a reply when [parentCommentId] is given (always the

@@ -15,14 +15,30 @@ import 'feed_cache.dart';
 import 'feed_repository.dart';
 
 /// A paginated, pull-to-refresh list of posts, optionally scoped to a single
-/// author. Shared by [FeedScreen] (all connections, [authorId] null) and the
-/// profile screen's "my posts" section ([authorId] the current user).
+/// author or to a single room. Shared by [FeedScreen] (all connections, both
+/// scopes null), the profile screen's "my posts" section ([authorId] the
+/// current user) and a room's feed ([roomId] that room).
 class PostListView extends ConsumerStatefulWidget {
-  const PostListView({super.key, this.authorId, this.emptyState, this.header});
+  const PostListView({
+    super.key,
+    this.authorId,
+    this.roomId,
+    this.emptyState,
+    this.header,
+  });
 
   /// When set, only posts by this author are shown. When null, shows the
   /// full feed (subject to RLS visibility rules).
   final String? authorId;
+
+  /// When set, shows one room's feed: the posts addressed to that room, by
+  /// every member. Never combined with [authorId].
+  final String? roomId;
+
+  /// Which slot in [FeedCache] this list's first page belongs to. A room's
+  /// feed is a scope of its own — cached separately from the main feed and
+  /// from any profile wall, and never mixed with them.
+  String? get cacheScope => roomId != null ? 'room_$roomId' : authorId;
 
   /// Rendered instead of the default "no posts" message when the list is
   /// empty and there is no error.
@@ -107,7 +123,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
     _cacheUserId = ref.read(currentUserIdProvider);
     _cacheLoadFuture = ref
         .read(feedCacheProvider)
-        .load(_cacheUserId, widget.authorId);
+        .load(_cacheUserId, widget.cacheScope);
     _primeFromCache();
     _loadMore();
     _scrollController.addListener(() {
@@ -146,7 +162,11 @@ class _PostListViewState extends ConsumerState<PostListView> {
     try {
       final page = await ref
           .read(feedRepositoryProvider)
-          .fetchPage(cursor: _cursor, authorId: widget.authorId);
+          .fetchPage(
+            cursor: _cursor,
+            authorId: widget.authorId,
+            roomId: widget.roomId,
+          );
       // A refresh (or unmount) happened while this page was loading — its data
       // is for a superseded feed state, so drop it.
       if (!mounted || epoch != _loadEpoch) return;
@@ -174,7 +194,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
         unawaited(
           ref
               .read(feedCacheProvider)
-              .save(_cacheUserId, widget.authorId, page)
+              .save(_cacheUserId, widget.cacheScope, page)
               .catchError((Object _) {}),
         );
       }
@@ -1022,6 +1042,19 @@ class _MediaSlide extends StatefulWidget {
 class _MediaSlideState extends State<_MediaSlide> {
   VideoPlayerController? _controller;
 
+  /// A [_play] is between its tap and its `setState`.
+  ///
+  /// Needed because `_controller` alone cannot express that window: it stays
+  /// null for the whole of `initialize()`, so the poster — and its enabled
+  /// play button — is still what's on screen. On a slow connection that is
+  /// seconds, and a second tap in it started a *second* controller: the first
+  /// one's `setState` painted it, the second one's overwrote the field, and
+  /// nothing then held a reference to the first. It was never disposed —
+  /// [didUpdateWidget] only disposes on a changed `item.id`, [dispose] only
+  /// sees the field — so its native player went on decoding and playing audio
+  /// underneath the second one until the app was killed.
+  bool _isPreparing = false;
+
   @override
   void didUpdateWidget(covariant _MediaSlide oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1051,7 +1084,13 @@ class _MediaSlideState extends State<_MediaSlide> {
 
   Future<void> _play() async {
     final url = widget.item.url;
-    if (url == null) return;
+    if (url == null || _isPreparing || _controller != null) return;
+    // Captured before the await: this State is reused across slides, so the
+    // clip it is showing can change while `initialize()` runs. Without this,
+    // a controller prepared for the previous item would be installed under
+    // the new one — the same reuse [didUpdateWidget] guards the field against.
+    final itemId = widget.item.id;
+    _isPreparing = true;
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
     try {
       await controller.initialize();
@@ -1062,8 +1101,12 @@ class _MediaSlideState extends State<_MediaSlide> {
       // leak the controller, since dispose() only ever runs via State.
       await controller.dispose();
       return;
+    } finally {
+      // Runs before the `return` above propagates, so the button is never
+      // left permanently dead by a clip that failed to open.
+      _isPreparing = false;
     }
-    if (!mounted) {
+    if (!mounted || widget.item.id != itemId) {
       await controller.dispose();
       return;
     }
