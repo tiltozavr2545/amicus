@@ -70,6 +70,16 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'Не пропустите обновление — обновите приложение в Google Play',
       'Новая версия ждёт в Google Play, обновите приложение',
     ],
+    // Отдельный вид, а не переписанный `app_update`: обычное «вышла новая
+    // версия» уходит на каждую заметную выкладку, и если сделать его
+    // настойчивым, настойчивость перестанет что-либо значить к третьему разу.
+    // Этот — для выкладок, без которых старый клиент показывает не то.
+    app_update_important: [
+      'Важное обновление Amicus — обновитесь в Google Play',
+      'Обязательно обновитесь: на старой версии часть нового работает не так',
+      'Важно: вышла новая версия Amicus, обновите приложение в Google Play',
+      'Не откладывайте обновление Amicus — эта версия правда важная',
+    ],
     inactive_week: [
       'Заскучали без вас — напишите что-нибудь новое',
       'Неделя без постов! Ваши знакомые ждут новостей',
@@ -123,6 +133,12 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'A new version just landed on Google Play — update now',
       'Don’t miss the update — update the app via Google Play',
       'A new version is waiting on Google Play, go update',
+    ],
+    app_update_important: [
+      'Important Amicus update — please update in Google Play',
+      'Please update: on the old version some new things behave wrongly',
+      'Important: a new version of Amicus is out, update in Google Play',
+      'Don’t put this update off — this one really matters',
     ],
     inactive_week: [
       'We’ve missed you — write something new',
