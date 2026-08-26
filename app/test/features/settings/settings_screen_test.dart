@@ -92,7 +92,7 @@ void main() {
     final switches = tester
         .widgetList<SwitchListTile>(find.byType(SwitchListTile))
         .toList();
-    expect(switches, hasLength(5));
+    expect(switches, hasLength(7));
     expect(switches.every((s) => s.value), true);
   });
 
@@ -151,6 +151,7 @@ void main() {
     );
     await tester.pump();
 
+    await tester.scrollUntilVisible(find.text('Sign out'), 200);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(find.text('Sign out?'), findsOneWidget);
@@ -170,6 +171,7 @@ void main() {
     );
     await tester.pump();
 
+    await tester.scrollUntilVisible(find.text('Sign out'), 200);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     // Two matches now: the list tile behind the dialog and the dialog's own
@@ -189,6 +191,7 @@ void main() {
     );
     await tester.pump();
 
+    await tester.scrollUntilVisible(find.text('Sign out'), 200);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sign out').last);
@@ -209,7 +212,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.ensureVisible(find.text('Delete account'));
+      await tester.scrollUntilVisible(find.text('Delete account'), 200);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete account'));
       await tester.pumpAndSettle();
@@ -232,7 +235,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.ensureVisible(find.text('Delete account'));
+    await tester.scrollUntilVisible(find.text('Delete account'), 200);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete account'));
     await tester.pumpAndSettle();
@@ -249,7 +252,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.ensureVisible(find.text('Delete account'));
+    await tester.scrollUntilVisible(find.text('Delete account'), 200);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete account'));
     await tester.pumpAndSettle();

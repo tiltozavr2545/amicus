@@ -1009,6 +1009,312 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to delete account. Please try again.'**
   String get failedToDeleteAccountError;
+
+  /// No description provided for @roomsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rooms'**
+  String get roomsTitle;
+
+  /// No description provided for @roomFallbackName.
+  ///
+  /// In en, this message translates to:
+  /// **'Room'**
+  String get roomFallbackName;
+
+  /// No description provided for @noRoomsYetMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'No rooms yet. A room is a separate feed for the people you invite into it.'**
+  String get noRoomsYetMessage;
+
+  /// No description provided for @newRoomTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New room'**
+  String get newRoomTitle;
+
+  /// No description provided for @createRoomButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create room'**
+  String get createRoomButton;
+
+  /// No description provided for @openRoomFeedTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Room feed'**
+  String get openRoomFeedTooltip;
+
+  /// No description provided for @roomEmptyFeedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing posted in this room yet.'**
+  String get roomEmptyFeedMessage;
+
+  /// No description provided for @failedToLoadRoomsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load rooms. Please try again.'**
+  String get failedToLoadRoomsError;
+
+  /// No description provided for @selectRoomMembersMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick who joins. One person makes a room just for the two of you, and it can never take a third.'**
+  String get selectRoomMembersMessage;
+
+  /// No description provided for @pickAtLeastOneMemberError.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick at least one person.'**
+  String get pickAtLeastOneMemberError;
+
+  /// No description provided for @roomNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Room name'**
+  String get roomNameLabel;
+
+  /// No description provided for @roomNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave it empty to use the members\' names'**
+  String get roomNameHint;
+
+  /// No description provided for @failedToCreateRoomError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to create the room. Please try again.'**
+  String get failedToCreateRoomError;
+
+  /// No description provided for @notYourConnectionError.
+  ///
+  /// In en, this message translates to:
+  /// **'You can only add your own connections to a room.'**
+  String get notYourConnectionError;
+
+  /// No description provided for @roomMembersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get roomMembersTitle;
+
+  /// No description provided for @roomMembersCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 member} other{{count} members}}'**
+  String roomMembersCount(int count);
+
+  /// No description provided for @roomOwnerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get roomOwnerLabel;
+
+  /// No description provided for @addMemberButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Add member'**
+  String get addMemberButton;
+
+  /// No description provided for @noConnectionsToAddMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you know is already in this room.'**
+  String get noConnectionsToAddMessage;
+
+  /// No description provided for @removeMemberTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from room'**
+  String get removeMemberTooltip;
+
+  /// No description provided for @removeMemberDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String removeMemberDialogTitle(String name);
+
+  /// No description provided for @removeMemberDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'They lose access to this room\'s feed. You can add them again later.'**
+  String get removeMemberDialogContent;
+
+  /// No description provided for @failedToUpdateRoomMembersError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to change the room\'s members. Please try again.'**
+  String get failedToUpdateRoomMembersError;
+
+  /// No description provided for @renameRoomTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename room'**
+  String get renameRoomTitle;
+
+  /// No description provided for @failedToRenameRoomError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to rename the room. Please try again.'**
+  String get failedToRenameRoomError;
+
+  /// No description provided for @leaveRoomButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave room'**
+  String get leaveRoomButton;
+
+  /// No description provided for @leaveRoomDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave room?'**
+  String get leaveRoomDialogTitle;
+
+  /// No description provided for @leaveRoomDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The room disappears from your list and its feed goes with it. Only the owner can bring you back.'**
+  String get leaveRoomDialogContent;
+
+  /// No description provided for @leaveDirectRoomDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'This room is just the two of you, so it goes for both — along with everything posted in it.'**
+  String get leaveDirectRoomDialogContent;
+
+  /// No description provided for @failedToLeaveRoomError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to leave the room. Please try again.'**
+  String get failedToLeaveRoomError;
+
+  /// No description provided for @postDestinationsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Where to publish'**
+  String get postDestinationsLabel;
+
+  /// No description provided for @generalFeedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Main feed'**
+  String get generalFeedLabel;
+
+  /// No description provided for @pickDestinationError.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick at least one place to publish to.'**
+  String get pickDestinationError;
+
+  /// No description provided for @openRoomChatTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Room chat'**
+  String get openRoomChatTooltip;
+
+  /// No description provided for @roomChatTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get roomChatTitle;
+
+  /// No description provided for @messageHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Message'**
+  String get messageHint;
+
+  /// No description provided for @sendMessageTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get sendMessageTooltip;
+
+  /// No description provided for @noMessagesYetMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet in here. Send the first message.'**
+  String get noMessagesYetMessage;
+
+  /// No description provided for @deletedMessageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Message deleted'**
+  String get deletedMessageLabel;
+
+  /// No description provided for @deleteMessageDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete message?'**
+  String get deleteMessageDialogTitle;
+
+  /// No description provided for @deleteMessageDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'It disappears for everyone in the room, leaving only a note.'**
+  String get deleteMessageDialogContent;
+
+  /// No description provided for @formerMemberLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Former member'**
+  String get formerMemberLabel;
+
+  /// No description provided for @failedToLoadMessagesError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load messages. Please try again.'**
+  String get failedToLoadMessagesError;
+
+  /// No description provided for @failedToSendMessageError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to send. Please try again.'**
+  String get failedToSendMessageError;
+
+  /// No description provided for @failedToDeleteMessageError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete the message. Please try again.'**
+  String get failedToDeleteMessageError;
+
+  /// No description provided for @notifyRoomMessagesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages in rooms'**
+  String get notifyRoomMessagesLabel;
+
+  /// No description provided for @notifyRoomPostsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Posts in rooms'**
+  String get notifyRoomPostsLabel;
+
+  /// No description provided for @roomAvatarLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Room picture'**
+  String get roomAvatarLabel;
+
+  /// No description provided for @changeRoomAvatarButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Change picture'**
+  String get changeRoomAvatarButton;
+
+  /// No description provided for @removeRoomAvatarButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove picture'**
+  String get removeRoomAvatarButton;
+
+  /// No description provided for @failedToUpdateRoomAvatarError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to change the room picture. Please try again.'**
+  String get failedToUpdateRoomAvatarError;
 }
 
 class _AppLocalizationsDelegate

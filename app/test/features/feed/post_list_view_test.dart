@@ -30,7 +30,11 @@ class _FakeFeedRepository implements FeedRepository {
   List<Comment> commentsToReturn = const [];
 
   @override
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    String? roomId,
+  }) async {
     if (throwOnFetch) throw Exception('offline');
     return pageToReturn;
   }

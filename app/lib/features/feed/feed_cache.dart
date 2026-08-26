@@ -8,11 +8,12 @@ import 'feed_repository.dart';
 const _keyPrefix = 'feed_cache_';
 
 /// Persists a snapshot of the most recently loaded first page of one feed
-/// scope (the main feed, or one author's posts — `authorId` mirrors
-/// `PostListView.authorId`: null for the main feed, an author's id for their
-/// posts) so the screen has something to show before the network round trip
-/// finishes, or at all if there's no connection. Deliberately only the first
-/// page: this is "don't be blank without a network", not offline pagination.
+/// scope (the main feed, one author's posts, or one room's feed — `scope`
+/// mirrors what `PostListView` is showing: null for the main feed, an
+/// author's id for their posts, `room_<id>` for a room) so the screen has
+/// something to show before the network round trip finishes, or at all if
+/// there's no connection. Deliberately only the first page: this is "don't be
+/// blank without a network", not offline pagination.
 ///
 /// Every entry is scoped to the *viewer* as well as the feed scope, and
 /// [clear] wipes the lot on sign-out. Both are load-bearing, for the same
@@ -28,11 +29,11 @@ const _keyPrefix = 'feed_cache_';
 class FeedCache {
   const FeedCache();
 
-  /// [userId] is the *viewer*, [authorId] the feed scope. A null [userId]
+  /// [userId] is the *viewer*, [scope] the feed scope. A null [userId]
   /// (no session) gets its own slot rather than sharing the signed-out one
   /// with whoever was here last.
-  String _key(String? userId, String? authorId) =>
-      '$_keyPrefix${userId ?? 'anon'}_${authorId ?? 'main'}';
+  String _key(String? userId, String? scope) =>
+      '$_keyPrefix${userId ?? 'anon'}_${scope ?? 'main'}';
 
   /// Null means "nothing usable here" — for every reason, including the read
   /// itself failing.
@@ -46,10 +47,10 @@ class FeedCache {
   /// showed "no posts yet" — the opposite of what had happened — instead of
   /// "failed to load feed". A cache that cannot be read is not an error worth
   /// surfacing on its own: it is exactly the "no cache" case.
-  Future<List<Post>?> load(String? userId, String? authorId) async {
+  Future<List<Post>?> load(String? userId, String? scope) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_key(userId, authorId));
+      final raw = prefs.getString(_key(userId, scope));
       if (raw == null) return null;
       final rows = jsonDecode(raw) as List<dynamic>;
       return rows
@@ -63,10 +64,10 @@ class FeedCache {
     }
   }
 
-  Future<void> save(String? userId, String? authorId, List<Post> posts) async {
+  Future<void> save(String? userId, String? scope, List<Post> posts) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _key(userId, authorId),
+      _key(userId, scope),
       jsonEncode(posts.map((p) => p.toCacheJson()).toList()),
     );
   }

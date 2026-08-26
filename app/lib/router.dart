@@ -11,6 +11,7 @@ import 'features/auth/sign_up_screen.dart';
 import 'features/connections/connections_screen.dart';
 import 'features/feed/feed_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/rooms/rooms_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/main_shell_screen.dart';
 
@@ -44,6 +45,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/',
                 builder: (context, state) => const FeedScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/rooms',
+                builder: (context, state) => const RoomsScreen(),
               ),
             ],
           ),

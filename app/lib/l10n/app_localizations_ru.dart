@@ -548,4 +548,189 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToDeleteAccountError =>
       'Не удалось удалить аккаунт. Попробуйте ещё раз.';
+
+  @override
+  String get roomsTitle => 'Комнаты';
+
+  @override
+  String get roomFallbackName => 'Комната';
+
+  @override
+  String get noRoomsYetMessage =>
+      'Пока нет ни одной комнаты. Комната — это отдельная лента для тех, кого вы в неё позвали.';
+
+  @override
+  String get newRoomTitle => 'Новая комната';
+
+  @override
+  String get createRoomButton => 'Создать комнату';
+
+  @override
+  String get openRoomFeedTooltip => 'Лента комнаты';
+
+  @override
+  String get roomEmptyFeedMessage =>
+      'В этой комнате пока ничего не опубликовано.';
+
+  @override
+  String get failedToLoadRoomsError =>
+      'Не удалось загрузить комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get selectRoomMembersMessage =>
+      'Выберите, кого позвать. Один человек — комната на двоих, и её уже нельзя будет расширить.';
+
+  @override
+  String get pickAtLeastOneMemberError => 'Выберите хотя бы одного человека.';
+
+  @override
+  String get roomNameLabel => 'Название комнаты';
+
+  @override
+  String get roomNameHint => 'Оставьте пустым — будут имена участников';
+
+  @override
+  String get failedToCreateRoomError =>
+      'Не удалось создать комнату. Попробуйте ещё раз.';
+
+  @override
+  String get notYourConnectionError =>
+      'Добавить в комнату можно только своих знакомых.';
+
+  @override
+  String get roomMembersTitle => 'Участники';
+
+  @override
+  String roomMembersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count участника',
+      many: '$count участников',
+      few: '$count участника',
+      one: '$count участник',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get roomOwnerLabel => 'Владелец';
+
+  @override
+  String get addMemberButton => 'Добавить участника';
+
+  @override
+  String get noConnectionsToAddMessage =>
+      'Все ваши знакомые уже в этой комнате.';
+
+  @override
+  String get removeMemberTooltip => 'Исключить из комнаты';
+
+  @override
+  String removeMemberDialogTitle(String name) {
+    return 'Исключить $name?';
+  }
+
+  @override
+  String get removeMemberDialogContent =>
+      'Лента комнаты станет ему недоступна. Позже его можно добавить снова.';
+
+  @override
+  String get failedToUpdateRoomMembersError =>
+      'Не удалось изменить состав комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get renameRoomTitle => 'Переименовать комнату';
+
+  @override
+  String get failedToRenameRoomError =>
+      'Не удалось переименовать комнату. Попробуйте ещё раз.';
+
+  @override
+  String get leaveRoomButton => 'Выйти из комнаты';
+
+  @override
+  String get leaveRoomDialogTitle => 'Выйти из комнаты?';
+
+  @override
+  String get leaveRoomDialogContent =>
+      'Комната пропадёт из списка, а её лента станет недоступна. Вернуть вас сможет только владелец.';
+
+  @override
+  String get leaveDirectRoomDialogContent =>
+      'Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всем, что в ней опубликовано.';
+
+  @override
+  String get failedToLeaveRoomError =>
+      'Не удалось выйти из комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get postDestinationsLabel => 'Куда опубликовать';
+
+  @override
+  String get generalFeedLabel => 'Общая лента';
+
+  @override
+  String get pickDestinationError =>
+      'Выберите хотя бы одно место для публикации.';
+
+  @override
+  String get openRoomChatTooltip => 'Чат комнаты';
+
+  @override
+  String get roomChatTitle => 'Чат';
+
+  @override
+  String get messageHint => 'Сообщение';
+
+  @override
+  String get sendMessageTooltip => 'Отправить';
+
+  @override
+  String get noMessagesYetMessage =>
+      'Здесь пока тихо. Напишите первое сообщение.';
+
+  @override
+  String get deletedMessageLabel => 'Сообщение удалено';
+
+  @override
+  String get deleteMessageDialogTitle => 'Удалить сообщение?';
+
+  @override
+  String get deleteMessageDialogContent =>
+      'Оно исчезнет у всех в комнате, останется только пометка.';
+
+  @override
+  String get formerMemberLabel => 'Бывший участник';
+
+  @override
+  String get failedToLoadMessagesError =>
+      'Не удалось загрузить сообщения. Попробуйте ещё раз.';
+
+  @override
+  String get failedToSendMessageError =>
+      'Не удалось отправить. Попробуйте ещё раз.';
+
+  @override
+  String get failedToDeleteMessageError =>
+      'Не удалось удалить сообщение. Попробуйте ещё раз.';
+
+  @override
+  String get notifyRoomMessagesLabel => 'Сообщения в комнатах';
+
+  @override
+  String get notifyRoomPostsLabel => 'Посты в комнатах';
+
+  @override
+  String get roomAvatarLabel => 'Аватарка комнаты';
+
+  @override
+  String get changeRoomAvatarButton => 'Сменить аватарку';
+
+  @override
+  String get removeRoomAvatarButton => 'Убрать аватарку';
+
+  @override
+  String get failedToUpdateRoomAvatarError =>
+      'Не удалось изменить аватарку комнаты. Попробуйте ещё раз.';
 }

@@ -48,8 +48,11 @@ class _FakeProfileRepository implements ProfileRepository {
 /// out of the way of what these tests are about.
 class _FakeFeedRepository implements FeedRepository {
   @override
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async =>
-      const [];
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    String? roomId,
+  }) async => const [];
 
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
