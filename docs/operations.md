@@ -114,12 +114,17 @@ select coalesce(app_version, 'unknown') as version, count(*)
 правило «RLS проверять симуляцией, а не на глаз» — в разделе «Конвенции работы»
 [../CLAUDE.md](../CLAUDE.md); здесь они не повторяются, чтобы не разъехались.
 
-Сверка, что репозиторий и база не разошлись, — количество файлов против
-количества строк:
+История свёрнута в baseline `20260826000000_baseline_schema.sql`; всё, что до
+него, лежит в теге `pre-baseline-migrations`. Baseline описывает конечное
+состояние схемы и на живой проект **не накатывается** — он там уже применён
+построчно; его дело — поднять эквивалентную схему на чистой базе.
+
+Сверка, что репозиторий и база не разошлись, — имена файлов против строк
+таблицы (количество больше не сходится: в базе строка одна на baseline):
 
 ```bash
-ls supabase/migrations/*.sql | wc -l
+ls supabase/migrations/*.sql | sed 's#.*/##; s/_.*//'
 ```
 ```sql
-select count(*) from supabase_migrations.schema_migrations;
+select version from supabase_migrations.schema_migrations order by version;
 ```

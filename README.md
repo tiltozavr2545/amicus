@@ -51,7 +51,7 @@ app/                     — Flutter-приложение
   lib/features/          — auth, connections, feed, notifications, profile, settings, shell
   lib/shared/            — то, чем пользуются несколько фич сразу
   test/                  — юнит- и виджет-тесты
-supabase/migrations/     — версионированная схема БД и RLS-политики
+supabase/migrations/     — схема БД и RLS-политики (baseline + миграции поверх)
 supabase/functions/      — Edge Function send-push (рассылка уведомлений через FCM)
 docs/                    — схема БД, эксплуатация, планы, отложенные фичи
 ```

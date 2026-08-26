@@ -9,7 +9,7 @@
 |---|---|
 | что за проект, что уже работает, стек | [README.md](README.md) |
 | история версий | [CHANGELOG.md](CHANGELOG.md) |
-| **почему** решение принято так | комментарий соответствующей миграции в `supabase/migrations/`, затем `git log` |
+| **почему** решение принято так | комментарий в baseline-миграции, затем архив истории (тег `pre-baseline-migrations`), затем `git log` |
 | исходный MVP-план | [docs/project-brief.md](docs/project-brief.md) |
 | отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
 | пошаговый план MVP, CI/деплой | [docs/implementation-plan.md](docs/implementation-plan.md) |
@@ -40,6 +40,14 @@ SQL/PostgreSQL и C#/.NET. Работать пошагово, не забега�
   Токен даёт пользователь на время задачи, в репозиторий и в память не пишется.
   После применения — дописать строку в `supabase_migrations.schema_migrations`,
   иначе будущий `db push` накатит миграцию повторно.
+- **История свёрнута в baseline.** `20260826000000_baseline_schema.sql` — не шаг
+  истории, а конечное состояние схемы; следующие миграции ложатся поверх него
+  обычным порядком. Первые 104 миграции (`20260707221946`…`20260825120000`)
+  лежат в теге `pre-baseline-migrations`, и на них по номерам ссылаются
+  комментарии в `app/lib`, `docs/` и в самом baseline:
+  `git show pre-baseline-migrations:supabase/migrations/<версия>_*.sql`.
+  Baseline **не накатывается** на живой проект — он там уже применён построчно;
+  его дело — поднять эквивалентную схему на чистой базе.
 - **RLS проверять симуляцией**, а не на глаз: `begin; set local role authenticated;
   select set_config('request.jwt.claims','{"sub":"<uuid>"}',true); … rollback;`.
   Management API работает суперпользователем и RLS не применяет. Сначала

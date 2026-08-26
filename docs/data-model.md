@@ -1,8 +1,12 @@
 # Схема и правило видимости
 
 Снимок текущей схемы и её ключевых инвариантов — для быстрой ориентации, не
-вместо чтения миграций. **Почему** так — в комментарии соответствующей
-миграции в `supabase/migrations/`, затем `git log`.
+вместо чтения самой схемы. **Почему** так — сначала комментарий в
+`supabase/migrations/20260826000000_baseline_schema.sql`, затем архив истории:
+номера вида `20260822170000`, которыми усыпан этот файл, — это имена миграций
+в теге `pre-baseline-migrations`
+(`git show pre-baseline-migrations:supabase/migrations/20260822170000_*.sql`),
+затем `git log`.
 
 Таблицы: `users`, `connections`, `invite_links`, `posts`, `post_media`,
 `profile_photos`, `reactions`, `comments`, `muted_users`, `blocked_users`,
