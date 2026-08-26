@@ -17,11 +17,6 @@ import '../../shared/sized_memory_image.dart';
 
 const _maxProfilePhotos = 80;
 
-final _profileProvider = FutureProvider.autoDispose<Profile>((ref) {
-  final userId = ref.watch(currentUserIdProvider);
-  return ref.watch(profileRepositoryProvider).fetchProfile(userId!);
-});
-
 final _profilePhotosProvider = FutureProvider.autoDispose<List<ProfilePhoto>>((
   ref,
 ) {
@@ -83,7 +78,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await ref
           .read(profileRepositoryProvider)
           .updateName(userId: userId, name: name);
-      ref.invalidate(_profileProvider);
+      ref.invalidate(myProfileProvider);
     } catch (e) {
       // _showError checks context.mounted itself before touching context —
       // the analyzer can't see across that call, only into this function.
@@ -196,7 +191,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // нет; перечитать список всё равно надо, чтобы человек видел, что на
       // самом деле долетело.
       if (mounted) {
-        ref.invalidate(_profileProvider);
+        ref.invalidate(myProfileProvider);
         ref.invalidate(_profilePhotosProvider);
         setState(() => _isAddingPhotos = false);
       }
@@ -230,7 +225,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => screen));
     if (!mounted) return;
-    ref.invalidate(_profileProvider);
+    ref.invalidate(myProfileProvider);
     ref.invalidate(_profilePhotosProvider);
   }
 
@@ -247,7 +242,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final userId = ref.watch(currentUserIdProvider);
-    final profileAsync = ref.watch(_profileProvider);
+    final profileAsync = ref.watch(myProfileProvider);
     final photosAsync = ref.watch(_profilePhotosProvider);
     final l10n = AppLocalizations.of(context)!;
 

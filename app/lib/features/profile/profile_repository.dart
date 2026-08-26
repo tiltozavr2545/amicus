@@ -253,6 +253,15 @@ final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepository(ref.watch(supabaseClientProvider));
 });
 
+/// The signed-in user's own profile — shared by the profile screen and the
+/// shell's bottom bar (which paints the "profile" tab with this avatar
+/// instead of a generic icon), so both read the same fetch/cache instead of
+/// each racing its own.
+final myProfileProvider = FutureProvider.autoDispose<Profile>((ref) {
+  final userId = ref.watch(currentUserIdProvider);
+  return ref.watch(profileRepositoryProvider).fetchProfile(userId!);
+});
+
 /// How long a fetched image stays cached after the last widget stops watching
 /// it. Long enough to cover the round trip this cache exists for — leave a
 /// screen, come back, don't re-download — and short enough that a gallery the

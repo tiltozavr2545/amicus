@@ -68,7 +68,12 @@ class _PickedSlot extends _Slot {
 /// both, since publishing and saving edits differ only in which repository
 /// call they end in and a couple of labels.
 class CreatePostScreen extends ConsumerStatefulWidget {
-  const CreatePostScreen({super.key, this.existingPost, this.initialRoomId});
+  const CreatePostScreen({
+    super.key,
+    this.existingPost,
+    this.initialRoomId,
+    this.onClose,
+  });
 
   final Post? existingPost;
 
@@ -77,6 +82,18 @@ class CreatePostScreen extends ConsumerStatefulWidget {
   /// needs no extra tap and cannot accidentally publish to everyone. Null
   /// when composing from the bottom bar, where the main feed is the default.
   final String? initialRoomId;
+
+  /// How to leave this screen when it isn't a pushed route.
+  ///
+  /// The main shell shows this screen as its own `body` (see
+  /// `MainShellScreen`) so the app's bottom tab bar stays on screen while
+  /// composing, instead of pushing a route that would cover it. With no route
+  /// of its own, `Navigator.of(context).pop()` would act on whatever screen
+  /// is underneath — so callers that embed this widget pass [onClose] to say
+  /// what "leave" means instead, and callers that push it as a route (editing
+  /// a post, composing from a room) leave this null and get the normal pop.
+  /// Carries `true` when a post was created/saved, same as the pop result did.
+  final ValueChanged<bool>? onClose;
 
   @override
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -429,6 +446,15 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
   }
 
+  void _close(bool result) {
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose(result);
+    } else {
+      Navigator.of(context).pop(result);
+    }
+  }
+
   void _removeSlot(_Slot slot) => setState(() => _slots.remove(slot));
 
   void _reorder(int oldIndex, int newIndex) {
@@ -494,7 +520,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           ref.read(roomsRefreshTickProvider.notifier).bump();
         }
       }
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) _close(true);
     } catch (e) {
       // Guarded like the `finally` below. Nothing stops the user pressing back
       // while an upload is in flight — the composer shows no warning and there
@@ -571,18 +597,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? l10n.editPostTitle : l10n.newPostTitle),
-        actions: [
-          TextButton(
-            onPressed: _isSubmitting ? null : _submit,
-            child: _isSubmitting
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(_isEditing ? l10n.saveButton : l10n.publishButton),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -598,15 +612,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
-            if (!_isEditing) _destinations(context),
-            const SizedBox(height: 12),
-            if (_slots.isNotEmpty)
-              _MediaGrid(
-                slots: _slots,
-                removeTooltip: l10n.removeMediaTooltip,
-                onRemove: _removeSlot,
-                onReorder: _reorder,
-              ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: _isPicking || _slots.length >= _maxMediaCount
@@ -621,6 +626,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                   : const Icon(Icons.photo_outlined),
               label: Text(l10n.addMediaButton),
             ),
+            if (_slots.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _MediaGrid(
+                slots: _slots,
+                removeTooltip: l10n.removeMediaTooltip,
+                onRemove: _removeSlot,
+                onReorder: _reorder,
+              ),
+            ],
+            if (!_isEditing) _destinations(context),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -629,6 +644,19 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               ),
             ],
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(16),
+        child: FilledButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: _isSubmitting
+              ? const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(_isEditing ? l10n.saveButton : l10n.publishButton),
         ),
       ),
     );

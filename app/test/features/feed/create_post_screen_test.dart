@@ -115,12 +115,12 @@ Room _room({required String id, required String name}) => Room(
 );
 
 Future<void> _tapPublish(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(TextButton, 'Publish'));
+  await tester.tap(find.widgetWithText(FilledButton, 'Publish'));
   await tester.pump();
 }
 
 Future<void> _tapSave(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(TextButton, 'Save'));
+  await tester.tap(find.widgetWithText(FilledButton, 'Save'));
   await tester.pump();
 }
 
@@ -227,7 +227,7 @@ void main() {
         await tester.pumpWidget(_wrap(repo, existingPost: existingPost()));
 
         expect(find.text('Edit post'), findsOneWidget);
-        expect(find.widgetWithText(TextButton, 'Save'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
         expect(find.widgetWithText(TextField, 'original text'), findsOneWidget);
       },
     );
