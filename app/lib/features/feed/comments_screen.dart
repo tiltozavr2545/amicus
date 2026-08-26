@@ -26,6 +26,12 @@ class CommentsScreen extends ConsumerStatefulWidget {
   /// Дёргать [FeedRefreshTick] здесь было бы неверно по цене: он перезагружает
   /// первую страницу КАЖДОГО открытого списка, а изменилось одно число на
   /// одной карточке.
+  ///
+  /// Не вызывается вовсе, когда список обрезан по [commentFetchLimit]: длина
+  /// обрезанного списка — уже не «сколько их на самом деле», а потолок, и
+  /// подставить её значило бы уронить счётчик на карточке с настоящего числа
+  /// до 500. Карточка в этом случае остаётся с числом от `comment_summary()`,
+  /// которое считает всё и на сервере.
   final ValueChanged<int>? onCountChanged;
 
   @override
@@ -35,6 +41,11 @@ class CommentsScreen extends ConsumerStatefulWidget {
 class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   final _textController = TextEditingController();
   List<ThreadedComment>? _comments;
+
+  /// У поста больше комментариев, чем вернул один запрос (см.
+  /// [commentFetchLimit]). Рисует сноску в конце списка и запирает
+  /// [CommentsScreen.onCountChanged].
+  bool _isTruncated = false;
 
   /// Set only when the list itself could not be loaded — it is rendered *in
   /// place of* the list, so it can say nothing about a failure that happens
@@ -81,12 +92,13 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   /// concluded it had not sent.
   Future<bool> _load() async {
     try {
-      final comments = await ref
+      final page = await ref
           .read(feedRepositoryProvider)
           .fetchComments(widget.postId);
       if (!mounted) return false;
       setState(() {
-        _comments = threadComments(comments);
+        _comments = threadComments(page.comments);
+        _isTruncated = page.isTruncated;
         _errorMessage = null;
       });
       // Из СЫРОГО списка, не из threadComments(): счётчик на карточке рисует
@@ -94,7 +106,14 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       // null` — то есть ровно видимые нетомбстоненные строки. threadComments()
       // сверх этого прячет ответы без корня и заглушки без ответов, так что
       // его длина дала бы другое число.
-      widget.onCountChanged?.call(comments.where((c) => !c.isDeleted).length);
+      //
+      // И только когда список пришёл целиком: у обрезанного длина — это
+      // потолок, а не количество (см. [CommentsScreen.onCountChanged]).
+      if (!page.isTruncated) {
+        widget.onCountChanged?.call(
+          page.comments.where((c) => !c.isDeleted).length,
+        );
+      }
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -262,9 +281,19 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                 ? Center(child: Text(l10n.noCommentsYetMessage))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _comments!.length,
-                    itemBuilder: (context, index) =>
-                        _buildComment(l10n, _comments![index]),
+                    // Сноска идёт последним элементом ТОГО ЖЕ списка, а не
+                    // отдельным блоком под ним: обрезается хвост, и сказать об
+                    // этом надо там, где хвост кончился.
+                    itemCount: _comments!.length + (_isTruncated ? 1 : 0),
+                    itemBuilder: (context, index) => index == _comments!.length
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              l10n.commentsTruncatedNotice(commentFetchLimit),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          )
+                        : _buildComment(l10n, _comments![index]),
                   ),
           ),
           SafeArea(

@@ -425,6 +425,11 @@ class AppLocalizationsRu extends AppLocalizations {
       'Не удалось отправить. Попробуйте ещё раз.';
 
   @override
+  String commentsTruncatedNotice(int count) {
+    return 'Показаны первые $count комментариев. Более новые не показаны.';
+  }
+
+  @override
   String get connectionKnownLessThanDay => 'Знакомы меньше дня';
 
   @override

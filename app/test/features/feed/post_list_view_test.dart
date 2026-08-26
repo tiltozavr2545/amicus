@@ -51,7 +51,8 @@ class _FakeFeedRepository implements FeedRepository {
   }
 
   @override
-  Future<List<Comment>> fetchComments(String postId) async => commentsToReturn;
+  Future<CommentPage> fetchComments(String postId) async =>
+      CommentPage(comments: commentsToReturn, isTruncated: false);
 
   /// Reaction requests in call order, each held open until the test decides
   /// its fate — which is the whole point: the bug being guarded against only

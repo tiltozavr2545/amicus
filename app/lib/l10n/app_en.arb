@@ -160,6 +160,10 @@
   "failedToLoadCommentsError": "Failed to load comments. Please try again.",
   "failedToDeleteCommentError": "Failed to delete comment. Please try again.",
   "failedToSendCommentError": "Failed to send. Please try again.",
+  "commentsTruncatedNotice": "Showing the first {count} comments. Newer ones are not shown.",
+  "@commentsTruncatedNotice": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "connectionKnownLessThanDay": "Known for less than a day",
   "connectionKnownDays": "Known for {days, plural, one{{days} day} other{{days} days}}",

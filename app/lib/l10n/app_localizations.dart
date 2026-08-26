@@ -842,6 +842,12 @@ abstract class AppLocalizations {
   /// **'Failed to send. Please try again.'**
   String get failedToSendCommentError;
 
+  /// No description provided for @commentsTruncatedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the first {count} comments. Newer ones are not shown.'**
+  String commentsTruncatedNotice(int count);
+
   /// No description provided for @connectionKnownLessThanDay.
   ///
   /// In en, this message translates to:

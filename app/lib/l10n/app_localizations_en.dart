@@ -424,6 +424,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get failedToSendCommentError => 'Failed to send. Please try again.';
 
   @override
+  String commentsTruncatedNotice(int count) {
+    return 'Showing the first $count comments. Newer ones are not shown.';
+  }
+
+  @override
   String get connectionKnownLessThanDay => 'Known for less than a day';
 
   @override

@@ -1022,6 +1022,19 @@ class _MediaSlide extends StatefulWidget {
 class _MediaSlideState extends State<_MediaSlide> {
   VideoPlayerController? _controller;
 
+  /// A [_play] is between its tap and its `setState`.
+  ///
+  /// Needed because `_controller` alone cannot express that window: it stays
+  /// null for the whole of `initialize()`, so the poster — and its enabled
+  /// play button — is still what's on screen. On a slow connection that is
+  /// seconds, and a second tap in it started a *second* controller: the first
+  /// one's `setState` painted it, the second one's overwrote the field, and
+  /// nothing then held a reference to the first. It was never disposed —
+  /// [didUpdateWidget] only disposes on a changed `item.id`, [dispose] only
+  /// sees the field — so its native player went on decoding and playing audio
+  /// underneath the second one until the app was killed.
+  bool _isPreparing = false;
+
   @override
   void didUpdateWidget(covariant _MediaSlide oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1051,7 +1064,13 @@ class _MediaSlideState extends State<_MediaSlide> {
 
   Future<void> _play() async {
     final url = widget.item.url;
-    if (url == null) return;
+    if (url == null || _isPreparing || _controller != null) return;
+    // Captured before the await: this State is reused across slides, so the
+    // clip it is showing can change while `initialize()` runs. Without this,
+    // a controller prepared for the previous item would be installed under
+    // the new one — the same reuse [didUpdateWidget] guards the field against.
+    final itemId = widget.item.id;
+    _isPreparing = true;
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
     try {
       await controller.initialize();
@@ -1062,8 +1081,12 @@ class _MediaSlideState extends State<_MediaSlide> {
       // leak the controller, since dispose() only ever runs via State.
       await controller.dispose();
       return;
+    } finally {
+      // Runs before the `return` above propagates, so the button is never
+      // left permanently dead by a clip that failed to open.
+      _isPreparing = false;
     }
-    if (!mounted) {
+    if (!mounted || widget.item.id != itemId) {
       await controller.dispose();
       return;
     }

@@ -27,8 +27,12 @@ class _FakeFeedRepository implements FeedRepository {
   /// its target was tombstoned or its author blocked while it was being typed.
   bool addThrows = false;
 
+  /// Стоит ли отдавать список как обрезанный по [commentFetchLimit].
+  bool isTruncated = false;
+
   @override
-  Future<List<Comment>> fetchComments(String postId) async => comments;
+  Future<CommentPage> fetchComments(String postId) async =>
+      CommentPage(comments: comments, isTruncated: isTruncated);
 
   @override
   Future<void> addComment({
@@ -111,16 +115,16 @@ Comment _comment(
   replyToId: replyToId,
 );
 
-Widget _wrap(_FakeFeedRepository repo) {
+Widget _wrap(_FakeFeedRepository repo, {ValueChanged<int>? onCountChanged}) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
     ],
-    child: const MaterialApp(
+    child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: CommentsScreen(postId: 'post-1'),
+      home: CommentsScreen(postId: 'post-1', onCountChanged: onCountChanged),
     ),
   );
 }
@@ -352,11 +356,51 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('a truncated list says so and leaves the card counter alone', (
+    tester,
+  ) async {
+    // Длина обрезанного списка — потолок, а не количество. Подставить её в
+    // счётчик значило бы уронить настоящее число до 500; карточка должна
+    // остаться с тем, что посчитал `comment_summary()` на сервере.
+    final repo = _FakeFeedRepository()
+      ..comments = [_comment('c1'), _comment('c2', minute: 1)]
+      ..isTruncated = true;
+    var reportedCount = -1;
+    await tester.pumpWidget(
+      _wrap(repo, onCountChanged: (count) => reportedCount = count),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Showing the first 500 comments. Newer ones are not shown.'),
+      findsOneWidget,
+    );
+    expect(reportedCount, -1);
+  });
+
+  testWidgets('a complete list reports its count and shows no notice', (
+    tester,
+  ) async {
+    final repo = _FakeFeedRepository()
+      ..comments = [_comment('c1'), _comment('c2', minute: 1)];
+    var reportedCount = -1;
+    await tester.pumpWidget(
+      _wrap(repo, onCountChanged: (count) => reportedCount = count),
+    );
+    await tester.pumpAndSettle();
+
+    expect(reportedCount, 2);
+    expect(
+      find.text('Showing the first 500 comments. Newer ones are not shown.'),
+      findsNothing,
+    );
+  });
 }
 
 class _FailingLoadRepository extends _FakeFeedRepository {
   @override
-  Future<List<Comment>> fetchComments(String postId) async {
+  Future<CommentPage> fetchComments(String postId) async {
     throw Exception('offline');
   }
 }

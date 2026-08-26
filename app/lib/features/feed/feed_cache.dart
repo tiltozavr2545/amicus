@@ -34,18 +34,31 @@ class FeedCache {
   String _key(String? userId, String? authorId) =>
       '$_keyPrefix${userId ?? 'anon'}_${authorId ?? 'main'}';
 
+  /// Null means "nothing usable here" — for every reason, including the read
+  /// itself failing.
+  ///
+  /// The guard covers `getInstance()` as well as the decode, and that is the
+  /// half that was missing. This future is awaited in two places
+  /// ([PostListView._primeFromCache] and, crucially, inside `_loadMore`'s own
+  /// `catch`), so a rejection did two things at once: it was an unhandled
+  /// async error out of the prime, and in the catch it threw *before* the line
+  /// that assigns `_errorMessage`. A first cold start with no connection then
+  /// showed "no posts yet" — the opposite of what had happened — instead of
+  /// "failed to load feed". A cache that cannot be read is not an error worth
+  /// surfacing on its own: it is exactly the "no cache" case.
   Future<List<Post>?> load(String? userId, String? authorId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key(userId, authorId));
-    if (raw == null) return null;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key(userId, authorId));
+      if (raw == null) return null;
       final rows = jsonDecode(raw) as List<dynamic>;
       return rows
           .map((row) => Post.fromCacheJson(row as Map<String, dynamic>))
           .toList();
     } catch (_) {
-      // Cached shape from an older app version, or corrupted — treat it as
-      // "no cache" rather than crashing the feed over a stale snapshot.
+      // Cached shape from an older app version, corrupted JSON, or the
+      // preferences store itself unavailable — treat all of it as "no cache"
+      // rather than crashing the feed over a stale snapshot.
       return null;
     }
   }

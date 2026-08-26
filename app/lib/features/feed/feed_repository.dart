@@ -333,6 +333,29 @@ class Comment {
   }
 }
 
+/// How many comments one [FeedRepository.fetchComments] call will return.
+///
+/// Not a page size — there is no "load more" behind it, and deliberately so:
+/// this is a ceiling that keeps one request finishing, not pagination. Set far
+/// above any thread this app is expected to grow (a private feed of real
+/// acquaintances), so reaching it is the pathological case rather than the
+/// normal one.
+const commentFetchLimit = 500;
+
+/// One [FeedRepository.fetchComments] result: the comments, and whether the
+/// post has more than [commentFetchLimit] of them.
+///
+/// [isTruncated] is not cosmetic. The comment counter on a post's card comes
+/// from `comment_summary()`, which counts every visible non-tombstoned row
+/// server-side — so once the list is cut, its length stops being that number
+/// and must not be reported as it. See [CommentsScreen.onCountChanged].
+class CommentPage {
+  const CommentPage({required this.comments, required this.isTruncated});
+
+  final List<Comment> comments;
+  final bool isTruncated;
+}
+
 /// One picked-but-not-yet-uploaded photo or video, held by the composer
 /// screen's local state. Distinct from [PostMedia] (a *server* row): this
 /// models a pending upload, before it has a `post_media` id at all.
@@ -929,15 +952,37 @@ class FeedRepository {
   /// `ascending: true` is spelled out because postgrest-dart's `order()`
   /// defaults to *descending*; `id` is a deterministic tiebreak for comments
   /// sharing a timestamp, same as the feed's keyset paging.
-  Future<List<Comment>> fetchComments(String postId) async {
+  ///
+  /// Capped at [commentFetchLimit]. This used to be unbounded — the one query
+  /// in the app that was, while the feed right above it went to the trouble of
+  /// keyset paging — so a post with thousands of comments pulled all of them,
+  /// with their author join, into a single response. Past a certain size that
+  /// simply cannot finish inside [networkTimeout], and the screen then reports
+  /// "failed to load comments" on every attempt with no way through: not a slow
+  /// load, a dead end, the same shape [uploadTimeout] was written to close for
+  /// video.
+  ///
+  /// The cut is at the *end* on purpose. Comments arrive oldest-first, so
+  /// dropping the tail can orphan a reply from its root but never a root from
+  /// its replies, and [threadComments] already hides a reply whose root is
+  /// missing. Cutting the other way — newest N — would strand replies whose
+  /// root fell outside the window, which is most of them.
+  Future<CommentPage> fetchComments(String postId) async {
+    // One more than the cap: the extra row is how "there are more" is known
+    // without a second count query.
     final rows = await _client
         .from('comments')
         .select('*, author:users(name)')
         .eq('post_id', postId)
         .order('created_at', ascending: true)
         .order('id', ascending: true)
+        .limit(commentFetchLimit + 1)
         .timeout(networkTimeout);
-    return rows.map(Comment.fromRow).toList();
+    final isTruncated = rows.length > commentFetchLimit;
+    return CommentPage(
+      comments: rows.take(commentFetchLimit).map(Comment.fromRow).toList(),
+      isTruncated: isTruncated,
+    );
   }
 
   /// Adds a comment, or a reply when [parentCommentId] is given (always the

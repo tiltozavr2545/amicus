@@ -145,6 +145,10 @@
   "failedToLoadCommentsError": "Не удалось загрузить комментарии. Попробуйте ещё раз.",
   "failedToDeleteCommentError": "Не удалось удалить комментарий. Попробуйте ещё раз.",
   "failedToSendCommentError": "Не удалось отправить. Попробуйте ещё раз.",
+  "commentsTruncatedNotice": "Показаны первые {count} комментариев. Более новые не показаны.",
+  "@commentsTruncatedNotice": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "connectionKnownLessThanDay": "Знакомы меньше дня",
   "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",
