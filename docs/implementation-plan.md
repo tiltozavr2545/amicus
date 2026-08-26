@@ -1,4 +1,4 @@
-# Implementation Plan: Amicus (ранее «Круг») (MVP)
+# План реализации: Amicus (ранее «Круг») (MVP)
 
 Пошаговый план реализации MVP из [project-brief.md](project-brief.md), с CI и деплоем, встроенными в этапы, а не отложенными на конец. Проект mobile-first (Android; iOS через Flutter отложен — см. [future-development.md](future-development.md)), web не рассматривается.
 
