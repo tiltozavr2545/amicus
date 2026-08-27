@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -200,6 +201,33 @@ String roomDisplayName(
   return others.map((member) => member.name).join(', ');
 }
 
+/// One member's read/delivered marks, as read straight off their
+/// `room_members` row.
+///
+/// The chat screen never stores a per-message status — it compares each of
+/// the viewer's own messages against these marks instead: read if the
+/// mark is no older than the message, delivered the same way against
+/// [lastDeliveredAt]. That is also why only a message's own author needs
+/// this — nobody draws ticks on a message they received.
+class RoomMemberReceipt {
+  const RoomMemberReceipt({
+    required this.userId,
+    required this.lastReadAt,
+    required this.lastDeliveredAt,
+  });
+
+  final String userId;
+  final DateTime lastReadAt;
+  final DateTime lastDeliveredAt;
+
+  factory RoomMemberReceipt.fromRow(Map<String, dynamic> row) =>
+      RoomMemberReceipt(
+        userId: row['user_id'] as String,
+        lastReadAt: parseTimestamp(row['last_read_at'] as String),
+        lastDeliveredAt: parseTimestamp(row['last_delivered_at'] as String),
+      );
+}
+
 /// Where a room's own picture lives: `rooms/<room_id>/<token>.<ext>`, one
 /// folder per room the way `avatars/` and `posts/` use one per user. Both the
 /// CHECK on `rooms.avatar_path` and the storage policies read the room id out
@@ -222,10 +250,22 @@ class RoomsRepository {
   /// with.
   Future<List<Room>> fetchRooms() async {
     final rows = await _client.rpc('my_rooms').timeout(networkTimeout);
+    // Fire-and-forget: fetching the list is itself the only "delivered"
+    // signal this app has (no push-delivery acks), and a failure here
+    // shouldn't hold up showing the list itself.
+    unawaited(markRoomsDelivered().catchError((_) {}));
     return [
       for (final row in (rows as List<dynamic>))
         Room.fromRow(row as Map<String, dynamic>),
     ];
+  }
+
+  /// Marks every room this device knows about as delivered as of now — see
+  /// [RoomMemberReceipt]. Called on every [fetchRooms], since pulling the
+  /// room list is the only moment this app can be sure the device is online
+  /// and synced.
+  Future<void> markRoomsDelivered() async {
+    await _client.rpc('mark_rooms_delivered').timeout(networkTimeout);
   }
 
   /// Creates a room with [memberIds] (the caller is added server-side) and
@@ -447,6 +487,46 @@ class RoomsRepository {
     await _client
         .rpc('mark_room_read', params: {'p_room_id': roomId})
         .timeout(networkTimeout);
+  }
+
+  /// Read/delivered marks for everyone in the room — what the chat screen
+  /// compares each of the viewer's own messages against to draw its ticks.
+  /// `room_members` is already readable by fellow members (the same policy
+  /// that lets the room list show names and avatars), so this is a plain
+  /// select, not an RPC.
+  Future<List<RoomMemberReceipt>> fetchMemberReceipts(String roomId) async {
+    final rows = await _client
+        .from('room_members')
+        .select('user_id, last_read_at, last_delivered_at')
+        .eq('room_id', roomId)
+        .timeout(networkTimeout);
+    return [for (final row in rows) RoomMemberReceipt.fromRow(row)];
+  }
+
+  /// Live updates to [fetchMemberReceipts] — fires whenever any member's read
+  /// or delivered mark moves, so a tick can flip while the sender is still
+  /// looking at the screen. Same shape as [subscribeToMessages].
+  void Function() subscribeToMemberReceipts({
+    required String roomId,
+    required void Function(RoomMemberReceipt receipt) onUpdate,
+  }) {
+    final filter = PostgresChangeFilter(
+      type: PostgresChangeFilterType.eq,
+      column: 'room_id',
+      value: roomId,
+    );
+    final channel = _client
+        .channel('room_members_receipts:$roomId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'room_members',
+          filter: filter,
+          callback: (payload) =>
+              onUpdate(RoomMemberReceipt.fromRow(payload.newRecord)),
+        )
+        .subscribe();
+    return () => channel.unsubscribe();
   }
 
   /// Live messages for one room. Returns the unsubscribe callback — the caller

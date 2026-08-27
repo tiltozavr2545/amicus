@@ -33,16 +33,25 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   final _messages = <RoomMessage>[];
 
   void Function()? _unsubscribe;
+  void Function()? _unsubscribeReceipts;
   bool _isLoading = false;
   bool _hasMore = true;
   bool _isSending = false;
   String? _errorMessage;
+
+  /// Every member's read/delivered marks, keyed by user id — what draws the
+  /// ticks on the viewer's own messages. Absent while the first fetch is
+  /// still in flight; a bubble with no entry for a member just shows no
+  /// status yet rather than guessing.
+  Map<String, RoomMemberReceipt> _receipts = {};
 
   @override
   void initState() {
     super.initState();
     _loadMore();
     _subscribe();
+    _loadReceipts();
+    _subscribeReceipts();
     // Opening the chat is reading it. This also silences the room's pushes
     // while the screen is up: the server skips a member whose read mark is
     // fresher than a minute, and every arriving message moves it again.
@@ -60,6 +69,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     // Unsubscribing is not optional: the channel outlives this State
     // otherwise, and its callbacks would call setState on a dead widget.
     _unsubscribe?.call();
+    _unsubscribeReceipts?.call();
     _scrollController.dispose();
     _textController.dispose();
     super.dispose();
@@ -97,6 +107,33 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       // Best effort by design: failing to move a read mark is not worth a
       // message on screen, and the next open tries again.
     }
+  }
+
+  Future<void> _loadReceipts() async {
+    try {
+      final receipts = await ref
+          .read(roomsRepositoryProvider)
+          .fetchMemberReceipts(widget.roomId);
+      if (!mounted) return;
+      setState(() {
+        _receipts = {for (final r in receipts) r.userId: r};
+      });
+    } catch (_) {
+      // Best effort, same reasoning as `_markRead`: a stale tick is not
+      // worth a message on screen, and the next open tries again.
+    }
+  }
+
+  void _subscribeReceipts() {
+    _unsubscribeReceipts = ref
+        .read(roomsRepositoryProvider)
+        .subscribeToMemberReceipts(
+          roomId: widget.roomId,
+          onUpdate: (receipt) {
+            if (!mounted) return;
+            setState(() => _receipts[receipt.userId] = receipt);
+          },
+        );
   }
 
   Future<void> _loadMore() async {
@@ -273,6 +310,8 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
                             room?.memberById(message.authorId)?.name ??
                             message.authorName ??
                             l10n.formerMemberLabel,
+                        room: room,
+                        receipts: _receipts,
                         onDelete:
                             message.authorId == viewerId && !message.isDeleted
                             ? () => _delete(message)
@@ -339,13 +378,84 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.isMine,
     required this.authorName,
+    required this.room,
+    required this.receipts,
     this.onDelete,
   });
 
   final RoomMessage message;
   final bool isMine;
   final String authorName;
+
+  /// Null while the room list hasn't loaded this room yet — the status row
+  /// just doesn't render, same as everywhere else this screen reads [room].
+  final Room? room;
+
+  /// Every member's read/delivered marks, keyed by user id. Only read when
+  /// [isMine], since ticks are drawn on one's own sent messages, never on a
+  /// message received from someone else.
+  final Map<String, RoomMemberReceipt> receipts;
+
   final VoidCallback? onDelete;
+
+  /// Ticks for [message], drawn only on the viewer's own, non-tombstoned
+  /// messages — a direct room gets an icon (sent/delivered/read, the
+  /// WhatsApp shape), a group room gets a "read N/total" count instead: a
+  /// single icon cannot say "3 of 5 people have seen this", and the members
+  /// screen already shows who these people are.
+  Widget? _buildStatus(BuildContext context) {
+    final currentRoom = room;
+    if (!isMine || message.isDeleted || currentRoom == null) return null;
+
+    final others = currentRoom.othersThan(message.authorId);
+    final total = others.length;
+    if (total == 0) return null;
+
+    var read = 0;
+    var delivered = 0;
+    for (final other in others) {
+      final receipt = receipts[other.userId];
+      if (receipt == null) continue;
+      if (!receipt.lastReadAt.isBefore(message.createdAt)) read++;
+      if (!receipt.lastDeliveredAt.isBefore(message.createdAt)) delivered++;
+    }
+
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final style = Theme.of(
+      context,
+    ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant);
+
+    if (currentRoom.isDirect) {
+      if (read >= total) {
+        return Semantics(
+          label: l10n.roomMessageStatusReadLabel,
+          child: Icon(Icons.done_all, size: 16, color: scheme.primary),
+        );
+      }
+      if (delivered >= total) {
+        return Semantics(
+          label: l10n.roomMessageStatusDeliveredLabel,
+          child: Icon(Icons.done_all, size: 16, color: scheme.onSurfaceVariant),
+        );
+      }
+      return Semantics(
+        label: l10n.roomMessageStatusSentLabel,
+        child: Icon(Icons.check, size: 16, color: scheme.onSurfaceVariant),
+      );
+    }
+
+    if (read > 0) {
+      return Text(l10n.roomMessageReadCount(read, total), style: style);
+    }
+    if (delivered > 0) {
+      return Text(
+        l10n.roomMessageDeliveredCount(delivered, total),
+        style: style,
+      );
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -390,11 +500,20 @@ class _MessageBubble extends StatelessWidget {
                       )
                     : theme.textTheme.bodyMedium,
               ),
-              Text(
-                DateFormat.Hm().format(message.createdAt),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat.Hm().format(message.createdAt),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (_buildStatus(context) case final status?) ...[
+                    const SizedBox(width: 4),
+                    status,
+                  ],
+                ],
               ),
             ],
           ),

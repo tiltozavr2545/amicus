@@ -234,6 +234,23 @@
   "deleteMessageDialogTitle": "Удалить сообщение?",
   "deleteMessageDialogContent": "Оно исчезнет у всех в комнате, останется только пометка.",
   "formerMemberLabel": "Бывший участник",
+  "roomMessageStatusSentLabel": "Отправлено",
+  "roomMessageStatusDeliveredLabel": "Доставлено",
+  "roomMessageStatusReadLabel": "Прочитано",
+  "roomMessageReadCount": "Прочитано {read}/{total}",
+  "@roomMessageReadCount": {
+    "placeholders": {
+      "read": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "roomMessageDeliveredCount": "Доставлено {delivered}/{total}",
+  "@roomMessageDeliveredCount": {
+    "placeholders": {
+      "delivered": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
   "failedToLoadMessagesError": "Не удалось загрузить сообщения. Попробуйте ещё раз.",
   "failedToSendMessageError": "Не удалось отправить. Попробуйте ещё раз.",
   "failedToDeleteMessageError": "Не удалось удалить сообщение. Попробуйте ещё раз.",

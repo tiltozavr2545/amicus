@@ -691,6 +691,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get formerMemberLabel => 'Former member';
 
   @override
+  String get roomMessageStatusSentLabel => 'Sent';
+
+  @override
+  String get roomMessageStatusDeliveredLabel => 'Delivered';
+
+  @override
+  String get roomMessageStatusReadLabel => 'Read';
+
+  @override
+  String roomMessageReadCount(int read, int total) {
+    return 'Read $read/$total';
+  }
+
+  @override
+  String roomMessageDeliveredCount(int delivered, int total) {
+    return 'Delivered $delivered/$total';
+  }
+
+  @override
   String get failedToLoadMessagesError =>
       'Failed to load messages. Please try again.';
 

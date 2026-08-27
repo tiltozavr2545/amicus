@@ -70,6 +70,16 @@ class _FakeRoomsRepository implements RoomsRepository {
   }
 
   @override
+  Future<List<RoomMemberReceipt>> fetchMemberReceipts(String roomId) async =>
+      const [];
+
+  @override
+  void Function() subscribeToMemberReceipts({
+    required String roomId,
+    required void Function(RoomMemberReceipt receipt) onUpdate,
+  }) => () {};
+
+  @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

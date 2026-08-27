@@ -704,6 +704,25 @@ class AppLocalizationsRu extends AppLocalizations {
   String get formerMemberLabel => 'Бывший участник';
 
   @override
+  String get roomMessageStatusSentLabel => 'Отправлено';
+
+  @override
+  String get roomMessageStatusDeliveredLabel => 'Доставлено';
+
+  @override
+  String get roomMessageStatusReadLabel => 'Прочитано';
+
+  @override
+  String roomMessageReadCount(int read, int total) {
+    return 'Прочитано $read/$total';
+  }
+
+  @override
+  String roomMessageDeliveredCount(int delivered, int total) {
+    return 'Доставлено $delivered/$total';
+  }
+
+  @override
   String get failedToLoadMessagesError =>
       'Не удалось загрузить сообщения. Попробуйте ещё раз.';
 

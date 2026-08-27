@@ -1262,6 +1262,36 @@ abstract class AppLocalizations {
   /// **'Former member'**
   String get formerMemberLabel;
 
+  /// No description provided for @roomMessageStatusSentLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get roomMessageStatusSentLabel;
+
+  /// No description provided for @roomMessageStatusDeliveredLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered'**
+  String get roomMessageStatusDeliveredLabel;
+
+  /// No description provided for @roomMessageStatusReadLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Read'**
+  String get roomMessageStatusReadLabel;
+
+  /// No description provided for @roomMessageReadCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Read {read}/{total}'**
+  String roomMessageReadCount(int read, int total);
+
+  /// No description provided for @roomMessageDeliveredCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered {delivered}/{total}'**
+  String roomMessageDeliveredCount(int delivered, int total);
+
   /// No description provided for @failedToLoadMessagesError.
   ///
   /// In en, this message translates to:
