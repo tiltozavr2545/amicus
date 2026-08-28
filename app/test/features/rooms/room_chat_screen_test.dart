@@ -6,6 +6,7 @@ import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/rooms/room_chat_screen.dart';
 import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
+import 'package:amicus/shared/media_picking.dart';
 
 /// Only the members the chat screen calls need real behaviour; the rest
 /// satisfy the `implements` contract via `noSuchMethod`, the same trick the
@@ -33,14 +34,20 @@ class _FakeRoomsRepository implements RoomsRepository {
     int limit = 50,
   }) async => before == null ? messages : const [];
 
+  /// Attachments each send carried — the attach button is only meaningful if
+  /// what it collects reaches the repository.
+  final List<List<PickedMedia>> sentMedia = [];
+
   @override
   Future<RoomMessage> sendMessage({
     required String roomId,
     required String authorId,
     required String text,
     required String clientToken,
+    List<PickedMedia> media = const [],
   }) async {
     sentTexts.add(text);
+    sentMedia.add(media);
     if (sendThrows) throw Exception('rejected');
     return RoomMessage(
       id: 'sent-${sentTexts.length}',
@@ -70,6 +77,41 @@ class _FakeRoomsRepository implements RoomsRepository {
   }
 
   @override
+  Future<Map<String, String>> resolveMediaUrls(List<String> paths) async =>
+      const {};
+
+  /// The screen's presence handler, captured so a test can play the part of
+  /// the channel and say who is here and who is typing.
+  void Function(Set<String> present, Set<String> typing)? onPresence;
+
+  /// What the screen announced about itself, in order.
+  final List<bool> typingAnnounced = [];
+  int presenceUnsubscribeCalls = 0;
+
+  @override
+  RoomPresenceHandle subscribeToPresence({
+    required String roomId,
+    required String userId,
+    required void Function(Set<String> present, Set<String> typing) onChange,
+  }) {
+    onPresence = onChange;
+    return RoomPresenceHandle(
+      setTyping: (typing) async => typingAnnounced.add(typing),
+      unsubscribe: () => presenceUnsubscribeCalls++,
+    );
+  }
+
+  @override
+  Future<List<RoomMemberReceipt>> fetchMemberReceipts(String roomId) async =>
+      const [];
+
+  @override
+  void Function() subscribeToMemberReceipts({
+    required String roomId,
+    required void Function(RoomMemberReceipt receipt) onUpdate,
+  }) => () {};
+
+  @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -79,6 +121,7 @@ RoomMessage _message({
   String text = 'привет',
   DateTime? createdAt,
   DateTime? deletedAt,
+  List<RoomMessageMedia> media = const [],
 }) => RoomMessage(
   id: id,
   roomId: 'room-1',
@@ -86,6 +129,7 @@ RoomMessage _message({
   text: text,
   createdAt: createdAt ?? DateTime.utc(2026, 8, 26, 18),
   deletedAt: deletedAt,
+  media: media,
 );
 
 final _room = Room(
@@ -158,6 +202,91 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Message deleted'), findsOneWidget);
+  });
+
+  testWidgets('someone typing is shown under the room name', (tester) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    repo.onPresence!({'me', 'anya'}, {'anya'});
+    await tester.pump();
+
+    // A group names who it is: "someone is typing" in a room of five says
+    // almost nothing.
+    expect(find.text('Аня is typing…'), findsOneWidget);
+  });
+
+  testWidgets('with nobody typing, presence says who is here', (tester) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    repo.onPresence!({'me', 'anya'}, const {});
+    await tester.pump();
+
+    // Counted, and the viewer is not in the count.
+    expect(find.text('1 online'), findsOneWidget);
+  });
+
+  testWidgets('the viewer alone in the chat is not "online"', (tester) async {
+    // Own presence is filtered out: telling someone they are online is noise.
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    repo.onPresence!({'me'}, {'me'});
+    await tester.pump();
+
+    expect(find.text('1 online'), findsNothing);
+    expect(find.textContaining('typing'), findsNothing);
+  });
+
+  testWidgets('typing is announced once, and taken back on send', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'п');
+    await tester.enterText(find.byType(TextField), 'при');
+    await tester.pump();
+    // Per state, not per keystroke.
+    expect(repo.typingAnnounced, [true]);
+
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+
+    expect(repo.typingAnnounced, [true, false]);
+  });
+
+  testWidgets('a message can be attachments with no caption at all', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'm1',
+          authorId: 'anya',
+          text: '',
+          media: const [
+            RoomMessageMedia(
+              storagePath: 'messages/room-1/anya/t/a.jpg',
+              isVideo: false,
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    // The bubble is the photo: attachments rendered, and no caption line
+    // where there is no caption (the tombstone label is the only text a
+    // bubble ever shows in place of one).
+    expect(find.byKey(const ValueKey('message-media-m1')), findsOneWidget);
+    expect(find.text('Message deleted'), findsNothing);
   });
 
   testWidgets('sending posts the text and clears the field', (tester) async {
@@ -251,5 +380,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.unsubscribeCalls, 1);
+    // Presence too: without this the viewer stays "in the chat" in a room
+    // nobody has open.
+    expect(repo.presenceUnsubscribeCalls, 1);
   });
 }

@@ -3,11 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
+import 'package:amicus/features/connections/connections_repository.dart';
 import 'package:amicus/features/rooms/room_details_screen.dart';
 import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
 class _FakeRoomsRepository implements RoomsRepository {
+  /// What the mute switch asked for, in order — the switch is only
+  /// meaningful if what it flips actually reaches the repository.
+  final List<bool> mutedSent = [];
+
+  @override
+  Future<void> setRoomMuted({
+    required String roomId,
+    required bool muted,
+  }) async => mutedSent.add(muted);
+
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -16,6 +27,7 @@ Room _room({
   required bool isDirect,
   String ownerId = 'me',
   String? avatarPath,
+  bool notificationsMuted = false,
 }) => Room(
   id: 'room-1',
   name: isDirect ? null : 'Дача',
@@ -23,17 +35,43 @@ Room _room({
   avatarPath: avatarPath,
   ownerId: ownerId,
   createdAt: DateTime.utc(2026, 8, 26),
+  notificationsMuted: notificationsMuted,
   members: const [
     RoomMember(userId: 'me', name: 'Тимофей'),
     RoomMember(userId: 'anya', name: 'Аня'),
   ],
 );
 
-Widget _wrap(Room room) => ProviderScope(
+/// Only what the connect button reads; everything else is `noSuchMethod`.
+class _FakeConnectionsRepository implements ConnectionsRepository {
+  final List<String> requestedIds = [];
+
+  @override
+  Future<bool> requestConnection(String userId) async {
+    requestedIds.add(userId);
+    return false;
+  }
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Widget _wrap(
+  Room room, {
+  _FakeRoomsRepository? repo,
+  _FakeConnectionsRepository? connections,
+  List<Friend> friends = const [],
+  List<ConnectionRequest> requests = const [],
+}) => ProviderScope(
   overrides: [
     currentUserIdProvider.overrideWithValue('me'),
-    roomsRepositoryProvider.overrideWithValue(_FakeRoomsRepository()),
+    roomsRepositoryProvider.overrideWithValue(repo ?? _FakeRoomsRepository()),
     myRoomsProvider.overrideWith((ref) => [room]),
+    connectionsRepositoryProvider.overrideWithValue(
+      connections ?? _FakeConnectionsRepository(),
+    ),
+    friendsProvider.overrideWith((ref) => friends),
+    pendingConnectionRequestsProvider.overrideWith((ref) => requests),
   ],
   child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -118,5 +156,90 @@ void main() {
     expect(find.text('Owner'), findsOneWidget);
     expect(find.text('Add member'), findsNothing);
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
+  });
+
+  testWidgets('muting a room sends the flag and is not an owner-only control', (
+    tester,
+  ) async {
+    // A member, not the owner: silencing a room is about this viewer's own
+    // phone, so everyone in the room gets the switch.
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(
+      _wrap(_room(isDirect: false, ownerId: 'anya'), repo: repo),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+
+    // The switch reads "notifications on", so turning it off means muted.
+    expect(repo.mutedSent, [true]);
+  });
+
+  testWidgets('an already muted room shows the switch off', (tester) async {
+    await tester.pumpWidget(
+      _wrap(_room(isDirect: false, notificationsMuted: true)),
+    );
+    await tester.pumpAndSettle();
+
+    final toggle = tester.widget<SwitchListTile>(find.byType(SwitchListTile));
+    expect(toggle.value, isFalse);
+  });
+
+  testWidgets('a room peer who is not a connection can be asked to be one', (
+    tester,
+  ) async {
+    final connections = _FakeConnectionsRepository();
+    await tester.pumpWidget(
+      _wrap(_room(isDirect: false), connections: connections),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.person_add_alt));
+    await tester.pumpAndSettle();
+
+    expect(connections.requestedIds, ['anya']);
+  });
+
+  testWidgets('an existing connection is not asked again', (tester) async {
+    // The relationship exists, and this screen is not where it is managed.
+    await tester.pumpWidget(
+      _wrap(
+        _room(isDirect: false),
+        friends: [
+          Friend(
+            userId: 'anya',
+            name: 'Аня',
+            connectedAt: DateTime.utc(2026, 8, 1),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.person_add_alt), findsNothing);
+  });
+
+  testWidgets('an ask already sent says so instead of offering again', (
+    tester,
+  ) async {
+    // Either direction: asking into a silence twice is what this prevents.
+    await tester.pumpWidget(
+      _wrap(
+        _room(isDirect: false),
+        requests: const [
+          ConnectionRequest(
+            id: 'req-1',
+            otherId: 'anya',
+            otherName: 'Аня',
+            isIncoming: false,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.person_add_alt), findsNothing);
+    expect(find.text('Request sent'), findsOneWidget);
   });
 }

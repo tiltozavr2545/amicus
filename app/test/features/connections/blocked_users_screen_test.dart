@@ -11,6 +11,27 @@ import 'package:amicus/l10n/app_localizations.dart';
 /// Only the members `BlockedUsersScreen` actually calls need real behaviour;
 /// the rest satisfy the `implements` contract.
 class _FakeConnectionsRepository implements ConnectionsRepository {
+  /// Requests recorded by the room screen / the requests section.
+  final List<String> requestedIds = [];
+  final List<(String, bool)> answeredRequests = [];
+  List<ConnectionRequest> pendingRequests = [];
+
+  @override
+  Future<List<ConnectionRequest>> fetchPendingRequests(String viewerId) async =>
+      pendingRequests;
+
+  @override
+  Future<bool> requestConnection(String userId) async {
+    requestedIds.add(userId);
+    return false;
+  }
+
+  @override
+  Future<void> respondToRequest({
+    required String requestId,
+    required bool accept,
+  }) async => answeredRequests.add((requestId, accept));
+
   List<BlockedUser> blockedUsers = [];
   int unblockCalls = 0;
   String? lastUnblockedId;

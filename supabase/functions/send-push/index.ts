@@ -108,17 +108,26 @@ const TEXTS: Record<string, Record<string, string[]>> = {
     // без названия — перечисление остальных участников), собирает его клиент,
     // и вторая копия этого правила разошлась бы с первой при первом же
     // переименовании. В payload при этом едет room_id — под будущий deep link.
+    // У заявок нет настройки-выключателя: они адресованы лично и приходят
+    // раз в несколько месяцев, а «больше никогда не узнаю, что меня позвали»
+    // — не тот выбор, который стоит предлагать.
+    connection_request: [
+      '{user_name} хочет добавить вас в знакомые',
+      'Заявка в знакомые от {user_name}',
+      '{user_name} зовёт вас в знакомые',
+      'Вас зовёт в знакомые {user_name}',
+    ],
+    connection_accepted: [
+      '{user_name} принял(а) вашу заявку — теперь вы знакомые',
+      'Теперь вы знакомые с {user_name}',
+      '{user_name} теперь ваш(а) знакомый(ая)',
+      'Заявка принята: {user_name} теперь в ваших знакомых',
+    ],
     room_message: [
       'Новое сообщение от {author_name}',
       '{author_name} написал(а) в комнате',
       'Вам пишут в комнате: {author_name}',
       'В комнате новое сообщение от {author_name}',
-    ],
-    room_post: [
-      '{author_name} опубликовал(а) пост в комнате',
-      'Новый пост от {author_name} в комнате',
-      'В комнате новый пост — от {author_name}',
-      '{author_name} поделился(ась) постом в комнате',
     ],
   },
   en: {
@@ -164,17 +173,23 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name} replied to you',
       '{author_name} answered your comment',
     ],
+    connection_request: [
+      '{user_name} wants to add you as a connection',
+      'Connection request from {user_name}',
+      '{user_name} would like to connect with you',
+      'You have a connection request from {user_name}',
+    ],
+    connection_accepted: [
+      '{user_name} accepted your request — you are connections now',
+      'You and {user_name} are connections now',
+      '{user_name} is now one of your connections',
+      'Request accepted: {user_name} is in your connections',
+    ],
     room_message: [
       'New message from {author_name}',
       '{author_name} wrote in a room',
       '{author_name} sent a message in a room',
       'A room has a new message from {author_name}',
-    ],
-    room_post: [
-      '{author_name} posted in a room',
-      'New post from {author_name} in a room',
-      'A room has a new post from {author_name}',
-      '{author_name} shared something in a room',
     ],
   },
 };
@@ -349,10 +364,31 @@ function isDeadTokenError(status: number, errorBody: unknown): boolean {
 // `sent_at` and answering 200 — silent, total, permanent push loss that looked
 // healthy from every side. Hoisting it turns that same failure into one 500
 // with the claim released, so nothing is consumed and the next run retries.
+// What a tap on this notification should open, as FCM `data`.
+//
+// The outbox payload has carried these ids since rooms landed, but they used
+// to stop here: the message went out as `notification` alone, so the app was
+// opened on whatever screen it was last on and the reader had to go find what
+// the push was about. FCM data values must be strings, and an absent id is
+// left out rather than sent as "undefined" — the client reads a missing key
+// as "no destination of that kind".
+function deepLinkData(
+  kind: string,
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const data: Record<string, string> = { kind };
+  for (const key of ['room_id', 'post_id', 'comment_id', 'author_id']) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.length > 0) data[key] = value;
+  }
+  return data;
+}
+
 async function sendToToken(
   accessToken: string,
   token: string,
   body: string,
+  data: Record<string, string>,
 ): Promise<'ok' | 'stale' | 'error'> {
   try {
     const resp = await fetch(
@@ -364,7 +400,7 @@ async function sendToToken(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: { token, notification: { title: APP_TITLE, body } },
+          message: { token, notification: { title: APP_TITLE, body }, data },
         }),
       },
     );
@@ -463,7 +499,12 @@ Deno.serve(async (req) => {
 
   // Flattened to (row, device) pairs so the concurrency limiter sees every
   // independent send at once instead of one recipient at a time.
-  type Delivery = { userId: string; token: string; body: string };
+  type Delivery = {
+    userId: string;
+    token: string;
+    body: string;
+    data: Record<string, string>;
+  };
   const deliveries: Delivery[] = [];
   const skippedKinds = new Set<string>();
   const doneIds: string[] = [];
@@ -484,7 +525,12 @@ Deno.serve(async (req) => {
         skippedKinds.add(row.kind);
         continue;
       }
-      deliveries.push({ userId: row.user_id, token, body });
+      deliveries.push({
+        userId: row.user_id,
+        token,
+        body,
+        data: deepLinkData(row.kind, row.payload ?? {}),
+      });
     }
   }
 
@@ -495,7 +541,7 @@ Deno.serve(async (req) => {
   const staleTokens = new Set<string>();
 
   await forEachLimited(deliveries, MAX_IN_FLIGHT, async (d) => {
-    const result = await sendToToken(accessToken, d.token, d.body);
+    const result = await sendToToken(accessToken, d.token, d.body, d.data);
     if (result === 'ok') sentCount++;
     if (result === 'stale') staleTokens.add(`${d.userId} ${d.token}`);
   });

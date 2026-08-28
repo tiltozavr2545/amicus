@@ -226,6 +226,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unblockButton => 'Unblock';
 
   @override
+  String get connectionRequestsTitle => 'Connection requests';
+
+  @override
+  String get connectionRequestSubtitle => 'Wants to add you as a connection';
+
+  @override
+  String get acceptRequestTooltip => 'Accept';
+
+  @override
+  String get declineRequestTooltip => 'Decline';
+
+  @override
+  String get failedToAnswerRequestError =>
+      'Failed to answer the request. Please try again.';
+
+  @override
+  String get askToConnectTooltip => 'Ask to connect';
+
+  @override
+  String get connectionRequestPendingLabel => 'Request sent';
+
+  @override
+  String connectionRequestSentMessage(String name) {
+    return 'Request sent to $name';
+  }
+
+  @override
+  String connectionRequestMutualMessage(String name) {
+    return '$name had asked you too — you are connections now';
+  }
+
+  @override
+  String get failedToRequestConnectionError =>
+      'Failed to send the request. Please try again.';
+
+  @override
   String get blockedUsersTooltip => 'Blocked users';
 
   @override
@@ -549,19 +585,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noRoomsYetMessage =>
-      'No rooms yet. A room is a separate feed for the people you invite into it.';
+      'No rooms yet. A room is a separate chat for the people you invite into it.';
 
   @override
   String get newRoomTitle => 'New room';
 
   @override
   String get createRoomButton => 'Create room';
-
-  @override
-  String get openRoomFeedTooltip => 'Room feed';
-
-  @override
-  String get roomEmptyFeedMessage => 'Nothing posted in this room yet.';
 
   @override
   String get failedToLoadRoomsError =>
@@ -643,36 +673,68 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get leaveRoomDialogContent =>
-      'The room disappears from your list and its feed goes with it. Only the owner can bring you back.';
+      'The room disappears from your list and its conversation goes with it. Only the owner can bring you back.';
 
   @override
   String get leaveDirectRoomDialogContent =>
-      'This room is just the two of you, so it goes for both — along with everything posted in it.';
+      'This room is just the two of you, so it goes for both — along with everything said in it.';
 
   @override
   String get failedToLeaveRoomError =>
       'Failed to leave the room. Please try again.';
 
   @override
-  String get postDestinationsLabel => 'Where to publish';
+  String get roomNotificationsLabel => 'Notifications';
 
   @override
-  String get generalFeedLabel => 'Main feed';
+  String get roomNotificationsDescription =>
+      'Pushes about new messages in this room. Unread messages are counted either way.';
 
   @override
-  String get pickDestinationError => 'Pick at least one place to publish to.';
+  String get roomMutedLabel => 'Notifications off';
 
   @override
-  String get openRoomChatTooltip => 'Room chat';
+  String get failedToUpdateRoomNotificationsError =>
+      'Failed to change notifications. Please try again.';
 
   @override
   String get roomChatTitle => 'Chat';
+
+  @override
+  String get mediaMessagePreview => 'Photo';
+
+  @override
+  String get typingStatus => 'typing…';
+
+  @override
+  String someoneTypingStatus(String name) {
+    return '$name is typing…';
+  }
+
+  @override
+  String severalTypingStatus(int count) {
+    return '$count people typing…';
+  }
+
+  @override
+  String get onlineStatus => 'online';
+
+  @override
+  String onlineCountStatus(int count) {
+    return '$count online';
+  }
 
   @override
   String get messageHint => 'Message';
 
   @override
   String get sendMessageTooltip => 'Send';
+
+  @override
+  String get attachMediaTooltip => 'Attach a photo or video';
+
+  @override
+  String get removeAttachmentTooltip => 'Remove attachment';
 
   @override
   String get noMessagesYetMessage => 'Quiet in here. Send the first message.';
@@ -691,6 +753,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get formerMemberLabel => 'Former member';
 
   @override
+  String get roomMessageStatusSentLabel => 'Sent';
+
+  @override
+  String get roomMessageStatusDeliveredLabel => 'Delivered';
+
+  @override
+  String get roomMessageStatusReadLabel => 'Read';
+
+  @override
+  String roomMessageReadCount(int read, int total) {
+    return 'Read $read/$total';
+  }
+
+  @override
+  String roomMessageDeliveredCount(int delivered, int total) {
+    return 'Delivered $delivered/$total';
+  }
+
+  @override
   String get failedToLoadMessagesError =>
       'Failed to load messages. Please try again.';
 
@@ -703,9 +784,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notifyRoomMessagesLabel => 'Messages in rooms';
-
-  @override
-  String get notifyRoomPostsLabel => 'Posts in rooms';
 
   @override
   String get roomAvatarLabel => 'Room picture';

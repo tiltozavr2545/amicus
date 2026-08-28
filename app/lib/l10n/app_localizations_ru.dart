@@ -223,6 +223,42 @@ class AppLocalizationsRu extends AppLocalizations {
   String get unblockButton => 'Разблокировать';
 
   @override
+  String get connectionRequestsTitle => 'Заявки в знакомые';
+
+  @override
+  String get connectionRequestSubtitle => 'Хочет добавить вас в знакомые';
+
+  @override
+  String get acceptRequestTooltip => 'Принять';
+
+  @override
+  String get declineRequestTooltip => 'Отклонить';
+
+  @override
+  String get failedToAnswerRequestError =>
+      'Не удалось ответить на заявку. Попробуйте ещё раз.';
+
+  @override
+  String get askToConnectTooltip => 'Позвать в знакомые';
+
+  @override
+  String get connectionRequestPendingLabel => 'Заявка отправлена';
+
+  @override
+  String connectionRequestSentMessage(String name) {
+    return 'Заявка отправлена: $name';
+  }
+
+  @override
+  String connectionRequestMutualMessage(String name) {
+    return '$name тоже звал(а) вас — теперь вы знакомые';
+  }
+
+  @override
+  String get failedToRequestConnectionError =>
+      'Не удалось отправить заявку. Попробуйте ещё раз.';
+
+  @override
   String get blockedUsersTooltip => 'Заблокированные';
 
   @override
@@ -557,20 +593,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noRoomsYetMessage =>
-      'Пока нет ни одной комнаты. Комната — это отдельная лента для тех, кого вы в неё позвали.';
+      'Пока нет ни одной комнаты. Комната — это отдельный чат для тех, кого вы в неё позвали.';
 
   @override
   String get newRoomTitle => 'Новая комната';
 
   @override
   String get createRoomButton => 'Создать комнату';
-
-  @override
-  String get openRoomFeedTooltip => 'Лента комнаты';
-
-  @override
-  String get roomEmptyFeedMessage =>
-      'В этой комнате пока ничего не опубликовано.';
 
   @override
   String get failedToLoadRoomsError =>
@@ -654,37 +683,68 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get leaveRoomDialogContent =>
-      'Комната пропадёт из списка, а её лента станет недоступна. Вернуть вас сможет только владелец.';
+      'Комната пропадёт из списка, а её переписка станет недоступна. Вернуть вас сможет только владелец.';
 
   @override
   String get leaveDirectRoomDialogContent =>
-      'Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всем, что в ней опубликовано.';
+      'Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всей перепиской.';
 
   @override
   String get failedToLeaveRoomError =>
       'Не удалось выйти из комнаты. Попробуйте ещё раз.';
 
   @override
-  String get postDestinationsLabel => 'Куда опубликовать';
+  String get roomNotificationsLabel => 'Уведомления';
 
   @override
-  String get generalFeedLabel => 'Общая лента';
+  String get roomNotificationsDescription =>
+      'Пуши о новых сообщениях в этой комнате. Непрочитанные считаются в любом случае.';
 
   @override
-  String get pickDestinationError =>
-      'Выберите хотя бы одно место для публикации.';
+  String get roomMutedLabel => 'Уведомления выключены';
 
   @override
-  String get openRoomChatTooltip => 'Чат комнаты';
+  String get failedToUpdateRoomNotificationsError =>
+      'Не удалось изменить уведомления. Попробуйте ещё раз.';
 
   @override
   String get roomChatTitle => 'Чат';
+
+  @override
+  String get mediaMessagePreview => 'Фото';
+
+  @override
+  String get typingStatus => 'печатает…';
+
+  @override
+  String someoneTypingStatus(String name) {
+    return '$name печатает…';
+  }
+
+  @override
+  String severalTypingStatus(int count) {
+    return '$count печатают…';
+  }
+
+  @override
+  String get onlineStatus => 'в сети';
+
+  @override
+  String onlineCountStatus(int count) {
+    return '$count в сети';
+  }
 
   @override
   String get messageHint => 'Сообщение';
 
   @override
   String get sendMessageTooltip => 'Отправить';
+
+  @override
+  String get attachMediaTooltip => 'Прикрепить фото или видео';
+
+  @override
+  String get removeAttachmentTooltip => 'Убрать вложение';
 
   @override
   String get noMessagesYetMessage =>
@@ -704,6 +764,25 @@ class AppLocalizationsRu extends AppLocalizations {
   String get formerMemberLabel => 'Бывший участник';
 
   @override
+  String get roomMessageStatusSentLabel => 'Отправлено';
+
+  @override
+  String get roomMessageStatusDeliveredLabel => 'Доставлено';
+
+  @override
+  String get roomMessageStatusReadLabel => 'Прочитано';
+
+  @override
+  String roomMessageReadCount(int read, int total) {
+    return 'Прочитано $read/$total';
+  }
+
+  @override
+  String roomMessageDeliveredCount(int delivered, int total) {
+    return 'Доставлено $delivered/$total';
+  }
+
+  @override
   String get failedToLoadMessagesError =>
       'Не удалось загрузить сообщения. Попробуйте ещё раз.';
 
@@ -717,9 +796,6 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get notifyRoomMessagesLabel => 'Сообщения в комнатах';
-
-  @override
-  String get notifyRoomPostsLabel => 'Посты в комнатах';
 
   @override
   String get roomAvatarLabel => 'Аватарка комнаты';

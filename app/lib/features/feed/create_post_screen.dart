@@ -1,36 +1,20 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:reorderables/reorderables.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
 import '../../l10n/app_localizations.dart';
-import '../../shared/file_extension.dart';
-import '../../shared/media_extensions.dart';
-import '../../shared/picker_limit.dart';
+import '../../shared/media_pick_message.dart';
+import '../../shared/media_picking.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
-import '../rooms/rooms_repository.dart';
 import 'feed_repository.dart';
 
 const _maxMediaCount = 20;
-const _maxVideoDuration = Duration(seconds: 60);
-
-/// Mirrors the `media` bucket's own `file_size_limit` (20260820130000).
-///
-/// Duration alone was never the whole gate: 45 s of 4K/60 clears
-/// [_maxVideoDuration] and still runs well past 100 MiB, and Storage answers
-/// that with a 413 only after the entire file has been read into memory and
-/// pushed over the network. The composer showed the generic "failed to
-/// publish" for it, so the clip looked like a flaky upload rather than one
-/// that can never succeed, and retrying could not help.
-const _maxVideoBytes = 100 * 1024 * 1024;
 
 /// One tile in the composer's media grid: either a photo/video already on
 /// the post being edited ([_ExistingSlot]) or one freshly picked in this
@@ -68,20 +52,9 @@ class _PickedSlot extends _Slot {
 /// both, since publishing and saving edits differ only in which repository
 /// call they end in and a couple of labels.
 class CreatePostScreen extends ConsumerStatefulWidget {
-  const CreatePostScreen({
-    super.key,
-    this.existingPost,
-    this.initialRoomId,
-    this.onClose,
-  });
+  const CreatePostScreen({super.key, this.existingPost, this.onClose});
 
   final Post? existingPost;
-
-  /// Opened from a room's feed: that room starts ticked and the main feed
-  /// starts unticked, so the obvious action (write something in this room)
-  /// needs no extra tap and cannot accidentally publish to everyone. Null
-  /// when composing from the bottom bar, where the main feed is the default.
-  final String? initialRoomId;
 
   /// How to leave this screen when it isn't a pushed route.
   ///
@@ -91,7 +64,7 @@ class CreatePostScreen extends ConsumerStatefulWidget {
   /// of its own, `Navigator.of(context).pop()` would act on whatever screen
   /// is underneath — so callers that embed this widget pass [onClose] to say
   /// what "leave" means instead, and callers that push it as a route (editing
-  /// a post, composing from a room) leave this null and get the normal pop.
+  /// a post) leave this null and get the normal pop.
   /// Carries `true` when a post was created/saved, same as the pop result did.
   final ValueChanged<bool>? onClose;
 
@@ -109,19 +82,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   ];
 
   bool get _isEditing => widget.existingPost != null;
-
-  /// The rooms this post is addressed to, and whether it also goes to the main
-  /// feed — a post can go to both, to several rooms at once, or to rooms only,
-  /// in which case it exists nowhere else: not in anyone's main feed, not on
-  /// the author's own profile wall.
-  ///
-  /// Editing does not touch destinations in this version: [updatePost] sends
-  /// text and media only, and the section stays off screen rather than showing
-  /// checkboxes that would silently do nothing.
-  late final Set<String> _roomIds = {
-    if (widget.initialRoomId != null) widget.initialRoomId!,
-  };
-  late bool _inGeneralFeed = widget.initialRoomId == null;
 
   bool _isSubmitting = false;
   bool _isPicking = false;
@@ -244,12 +204,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     });
   }
 
-  bool _looksLikeVideo(XFile file) {
-    final mime = file.mimeType;
-    if (mime != null) return mime.startsWith('video/');
-    return videoExtensions.contains(fileExtension(file.name));
-  }
-
   Future<void> _pickMedia() async {
     final l10n = AppLocalizations.of(context)!;
     final remaining = _maxMediaCount - _slots.length;
@@ -270,14 +224,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     // а композер умел показать только общее «не удалось опубликовать».
     setState(() => _isPicking = true);
 
-    // Not `limit: remaining`: the picker rejects a limit below 2 outright.
-    // See [pickerLimit] — `take(remaining)` below is the real cap either way.
-    final List<XFile> picked;
+    final MediaPickResult result;
     try {
-      picked = await ImagePicker().pickMultipleMedia(
-        maxWidth: 1600,
-        limit: pickerLimit(remaining),
-      );
+      result = await pickMediaFiles(remaining: remaining);
     } catch (_) {
       // Теперь, когда флаг выставлен заранее, бросок отсюда запирал бы кнопку
       // до конца сессии композера. Заодно перестаёт быть необработанной
@@ -290,161 +239,36 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       ).showSnackBar(SnackBar(content: Text(l10n.failedToAddMediaError)));
       return;
     }
-    if (picked.isEmpty) {
-      if (mounted) setState(() => _isPicking = false);
-      return;
-    }
     // The picker hands control to a separate activity, so this State can be
     // gone by the time it resolves — same window every other `await` on this
     // screen already guards against, and the only one that did not.
     if (!mounted) return;
 
-    var skippedTooLong = false;
-    var skippedTooLarge = false;
-    var skippedBadFormat = false;
-    var skippedBadVideoFormat = false;
-    var failed = false;
-    final newSlots = <_Slot>[];
-    // Per file, not per batch: one unreadable file (an unsupported codec
-    // makes initialize() throw, a huge one fails readAsBytes) shouldn't cost
-    // the user the other files they picked — and must not escape, or the
-    // `finally` below never runs and the Add button stays disabled for the
-    // rest of the composer session, with no way back except losing the draft.
-    for (final file in picked.take(remaining)) {
-      final mediaClientToken = const Uuid().v4();
-      try {
-        if (_looksLikeVideo(file)) {
-          // Первым делом, до инициализации плеера и до извлечения постера —
-          // и по той же причине, по которой ветка изображений ниже проверяет
-          // [imageExtensions]: content type объекта Storage берёт из
-          // РАСШИРЕНИЯ в его имени (`lookupMimeType()` в
-          // storage_client/src/fetch.dart), а имя строит [postMediaPath] из
-          // расширения выбранного файла. Формата, которого нет в
-          // `allowed_mime_types` бакета (20260822260000), не будет и после
-          // ретрая, так что `.avi`/`.mpg`/`.wmv` уходил в общее «не удалось
-          // опубликовать» — и уходил ПОСЛЕ того, как клип целиком прочитали в
-          // память и отправили по сети.
-          //
-          // [videoExtensions] до сих пор участвовал только в [_looksLikeVideo]
-          // — как классификатор «видео или картинка», когда пикер не сообщил
-          // mime, — но гейтом не был нигде, хотя data-model.md и
-          // media_extensions_test.dart исходят из того, что был.
-          //
-          // Проверка нужна и на втором, менее очевидном исходе: у файла без
-          // расширения в имени [fileExtension] отдаёт свой дефолтный `jpg`,
-          // бакет принимает клип как `image/jpeg` — и в ленте остаётся слайд
-          // с `media_type = 'video'`, постером и кнопкой play, которая не
-          // проигрывает ничего.
-          if (!videoExtensions.contains(fileExtension(file.name))) {
-            skippedBadVideoFormat = true;
-            continue;
-          }
-          final controller = VideoPlayerController.file(File(file.path));
-          Duration duration;
-          try {
-            await controller.initialize();
-            duration = controller.value.duration;
-          } finally {
-            await controller.dispose();
-          }
-          if (duration > _maxVideoDuration) {
-            skippedTooLong = true;
-            continue;
-          }
-          // Checked before the poster frame is extracted: no point spending a
-          // decode on a clip the bucket will refuse.
-          if (await file.length() > _maxVideoBytes) {
-            skippedTooLarge = true;
-            continue;
-          }
-          final posterBytes =
-              await video_thumbnail.VideoThumbnail.thumbnailData(
-                video: file.path,
-                imageFormat: video_thumbnail.ImageFormat.JPEG,
-                maxWidth: 640,
-                quality: 70,
-              );
-          // Couldn't extract a poster frame — skip rather than add a video
-          // slide with nothing to show for it in the feed's tap-to-play
-          // poster.
-          if (posterBytes == null) {
-            failed = true;
-            continue;
-          }
-          // No readAsBytes for video: the clip is read at upload time instead
-          // (see uploadTolerantFile), so only the one being sent is resident
-          // rather than all 20 slots at once for the whole session. Nothing on
-          // screen needs those bytes — this composer's preview and the feed's
-          // tap-to-play slide both show the poster frame.
-          newSlots.add(
-            _PickedSlot(
-              mediaClientToken,
-              PendingMedia(
-                mediaClientToken: mediaClientToken,
-                mediaType: MediaType.video,
-                source: MediaFile(file.path),
-                ext: fileExtension(file.name),
-                posterBytes: posterBytes,
-              ),
-              posterBytes,
-            ),
-          );
-        } else {
-          // Checked before the bytes are read, and for the same reason the
-          // video branch checks duration and size first: the bucket decides an
-          // object's content type from the extension in its name, so a format
-          // it doesn't accept is refused on upload no matter what the file
-          // actually contains — and refused every retry too. See
-          // [imageExtensions].
-          if (!imageExtensions.contains(fileExtension(file.name))) {
-            skippedBadFormat = true;
-            continue;
-          }
-          final bytes = await file.readAsBytes();
-          newSlots.add(
-            _PickedSlot(
-              mediaClientToken,
-              PendingMedia(
-                mediaClientToken: mediaClientToken,
-                mediaType: MediaType.image,
-                source: MediaBytes(bytes),
-                ext: fileExtension(file.name),
-              ),
-              bytes,
-            ),
-          );
-        }
-      } catch (_) {
-        failed = true;
-      }
-    }
-    if (!mounted) return;
     setState(() {
-      _slots.addAll(newSlots);
+      _slots.addAll(result.items.map(_slotFor));
       _isPicking = false;
     });
-    if (skippedTooLong) {
+    if (mediaPickProblemMessage(result.firstProblem, l10n)
+        case final message?) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(l10n.videoTooLongError)));
-    } else if (skippedTooLarge) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.videoTooLargeError)));
-    } else if (skippedBadFormat) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.unsupportedImageFormatError)));
-    } else if (skippedBadVideoFormat) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.unsupportedVideoFormatError)));
-    } else if (failed) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.failedToAddMediaError)));
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
+
+  _PickedSlot _slotFor(PickedMedia item) => _PickedSlot(
+    item.token,
+    PendingMedia(
+      mediaClientToken: item.token,
+      mediaType: item.isVideo ? MediaType.video : MediaType.image,
+      source: item.isVideo
+          ? MediaFile(item.filePath!)
+          : MediaBytes(item.bytes!),
+      ext: item.ext,
+      posterBytes: item.posterBytes,
+    ),
+    item.previewBytes,
+  );
 
   void _close(bool result) {
     final onClose = widget.onClose;
@@ -471,13 +295,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       setState(() => _errorMessage = l10n.addTextOrPhotoError);
       return;
     }
-    // The server refuses a post with no destination too (PT422) — this is here
-    // so the answer comes before the uploads, not after them.
-    if (!_isEditing && !_inGeneralFeed && _roomIds.isEmpty) {
-      setState(() => _errorMessage = l10n.pickDestinationError);
-      return;
-    }
-
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
@@ -512,13 +329,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             for (final slot in _slots)
               if (slot is _PickedSlot) slot.pending,
           ],
-          roomIds: _roomIds.toList(),
-          inGeneralFeed: _inGeneralFeed,
         );
-        // The room list is ordered by last activity, and this just changed it.
-        if (_roomIds.isNotEmpty) {
-          ref.read(roomsRefreshTickProvider.notifier).bump();
-        }
       }
       if (mounted) _close(true);
     } catch (e) {
@@ -535,60 +346,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
-  }
-
-  /// The destination checkboxes — hidden entirely for someone with no rooms,
-  /// who has only one place to post to and does not need to be told so.
-  ///
-  /// Reads the room list from the same provider the rooms tab uses, so it is
-  /// already loaded by the time anyone opens this screen from a room. While it
-  /// is loading (or failed to), the section stays out of the way and the post
-  /// goes where the caller intended it to: [_inGeneralFeed] and [_roomIds] are
-  /// already set from [CreatePostScreen.initialRoomId] and are not touched by
-  /// this widget's absence.
-  Widget _destinations(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final rooms = ref.watch(myRoomsProvider).value ?? const <Room>[];
-    if (rooms.isEmpty) return const SizedBox.shrink();
-    final viewerId = ref.read(currentUserIdProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 12),
-        Text(
-          l10n.postDestinationsLabel,
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        CheckboxListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          value: _inGeneralFeed,
-          title: Text(l10n.generalFeedLabel),
-          onChanged: _isSubmitting
-              ? null
-              : (value) => setState(() => _inGeneralFeed = value ?? false),
-        ),
-        for (final room in rooms)
-          CheckboxListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            value: _roomIds.contains(room.id),
-            title: Text(
-              roomDisplayName(room, viewerId, fallback: l10n.roomFallbackName),
-            ),
-            onChanged: _isSubmitting
-                ? null
-                : (value) => setState(() {
-                    if (value ?? false) {
-                      _roomIds.add(room.id);
-                    } else {
-                      _roomIds.remove(room.id);
-                    }
-                  }),
-          ),
-      ],
-    );
   }
 
   @override
@@ -635,7 +392,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 onReorder: _reorder,
               ),
             ],
-            if (!_isEditing) _destinations(context),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(

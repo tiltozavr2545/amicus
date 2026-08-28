@@ -10,14 +10,15 @@ import 'create_room_screen.dart';
 import 'room_avatar.dart';
 import 'room_chat_screen.dart';
 import 'room_details_screen.dart';
-import 'room_feed_screen.dart';
 import 'rooms_repository.dart';
 
-/// The rooms tab: every room the viewer is in, most recently active first.
+/// The rooms tab: every room the viewer is in, the most recently talked-in
+/// first.
 ///
-/// Each row is the room itself (tap it to manage members, rename it or leave)
-/// plus the two buttons that open what the room actually holds: its feed and
-/// its chat.
+/// A room is its chat, so a row opens the chat — the way a row in any list of
+/// conversations does. Who is in the room, its name and its picture live one
+/// level down, behind the room's own picture here and behind the members
+/// button in the chat's app bar.
 class RoomsScreen extends ConsumerWidget {
   const RoomsScreen({super.key});
 
@@ -92,11 +93,19 @@ class _RoomListItem extends StatelessWidget {
   /// What the row says under the room's name: the last thing said in the
   /// chat, or — while nobody has said anything — how many people are in it.
   /// A two-person room says neither: "2 участника" about a pair is noise.
+  ///
+  /// A message that is only a photo has no text to preview, and a blank line
+  /// under the name reads as an empty room; it says "Photo" instead — on the
+  /// reader's own language, which is why the server sends one bit rather than
+  /// a ready-made line.
   String? _subtitle(AppLocalizations l10n) {
     final text = room.lastMessageText;
-    if (text != null && text.isNotEmpty) {
+    final preview = (text == null || text.isEmpty)
+        ? (room.lastMessageHasMedia ? l10n.mediaMessagePreview : null)
+        : text;
+    if (preview != null) {
       final author = room.memberById(room.lastMessageAuthorId);
-      return author == null ? text : '${author.name}: $text';
+      return author == null ? preview : '${author.name}: $preview';
     }
     return room.isDirect ? null : l10n.roomMembersCount(room.members.length);
   }
@@ -136,34 +145,26 @@ class _RoomListItem extends StatelessWidget {
           ? null
           : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => RoomDetailsScreen(roomId: room.id)),
+        MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: room.id)),
       ),
-      // Two buttons, no labels: the room's feed and the room's chat.
+      // Marks, not buttons: the whole row already opens the chat, and a
+      // second tap target that does the same thing only makes the row harder
+      // to hit. A muted room still shows its unread count — mute is about
+      // pushes, and the badge is the one thing that says what was missed.
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: const Icon(Icons.dynamic_feed_outlined),
-            tooltip: l10n.openRoomFeedTooltip,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => RoomFeedScreen(roomId: room.id),
+          if (room.notificationsMuted)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Icon(
+                Icons.notifications_off_outlined,
+                size: 18,
+                semanticLabel: l10n.roomMutedLabel,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-          ),
-          IconButton(
-            icon: Badge.count(
-              count: room.unreadCount,
-              isLabelVisible: room.unreadCount > 0,
-              child: const Icon(Icons.chat_bubble_outline),
-            ),
-            tooltip: l10n.openRoomChatTooltip,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => RoomChatScreen(roomId: room.id),
-              ),
-            ),
-          ),
+          if (room.unreadCount > 0) Badge.count(count: room.unreadCount),
         ],
       ),
     );

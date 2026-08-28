@@ -83,6 +83,25 @@ Widget _wrap(
   );
 }
 
+/// Scrolls the settings list to [label] and taps it.
+///
+/// `scrollUntilVisible` alone is not enough, and the way it fails is quiet:
+/// it stops as soon as the finder MATCHES, while a ListView builds a little
+/// past its own viewport — so the row can be found while still sitting below
+/// the fold, and the tap then lands outside the screen and does nothing.
+/// Dropping a single switch from this screen was enough to move a row into
+/// that gap. `ensureVisible` closes it, and the pump after it is not optional
+/// either: it only schedules the scroll, so without one the tap still uses
+/// the pre-scroll position.
+Future<void> _scrollToAndTap(WidgetTester tester, String label) async {
+  final finder = find.text(label);
+  await tester.scrollUntilVisible(finder, 200);
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('Every toggle starts on by default', (tester) async {
     final repo = _FakeNotificationPreferencesRepository();
@@ -92,7 +111,7 @@ void main() {
     final switches = tester
         .widgetList<SwitchListTile>(find.byType(SwitchListTile))
         .toList();
-    expect(switches, hasLength(7));
+    expect(switches, hasLength(6));
     expect(switches.every((s) => s.value), true);
   });
 
@@ -151,9 +170,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.scrollUntilVisible(find.text('Sign out'), 200);
-    await tester.tap(find.text('Sign out'));
-    await tester.pumpAndSettle();
+    await _scrollToAndTap(tester, 'Sign out');
     expect(find.text('Sign out?'), findsOneWidget);
 
     await tester.tap(find.text('Cancel'));
@@ -171,9 +188,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.scrollUntilVisible(find.text('Sign out'), 200);
-    await tester.tap(find.text('Sign out'));
-    await tester.pumpAndSettle();
+    await _scrollToAndTap(tester, 'Sign out');
     // Two matches now: the list tile behind the dialog and the dialog's own
     // confirm button, both labelled "Sign out" — the confirm action is the
     // last one.
@@ -191,9 +206,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.scrollUntilVisible(find.text('Sign out'), 200);
-    await tester.tap(find.text('Sign out'));
-    await tester.pumpAndSettle();
+    await _scrollToAndTap(tester, 'Sign out');
     await tester.tap(find.text('Sign out').last);
     await tester.pumpAndSettle();
 
@@ -212,10 +225,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.scrollUntilVisible(find.text('Delete account'), 200);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Delete account'));
-      await tester.pumpAndSettle();
+      await _scrollToAndTap(tester, 'Delete account');
       expect(find.text('Delete account?'), findsOneWidget);
 
       // The dialog's confirm button reuses the generic "Delete" label, not
@@ -235,10 +245,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.scrollUntilVisible(find.text('Delete account'), 200);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete account'));
-    await tester.pumpAndSettle();
+    await _scrollToAndTap(tester, 'Delete account');
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
@@ -252,10 +259,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.scrollUntilVisible(find.text('Delete account'), 200);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete account'));
-    await tester.pumpAndSettle();
+    await _scrollToAndTap(tester, 'Delete account');
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 

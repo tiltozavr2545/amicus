@@ -482,6 +482,66 @@ abstract class AppLocalizations {
   /// **'Unblock'**
   String get unblockButton;
 
+  /// No description provided for @connectionRequestsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection requests'**
+  String get connectionRequestsTitle;
+
+  /// No description provided for @connectionRequestSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wants to add you as a connection'**
+  String get connectionRequestSubtitle;
+
+  /// No description provided for @acceptRequestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get acceptRequestTooltip;
+
+  /// No description provided for @declineRequestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get declineRequestTooltip;
+
+  /// No description provided for @failedToAnswerRequestError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to answer the request. Please try again.'**
+  String get failedToAnswerRequestError;
+
+  /// No description provided for @askToConnectTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask to connect'**
+  String get askToConnectTooltip;
+
+  /// No description provided for @connectionRequestPendingLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent'**
+  String get connectionRequestPendingLabel;
+
+  /// No description provided for @connectionRequestSentMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent to {name}'**
+  String connectionRequestSentMessage(String name);
+
+  /// No description provided for @connectionRequestMutualMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} had asked you too — you are connections now'**
+  String connectionRequestMutualMessage(String name);
+
+  /// No description provided for @failedToRequestConnectionError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to send the request. Please try again.'**
+  String get failedToRequestConnectionError;
+
   /// No description provided for @blockedUsersTooltip.
   ///
   /// In en, this message translates to:
@@ -1025,7 +1085,7 @@ abstract class AppLocalizations {
   /// No description provided for @noRoomsYetMessage.
   ///
   /// In en, this message translates to:
-  /// **'No rooms yet. A room is a separate feed for the people you invite into it.'**
+  /// **'No rooms yet. A room is a separate chat for the people you invite into it.'**
   String get noRoomsYetMessage;
 
   /// No description provided for @newRoomTitle.
@@ -1039,18 +1099,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create room'**
   String get createRoomButton;
-
-  /// No description provided for @openRoomFeedTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Room feed'**
-  String get openRoomFeedTooltip;
-
-  /// No description provided for @roomEmptyFeedMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Nothing posted in this room yet.'**
-  String get roomEmptyFeedMessage;
 
   /// No description provided for @failedToLoadRoomsError.
   ///
@@ -1175,13 +1223,13 @@ abstract class AppLocalizations {
   /// No description provided for @leaveRoomDialogContent.
   ///
   /// In en, this message translates to:
-  /// **'The room disappears from your list and its feed goes with it. Only the owner can bring you back.'**
+  /// **'The room disappears from your list and its conversation goes with it. Only the owner can bring you back.'**
   String get leaveRoomDialogContent;
 
   /// No description provided for @leaveDirectRoomDialogContent.
   ///
   /// In en, this message translates to:
-  /// **'This room is just the two of you, so it goes for both — along with everything posted in it.'**
+  /// **'This room is just the two of you, so it goes for both — along with everything said in it.'**
   String get leaveDirectRoomDialogContent;
 
   /// No description provided for @failedToLeaveRoomError.
@@ -1190,35 +1238,71 @@ abstract class AppLocalizations {
   /// **'Failed to leave the room. Please try again.'**
   String get failedToLeaveRoomError;
 
-  /// No description provided for @postDestinationsLabel.
+  /// No description provided for @roomNotificationsLabel.
   ///
   /// In en, this message translates to:
-  /// **'Where to publish'**
-  String get postDestinationsLabel;
+  /// **'Notifications'**
+  String get roomNotificationsLabel;
 
-  /// No description provided for @generalFeedLabel.
+  /// No description provided for @roomNotificationsDescription.
   ///
   /// In en, this message translates to:
-  /// **'Main feed'**
-  String get generalFeedLabel;
+  /// **'Pushes about new messages in this room. Unread messages are counted either way.'**
+  String get roomNotificationsDescription;
 
-  /// No description provided for @pickDestinationError.
+  /// No description provided for @roomMutedLabel.
   ///
   /// In en, this message translates to:
-  /// **'Pick at least one place to publish to.'**
-  String get pickDestinationError;
+  /// **'Notifications off'**
+  String get roomMutedLabel;
 
-  /// No description provided for @openRoomChatTooltip.
+  /// No description provided for @failedToUpdateRoomNotificationsError.
   ///
   /// In en, this message translates to:
-  /// **'Room chat'**
-  String get openRoomChatTooltip;
+  /// **'Failed to change notifications. Please try again.'**
+  String get failedToUpdateRoomNotificationsError;
 
   /// No description provided for @roomChatTitle.
   ///
   /// In en, this message translates to:
   /// **'Chat'**
   String get roomChatTitle;
+
+  /// No description provided for @mediaMessagePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get mediaMessagePreview;
+
+  /// No description provided for @typingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'typing…'**
+  String get typingStatus;
+
+  /// No description provided for @someoneTypingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is typing…'**
+  String someoneTypingStatus(String name);
+
+  /// No description provided for @severalTypingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} people typing…'**
+  String severalTypingStatus(int count);
+
+  /// No description provided for @onlineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'online'**
+  String get onlineStatus;
+
+  /// No description provided for @onlineCountStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} online'**
+  String onlineCountStatus(int count);
 
   /// No description provided for @messageHint.
   ///
@@ -1231,6 +1315,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Send'**
   String get sendMessageTooltip;
+
+  /// No description provided for @attachMediaTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a photo or video'**
+  String get attachMediaTooltip;
+
+  /// No description provided for @removeAttachmentTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove attachment'**
+  String get removeAttachmentTooltip;
 
   /// No description provided for @noMessagesYetMessage.
   ///
@@ -1262,6 +1358,36 @@ abstract class AppLocalizations {
   /// **'Former member'**
   String get formerMemberLabel;
 
+  /// No description provided for @roomMessageStatusSentLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get roomMessageStatusSentLabel;
+
+  /// No description provided for @roomMessageStatusDeliveredLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered'**
+  String get roomMessageStatusDeliveredLabel;
+
+  /// No description provided for @roomMessageStatusReadLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Read'**
+  String get roomMessageStatusReadLabel;
+
+  /// No description provided for @roomMessageReadCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Read {read}/{total}'**
+  String roomMessageReadCount(int read, int total);
+
+  /// No description provided for @roomMessageDeliveredCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered {delivered}/{total}'**
+  String roomMessageDeliveredCount(int delivered, int total);
+
   /// No description provided for @failedToLoadMessagesError.
   ///
   /// In en, this message translates to:
@@ -1285,12 +1411,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Messages in rooms'**
   String get notifyRoomMessagesLabel;
-
-  /// No description provided for @notifyRoomPostsLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Posts in rooms'**
-  String get notifyRoomPostsLabel;
 
   /// No description provided for @roomAvatarLabel.
   ///
