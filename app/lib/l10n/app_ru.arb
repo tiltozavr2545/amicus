@@ -219,6 +219,11 @@
   "leaveDirectRoomDialogContent": "Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всей перепиской.",
   "failedToLeaveRoomError": "Не удалось выйти из комнаты. Попробуйте ещё раз.",
 
+  "roomNotificationsLabel": "Уведомления",
+  "roomNotificationsDescription": "Пуши о новых сообщениях в этой комнате. Непрочитанные считаются в любом случае.",
+  "roomMutedLabel": "Уведомления выключены",
+  "failedToUpdateRoomNotificationsError": "Не удалось изменить уведомления. Попробуйте ещё раз.",
+
   "roomChatTitle": "Чат",
   "messageHint": "Сообщение",
   "sendMessageTooltip": "Отправить",

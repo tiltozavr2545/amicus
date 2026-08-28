@@ -350,6 +350,30 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
               onTap: _isBusy ? null : () => _addMember(room),
             ),
           const Divider(),
+          // Per member, not per room: the flag is on this viewer's own
+          // `room_members` row, so nobody else in the room can tell. It
+          // silences pushes and nothing else — the unread badge in the list
+          // keeps counting, because muting a noisy room is not the same as
+          // no longer reading it.
+          SwitchListTile(
+            secondary: Icon(
+              room.notificationsMuted
+                  ? Icons.notifications_off_outlined
+                  : Icons.notifications_outlined,
+            ),
+            title: Text(l10n.roomNotificationsLabel),
+            subtitle: Text(l10n.roomNotificationsDescription),
+            value: !room.notificationsMuted,
+            onChanged: _isBusy
+                ? null
+                : (value) => _run(
+                    () => ref
+                        .read(roomsRepositoryProvider)
+                        .setRoomMuted(roomId: room.id, muted: !value),
+                    l10n.failedToUpdateRoomNotificationsError,
+                  ),
+          ),
+          const Divider(),
           ListTile(
             leading: Icon(
               Icons.logout,

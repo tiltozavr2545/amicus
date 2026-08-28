@@ -8,6 +8,16 @@ import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
 class _FakeRoomsRepository implements RoomsRepository {
+  /// What the mute switch asked for, in order — the switch is only
+  /// meaningful if what it flips actually reaches the repository.
+  final List<bool> mutedSent = [];
+
+  @override
+  Future<void> setRoomMuted({
+    required String roomId,
+    required bool muted,
+  }) async => mutedSent.add(muted);
+
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -16,6 +26,7 @@ Room _room({
   required bool isDirect,
   String ownerId = 'me',
   String? avatarPath,
+  bool notificationsMuted = false,
 }) => Room(
   id: 'room-1',
   name: isDirect ? null : 'Дача',
@@ -23,16 +34,17 @@ Room _room({
   avatarPath: avatarPath,
   ownerId: ownerId,
   createdAt: DateTime.utc(2026, 8, 26),
+  notificationsMuted: notificationsMuted,
   members: const [
     RoomMember(userId: 'me', name: 'Тимофей'),
     RoomMember(userId: 'anya', name: 'Аня'),
   ],
 );
 
-Widget _wrap(Room room) => ProviderScope(
+Widget _wrap(Room room, {_FakeRoomsRepository? repo}) => ProviderScope(
   overrides: [
     currentUserIdProvider.overrideWithValue('me'),
-    roomsRepositoryProvider.overrideWithValue(_FakeRoomsRepository()),
+    roomsRepositoryProvider.overrideWithValue(repo ?? _FakeRoomsRepository()),
     myRoomsProvider.overrideWith((ref) => [room]),
   ],
   child: MaterialApp(
@@ -118,5 +130,33 @@ void main() {
     expect(find.text('Owner'), findsOneWidget);
     expect(find.text('Add member'), findsNothing);
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
+  });
+
+  testWidgets('muting a room sends the flag and is not an owner-only control', (
+    tester,
+  ) async {
+    // A member, not the owner: silencing a room is about this viewer's own
+    // phone, so everyone in the room gets the switch.
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(
+      _wrap(_room(isDirect: false, ownerId: 'anya'), repo: repo),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+
+    // The switch reads "notifications on", so turning it off means muted.
+    expect(repo.mutedSent, [true]);
+  });
+
+  testWidgets('an already muted room shows the switch off', (tester) async {
+    await tester.pumpWidget(
+      _wrap(_room(isDirect: false, notificationsMuted: true)),
+    );
+    await tester.pumpAndSettle();
+
+    final toggle = tester.widget<SwitchListTile>(find.byType(SwitchListTile));
+    expect(toggle.value, isFalse);
   });
 }

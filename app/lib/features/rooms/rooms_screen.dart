@@ -139,12 +139,26 @@ class _RoomListItem extends StatelessWidget {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: room.id)),
       ),
-      // The count alone, not a button: the whole row already opens the chat,
-      // and a second tap target that does the same thing only makes the row
-      // harder to hit.
-      trailing: room.unreadCount == 0
-          ? null
-          : Badge.count(count: room.unreadCount),
+      // Marks, not buttons: the whole row already opens the chat, and a
+      // second tap target that does the same thing only makes the row harder
+      // to hit. A muted room still shows its unread count — mute is about
+      // pushes, and the badge is the one thing that says what was missed.
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (room.notificationsMuted)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Icon(
+                Icons.notifications_off_outlined,
+                size: 18,
+                semanticLabel: l10n.roomMutedLabel,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          if (room.unreadCount > 0) Badge.count(count: room.unreadCount),
+        ],
+      ),
     );
   }
 }

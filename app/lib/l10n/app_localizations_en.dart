@@ -648,6 +648,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to leave the room. Please try again.';
 
   @override
+  String get roomNotificationsLabel => 'Notifications';
+
+  @override
+  String get roomNotificationsDescription =>
+      'Pushes about new messages in this room. Unread messages are counted either way.';
+
+  @override
+  String get roomMutedLabel => 'Notifications off';
+
+  @override
+  String get failedToUpdateRoomNotificationsError =>
+      'Failed to change notifications. Please try again.';
+
+  @override
   String get roomChatTitle => 'Chat';
 
   @override

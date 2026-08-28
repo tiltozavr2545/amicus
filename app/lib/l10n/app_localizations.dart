@@ -1178,6 +1178,30 @@ abstract class AppLocalizations {
   /// **'Failed to leave the room. Please try again.'**
   String get failedToLeaveRoomError;
 
+  /// No description provided for @roomNotificationsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get roomNotificationsLabel;
+
+  /// No description provided for @roomNotificationsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushes about new messages in this room. Unread messages are counted either way.'**
+  String get roomNotificationsDescription;
+
+  /// No description provided for @roomMutedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications off'**
+  String get roomMutedLabel;
+
+  /// No description provided for @failedToUpdateRoomNotificationsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to change notifications. Please try again.'**
+  String get failedToUpdateRoomNotificationsError;
+
   /// No description provided for @roomChatTitle.
   ///
   /// In en, this message translates to:

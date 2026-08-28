@@ -658,6 +658,20 @@ class AppLocalizationsRu extends AppLocalizations {
       'Не удалось выйти из комнаты. Попробуйте ещё раз.';
 
   @override
+  String get roomNotificationsLabel => 'Уведомления';
+
+  @override
+  String get roomNotificationsDescription =>
+      'Пуши о новых сообщениях в этой комнате. Непрочитанные считаются в любом случае.';
+
+  @override
+  String get roomMutedLabel => 'Уведомления выключены';
+
+  @override
+  String get failedToUpdateRoomNotificationsError =>
+      'Не удалось изменить уведомления. Попробуйте ещё раз.';
+
+  @override
   String get roomChatTitle => 'Чат';
 
   @override

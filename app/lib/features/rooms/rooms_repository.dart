@@ -46,6 +46,7 @@ class Room {
     this.lastMessageText,
     this.lastMessageAuthorId,
     this.unreadCount = 0,
+    this.notificationsMuted = false,
   });
 
   final String id;
@@ -82,6 +83,14 @@ class Room {
   /// messages never count — sending one is what produced it.
   final int unreadCount;
 
+  /// This viewer has silenced this one room's pushes. Per member, not per
+  /// room: the flag lives on their own `room_members` row, so muting a room
+  /// is invisible to everyone else in it.
+  ///
+  /// Pushes only. [unreadCount] keeps counting and the badge keeps showing —
+  /// silencing a room is not the same as no longer reading it.
+  final bool notificationsMuted;
+
   /// Everyone in the room, the owner first (server-side `order by seq`).
   final List<RoomMember> members;
 
@@ -98,6 +107,7 @@ class Room {
     lastMessageText: row['last_message_text'] as String?,
     lastMessageAuthorId: row['last_message_author_id'] as String?,
     unreadCount: (row['unread_count'] as num?)?.toInt() ?? 0,
+    notificationsMuted: row['notifications_muted'] as bool? ?? false,
     members: [
       for (final member in (row['members'] as List<dynamic>? ?? const []))
         RoomMember.fromJson(member as Map<String, dynamic>),
@@ -469,6 +479,22 @@ class RoomsRepository {
   Future<void> deleteMessage(String messageId) async {
     await _client
         .rpc('delete_own_room_message', params: {'p_message_id': messageId})
+        .timeout(networkTimeout);
+  }
+
+  /// Silences (or unsilences) this one room's pushes for this viewer.
+  ///
+  /// An RPC rather than a plain update, for the same reason [markRoomRead] is
+  /// one: `room_members` has no UPDATE grant at all, and a policy that gave
+  /// it one could not restrict *which* columns change — it would open
+  /// `last_read_at` and `last_delivered_at`, the two marks unread counts and
+  /// ticks are measured against.
+  Future<void> setRoomMuted({
+    required String roomId,
+    required bool muted,
+  }) async {
+    await _client
+        .rpc('set_room_muted', params: {'p_room_id': roomId, 'p_muted': muted})
         .timeout(networkTimeout);
   }
 

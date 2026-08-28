@@ -255,6 +255,11 @@
   "leaveDirectRoomDialogContent": "This room is just the two of you, so it goes for both — along with everything said in it.",
   "failedToLeaveRoomError": "Failed to leave the room. Please try again.",
 
+  "roomNotificationsLabel": "Notifications",
+  "roomNotificationsDescription": "Pushes about new messages in this room. Unread messages are counted either way.",
+  "roomMutedLabel": "Notifications off",
+  "failedToUpdateRoomNotificationsError": "Failed to change notifications. Please try again.",
+
   "roomChatTitle": "Chat",
   "messageHint": "Message",
   "sendMessageTooltip": "Send",
