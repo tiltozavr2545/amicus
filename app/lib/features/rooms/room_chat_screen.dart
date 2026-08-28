@@ -1,12 +1,22 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/media_gallery.dart';
+import '../../shared/media_pick_message.dart';
+import '../../shared/media_picking.dart';
+import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
 import 'room_details_screen.dart';
 import 'rooms_repository.dart';
+
+/// How many photos/videos one message may carry. Mirrors the CHECK on
+/// `room_messages.media` (20260828120000) — the server refuses an eleventh,
+/// and being told so after the upload would be a wasted upload.
+const _maxAttachments = 10;
 
 /// A room's chat: everyone in the room reads and writes, nobody else can do
 /// either — the RLS policy on `room_messages` decides that, and the same
@@ -38,7 +48,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   bool _isLoading = false;
   bool _hasMore = true;
   bool _isSending = false;
+  bool _isPicking = false;
   String? _errorMessage;
+
+  /// Files picked for the message being typed, in the order they will be
+  /// sent. They are uploaded on send, not on pick: a draft abandoned before
+  /// sending should cost the bucket nothing.
+  final _attachments = <PickedMedia>[];
 
   /// Every member's read/delivered marks, keyed by user id — what draws the
   /// ticks on the viewer's own messages. Absent while the first fetch is
@@ -170,10 +186,53 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     }
   }
 
+  Future<void> _pickAttachments() async {
+    final l10n = AppLocalizations.of(context)!;
+    final remaining = _maxAttachments - _attachments.length;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.mediaLimitMessage)));
+      return;
+    }
+    // Set before the picker rather than after, for the reason the composer
+    // learned the hard way: the picker raises its own activity, and until it
+    // returns nothing here has changed, so a second tap opened a second
+    // picker and both batches were then trimmed against the same stale
+    // `remaining`.
+    setState(() => _isPicking = true);
+
+    final MediaPickResult result;
+    try {
+      result = await pickMediaFiles(remaining: remaining);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isPicking = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.failedToAddMediaError)));
+      return;
+    }
+    // The picker hands control to another activity, so this State can be gone
+    // by the time it resolves.
+    if (!mounted) return;
+    setState(() {
+      _attachments.addAll(result.items);
+      _isPicking = false;
+    });
+    if (mediaPickProblemMessage(result.firstProblem, l10n)
+        case final message?) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
   Future<void> _send() async {
     final l10n = AppLocalizations.of(context)!;
     final text = _textController.text.trim();
-    if (text.isEmpty || _isSending) return;
+    // A photo with no caption is a message; an empty everything is not.
+    if ((text.isEmpty && _attachments.isEmpty) || _isSending) return;
 
     setState(() {
       _isSending = true;
@@ -188,12 +247,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
             text: text,
             // One token per send, minted here: a retry after a timeout that
             // committed anyway lands on the same unique index instead of
-            // saying the same thing twice.
+            // saying the same thing twice. It also names the folder every
+            // attachment of this send goes into.
             clientToken: const Uuid().v4(),
+            media: List.of(_attachments),
           );
       if (!mounted) return;
       _textController.clear();
       setState(() {
+        _attachments.clear();
         if (!_messages.any((m) => m.id == message.id)) {
           _messages.insert(0, message);
         }
@@ -342,13 +404,27 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
+          if (_attachments.isNotEmpty)
+            _AttachmentStrip(
+              attachments: _attachments,
+              onRemove: _isSending
+                  ? null
+                  : (item) => setState(() => _attachments.remove(item)),
+            ),
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 4, 8),
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.attach_file),
+                    tooltip: l10n.attachMediaTooltip,
+                    onPressed: _isPicking || _isSending
+                        ? null
+                        : _pickAttachments,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _textController,
@@ -505,15 +581,25 @@ class _MessageBubble extends StatelessWidget {
                     color: scheme.primary,
                   ),
                 ),
-              Text(
-                message.isDeleted ? l10n.deletedMessageLabel : message.text,
-                style: message.isDeleted
-                    ? theme.textTheme.bodyMedium?.copyWith(
-                        fontStyle: FontStyle.italic,
-                        color: scheme.onSurfaceVariant,
-                      )
-                    : theme.textTheme.bodyMedium,
-              ),
+              if (message.media.isNotEmpty)
+                _MessageMedia(
+                  // Per message, so a test can point at one bubble's
+                  // attachments and two bubbles never share a key.
+                  key: ValueKey('message-media-${message.id}'),
+                  media: message.media,
+                ),
+              // A message can be attachments alone — an empty line under them
+              // would only add height.
+              if (message.isDeleted || message.text.isNotEmpty)
+                Text(
+                  message.isDeleted ? l10n.deletedMessageLabel : message.text,
+                  style: message.isDeleted
+                      ? theme.textTheme.bodyMedium?.copyWith(
+                          fontStyle: FontStyle.italic,
+                          color: scheme.onSurfaceVariant,
+                        )
+                      : theme.textTheme.bodyMedium,
+                ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -531,6 +617,213 @@ class _MessageBubble extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The picked-but-not-yet-sent files, above the input.
+///
+/// They are shown from the bytes already in hand (a video from its poster
+/// frame), so nothing here waits on the network: the upload happens on send.
+class _AttachmentStrip extends StatelessWidget {
+  const _AttachmentStrip({required this.attachments, this.onRemove});
+
+  final List<PickedMedia> attachments;
+
+  /// Null while a send is in flight — those files are already going up, and
+  /// removing one then would leave the message and the bucket disagreeing.
+  final void Function(PickedMedia item)? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return SizedBox(
+      height: 88,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: attachments.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = attachments[index];
+          return Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image(
+                  image: sizedMemoryImage(
+                    context,
+                    item.previewBytes,
+                    logicalWidth: 80,
+                  ),
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              if (item.isVideo)
+                const Positioned.fill(
+                  child: Center(
+                    child: Icon(
+                      Icons.play_circle_fill,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ),
+              if (onRemove != null)
+                Positioned(
+                  top: -8,
+                  right: -8,
+                  child: IconButton(
+                    icon: const Icon(Icons.cancel),
+                    iconSize: 20,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    tooltip: l10n.removeAttachmentTooltip,
+                    onPressed: () => onRemove!(item),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// A message's attachments inside its bubble: thumbnails, and a tap opens the
+/// same fullscreen viewer the feed uses.
+///
+/// Always a thumbnail, never an inline player — a chat bubble is too small a
+/// frame to play a clip in, and "tap opens it properly" is one rule for
+/// photos and videos alike.
+class _MessageMedia extends ConsumerStatefulWidget {
+  const _MessageMedia({super.key, required this.media});
+
+  final List<RoomMessageMedia> media;
+
+  @override
+  ConsumerState<_MessageMedia> createState() => _MessageMediaState();
+}
+
+class _MessageMediaState extends ConsumerState<_MessageMedia> {
+  late List<RoomMessageMedia> _items = widget.media;
+  bool _resolving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  /// Signs everything this message carries in one round trip: ten is the
+  /// most there can be, and a bubble shows them all at once anyway — the
+  /// feed's window-of-one prefetch has nothing to save here.
+  Future<void> _resolve() async {
+    if (_resolving) return;
+    final paths = pathsToSign(_items, [
+      for (var i = 0; i < _items.length; i++) i,
+    ]);
+    if (paths.isEmpty) return;
+    _resolving = true;
+    try {
+      final signed = await ref
+          .read(roomsRepositoryProvider)
+          .resolveMediaUrls(paths);
+      if (!mounted) return;
+      setState(() {
+        _items = applySignedUrls(_items, [
+          for (var i = 0; i < _items.length; i++) i,
+        ], signed);
+      });
+    } catch (_) {
+      // Offline, or the request timed out. The thumbnails stay on their
+      // spinner; reopening the chat asks again, and there is nothing to say
+      // here that the missing photo doesn't already say.
+    } finally {
+      _resolving = false;
+    }
+  }
+
+  void _openFullscreen(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => FullscreenMediaViewer(
+          media: _items,
+          initialIndex: index,
+          resolve: ref.read(roomsRepositoryProvider).resolveMediaUrls,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // One attachment gets the room to be looked at; several become a grid of
+    // squares, the way every chat shows an album.
+    final side = _items.length == 1 ? 220.0 : 96.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (var index = 0; index < _items.length; index++)
+            GestureDetector(
+              onTap: () => _openFullscreen(index),
+              child: _Thumbnail(item: _items[index], side: side),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Thumbnail extends StatelessWidget {
+  const _Thumbnail({required this.item, required this.side});
+
+  final RoomMessageMedia item;
+  final double side;
+
+  @override
+  Widget build(BuildContext context) {
+    // A video shows its poster; an image shows itself. Either way one URL,
+    // which is null until the batch above comes back.
+    final url = item.isVideo ? item.posterUrl : item.url;
+    return SizedBox(
+      width: side,
+      height: side,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (url == null)
+              const ColoredBox(
+                color: Colors.black12,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              CachedNetworkImage(
+                imageUrl: url,
+                // Keyed on the path, not the signed URL: the query string
+                // changes on every signing and would cache-bust a photo that
+                // has not changed at all.
+                cacheKey: item.isVideo ? item.posterPath : item.storagePath,
+                fit: BoxFit.cover,
+              ),
+            if (item.isVideo)
+              const Center(
+                child: Icon(
+                  Icons.play_circle_fill,
+                  color: Colors.white,
+                  size: 40,
+                ),
+              ),
+          ],
         ),
       ),
     );

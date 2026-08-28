@@ -261,8 +261,11 @@
   "failedToUpdateRoomNotificationsError": "Failed to change notifications. Please try again.",
 
   "roomChatTitle": "Chat",
+  "mediaMessagePreview": "Photo",
   "messageHint": "Message",
   "sendMessageTooltip": "Send",
+  "attachMediaTooltip": "Attach a photo or video",
+  "removeAttachmentTooltip": "Remove attachment",
   "noMessagesYetMessage": "Quiet in here. Send the first message.",
   "deletedMessageLabel": "Message deleted",
   "deleteMessageDialogTitle": "Delete message?",

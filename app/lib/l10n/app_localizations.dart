@@ -1208,6 +1208,12 @@ abstract class AppLocalizations {
   /// **'Chat'**
   String get roomChatTitle;
 
+  /// No description provided for @mediaMessagePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get mediaMessagePreview;
+
   /// No description provided for @messageHint.
   ///
   /// In en, this message translates to:
@@ -1219,6 +1225,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Send'**
   String get sendMessageTooltip;
+
+  /// No description provided for @attachMediaTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a photo or video'**
+  String get attachMediaTooltip;
+
+  /// No description provided for @removeAttachmentTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove attachment'**
+  String get removeAttachmentTooltip;
 
   /// No description provided for @noMessagesYetMessage.
   ///

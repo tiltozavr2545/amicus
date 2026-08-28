@@ -6,6 +6,7 @@ import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/rooms/room_chat_screen.dart';
 import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
+import 'package:amicus/shared/media_picking.dart';
 
 /// Only the members the chat screen calls need real behaviour; the rest
 /// satisfy the `implements` contract via `noSuchMethod`, the same trick the
@@ -33,14 +34,20 @@ class _FakeRoomsRepository implements RoomsRepository {
     int limit = 50,
   }) async => before == null ? messages : const [];
 
+  /// Attachments each send carried — the attach button is only meaningful if
+  /// what it collects reaches the repository.
+  final List<List<PickedMedia>> sentMedia = [];
+
   @override
   Future<RoomMessage> sendMessage({
     required String roomId,
     required String authorId,
     required String text,
     required String clientToken,
+    List<PickedMedia> media = const [],
   }) async {
     sentTexts.add(text);
+    sentMedia.add(media);
     if (sendThrows) throw Exception('rejected');
     return RoomMessage(
       id: 'sent-${sentTexts.length}',
@@ -70,6 +77,10 @@ class _FakeRoomsRepository implements RoomsRepository {
   }
 
   @override
+  Future<Map<String, String>> resolveMediaUrls(List<String> paths) async =>
+      const {};
+
+  @override
   Future<List<RoomMemberReceipt>> fetchMemberReceipts(String roomId) async =>
       const [];
 
@@ -89,6 +100,7 @@ RoomMessage _message({
   String text = 'привет',
   DateTime? createdAt,
   DateTime? deletedAt,
+  List<RoomMessageMedia> media = const [],
 }) => RoomMessage(
   id: id,
   roomId: 'room-1',
@@ -96,6 +108,7 @@ RoomMessage _message({
   text: text,
   createdAt: createdAt ?? DateTime.utc(2026, 8, 26, 18),
   deletedAt: deletedAt,
+  media: media,
 );
 
 final _room = Room(
@@ -168,6 +181,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Message deleted'), findsOneWidget);
+  });
+
+  testWidgets('a message can be attachments with no caption at all', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'm1',
+          authorId: 'anya',
+          text: '',
+          media: const [
+            RoomMessageMedia(
+              storagePath: 'messages/room-1/anya/t/a.jpg',
+              isVideo: false,
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    // The bubble is the photo: attachments rendered, and no caption line
+    // where there is no caption (the tombstone label is the only text a
+    // bubble ever shows in place of one).
+    expect(find.byKey(const ValueKey('message-media-m1')), findsOneWidget);
+    expect(find.text('Message deleted'), findsNothing);
   });
 
   testWidgets('sending posts the text and clears the field', (tester) async {

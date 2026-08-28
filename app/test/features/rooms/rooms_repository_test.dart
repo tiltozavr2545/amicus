@@ -94,6 +94,54 @@ void main() {
       expect(message.text, isEmpty);
     });
 
+    test('reads attachments off the row, image and video alike', () {
+      final message = RoomMessage.fromRow({
+        'id': 'msg-1',
+        'room_id': 'room-1',
+        'author_id': 'anya',
+        'text': '',
+        'created_at': '2026-08-28T12:00:00+00:00',
+        'deleted_at': null,
+        'media': [
+          {
+            'media_type': 'image',
+            'storage_path': 'messages/room-1/anya/t/a.jpg',
+          },
+          {
+            'media_type': 'video',
+            'storage_path': 'messages/room-1/anya/t/b.mp4',
+            'poster_path': 'messages/room-1/anya/t/b_poster.jpg',
+          },
+        ],
+      });
+
+      expect(message.media, hasLength(2));
+      expect(message.media.first.isVideo, isFalse);
+      expect(message.media.first.posterPath, isNull);
+      expect(message.media.last.isVideo, isTrue);
+      expect(
+        message.media.last.posterPath,
+        'messages/room-1/anya/t/b_poster.jpg',
+      );
+      // A photo with no caption is a message, not an empty one.
+      expect(message.text, isEmpty);
+    });
+
+    test('a message with no attachments has an empty media list', () {
+      // Old rows and realtime payloads alike: the column defaults to `[]`,
+      // and a missing key must not read as null.
+      final message = RoomMessage.fromRow({
+        'id': 'msg-1',
+        'room_id': 'room-1',
+        'author_id': 'anya',
+        'text': 'привет',
+        'created_at': '2026-08-28T12:00:00+00:00',
+        'deleted_at': null,
+      });
+
+      expect(message.media, isEmpty);
+    });
+
     test('a row straight off realtime has no embedded author', () {
       // Realtime hands over the raw row — no join, so no name. The screen
       // resolves it from the room's members instead.

@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
+import '../../shared/media_gallery.dart';
+import '../../shared/signed_urls.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
 import '../../shared/system_accounts.dart';
@@ -42,7 +44,10 @@ const Object _unchanged = Object();
 /// One photo or video attached to a post. A post can have up to 20, ordered by
 /// [position] (a display order, not necessarily a dense 0..N-1 sequence — see
 /// the comment on `post_media` in the migration).
-class PostMedia {
+/// One photo or video of a post. Shows through the shared gallery widgets,
+/// hence [GalleryMedia] — the interface is what those widgets know about a
+/// slide, and a post's media happens to already carry all of it.
+class PostMedia implements GalleryMedia {
   const PostMedia({
     required this.id,
     required this.position,
@@ -56,16 +61,25 @@ class PostMedia {
   final String id;
   final int position;
   final MediaType mediaType;
+
+  @override
   final String storagePath;
 
   /// Path of the video's poster frame (generated client-side at pick time).
   /// Always null for [MediaType.image].
+  @override
   final String? posterPath;
+
+  @override
+  bool get isVideo => mediaType == MediaType.video;
 
   /// Resolved signed URL for [storagePath], or null until fetched — the feed
   /// only eagerly resolves each post's first slide (see [FeedRepository.fetchPage]);
   /// the rest are resolved lazily as the user swipes.
+  @override
   final String? url;
+
+  @override
   final String? posterUrl;
 
   factory PostMedia.fromRow(Map<String, dynamic> row) => PostMedia(
@@ -75,6 +89,10 @@ class PostMedia {
     storagePath: row['storage_path'] as String,
     posterPath: row['poster_path'] as String?,
   );
+
+  @override
+  PostMedia withUrls({String? url, String? posterUrl}) =>
+      copyWith(url: url, posterUrl: posterUrl);
 
   PostMedia copyWith({String? url, String? posterUrl}) => PostMedia(
     id: id,
@@ -430,10 +448,6 @@ class NewMedia extends ComposerMediaItem {
 
 const pageSize = 20;
 
-/// How long a signed URL for a post's media stays valid before it needs
-/// re-resolving.
-const _signedUrlTtl = 60 * 60 * 24;
-
 /// Builds the PostgREST keyset filter for the page strictly *older* than
 /// [cursor], newest-first. Returns null for the first page (no cursor).
 ///
@@ -630,19 +644,8 @@ class FeedRepository {
   /// Paths the storage API refuses to sign are simply absent from the result,
   /// leaving those slides unresolved (and retried on the next swipe) instead
   /// of failing the whole batch.
-  Future<Map<String, String>> resolveMediaUrls(
-    List<String> storagePaths,
-  ) async {
-    if (storagePaths.isEmpty) return const {};
-    final results = await _client.storage
-        .from(mediaBucket)
-        .createSignedUrlsResult(storagePaths, _signedUrlTtl)
-        .timeout(networkTimeout);
-    return {
-      for (final r in results)
-        if (r is SignedUrlSuccess) r.path: r.signedUrl,
-    };
-  }
+  Future<Map<String, String>> resolveMediaUrls(List<String> storagePaths) =>
+      resolveSignedUrls(_client, storagePaths);
 
   Future<void> _uploadTolerant(String path, Uint8List bytes) =>
       uploadTolerant(_client, bucket: mediaBucket, path: path, bytes: bytes);

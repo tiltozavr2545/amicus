@@ -675,10 +675,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get roomChatTitle => 'Чат';
 
   @override
+  String get mediaMessagePreview => 'Фото';
+
+  @override
   String get messageHint => 'Сообщение';
 
   @override
   String get sendMessageTooltip => 'Отправить';
+
+  @override
+  String get attachMediaTooltip => 'Прикрепить фото или видео';
+
+  @override
+  String get removeAttachmentTooltip => 'Убрать вложение';
 
   @override
   String get noMessagesYetMessage =>

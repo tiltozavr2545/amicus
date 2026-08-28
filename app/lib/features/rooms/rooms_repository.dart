@@ -6,8 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
+import '../../shared/media_gallery.dart';
+import '../../shared/media_picking.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
+import '../../shared/signed_urls.dart';
 import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
 
@@ -45,6 +48,7 @@ class Room {
     this.lastMessageAt,
     this.lastMessageText,
     this.lastMessageAuthorId,
+    this.lastMessageHasMedia = false,
     this.unreadCount = 0,
     this.notificationsMuted = false,
   });
@@ -79,6 +83,12 @@ class Room {
   final String? lastMessageText;
   final String? lastMessageAuthorId;
 
+  /// The last message carried photos or videos. One bit rather than the
+  /// attachments themselves: the row only has to say "a photo" instead of
+  /// leaving a blank line where a caption would be, and what to write there
+  /// is a matter of the reader's own language.
+  final bool lastMessageHasMedia;
+
   /// Messages by other people since this viewer last read the room. Own
   /// messages never count — sending one is what produced it.
   final int unreadCount;
@@ -106,6 +116,7 @@ class Room {
         : parseTimestamp(row['last_message_at'] as String),
     lastMessageText: row['last_message_text'] as String?,
     lastMessageAuthorId: row['last_message_author_id'] as String?,
+    lastMessageHasMedia: row['last_message_has_media'] as bool? ?? false,
     unreadCount: (row['unread_count'] as num?)?.toInt() ?? 0,
     notificationsMuted: row['notifications_muted'] as bool? ?? false,
     members: [
@@ -135,6 +146,64 @@ class Room {
   }
 }
 
+/// One photo or video attached to a message.
+///
+/// Unlike a post's media this is not a row of its own but an element of
+/// `room_messages.media` (migration 20260828120000). The reason is realtime:
+/// a subscriber is handed the message ROW and nothing else, so attachments
+/// living in a second table would arrive — if at all — a request later, and
+/// everyone else's screen would show an empty bubble until then.
+class RoomMessageMedia implements GalleryMedia {
+  const RoomMessageMedia({
+    required this.storagePath,
+    required this.isVideo,
+    this.posterPath,
+    this.url,
+    this.posterUrl,
+  });
+
+  @override
+  final String storagePath;
+
+  @override
+  final String? posterPath;
+
+  @override
+  final bool isVideo;
+
+  @override
+  final String? url;
+
+  @override
+  final String? posterUrl;
+
+  @override
+  RoomMessageMedia withUrls({String? url, String? posterUrl}) =>
+      RoomMessageMedia(
+        storagePath: storagePath,
+        posterPath: posterPath,
+        isVideo: isVideo,
+        url: url ?? this.url,
+        posterUrl: posterUrl ?? this.posterUrl,
+      );
+
+  factory RoomMessageMedia.fromJson(Map<String, dynamic> json) =>
+      RoomMessageMedia(
+        storagePath: json['storage_path'] as String,
+        posterPath: json['poster_path'] as String?,
+        isVideo: json['media_type'] == 'video',
+      );
+
+  /// What goes into the row. The server checks this shape itself
+  /// (`room_message_media_ok()`), including that every path sits under this
+  /// room's and this author's own prefix.
+  Map<String, dynamic> toJson() => {
+    'media_type': isVideo ? 'video' : 'image',
+    'storage_path': storagePath,
+    if (posterPath != null) 'poster_path': posterPath,
+  };
+}
+
 /// One chat message.
 ///
 /// A deleted message keeps its row: [deletedAt] is set and [text] is emptied
@@ -149,6 +218,7 @@ class RoomMessage {
     required this.authorId,
     required this.text,
     required this.createdAt,
+    this.media = const [],
     this.authorName,
     this.deletedAt,
   });
@@ -158,6 +228,11 @@ class RoomMessage {
   final String authorId;
   final String text;
   final DateTime createdAt;
+
+  /// Up to 10 photos/videos, in the order they were picked. Empty for a
+  /// text-only message, and always empty on a tombstone — deleting a message
+  /// drops its attachments in the same statement that blanks its text.
+  final List<RoomMessageMedia> media;
 
   /// Only ever set on a message read through [RoomsRepository.fetchMessages],
   /// which embeds it. A message arriving over realtime carries the raw row and
@@ -174,6 +249,10 @@ class RoomMessage {
     authorId: row['author_id'] as String,
     text: row['text'] as String? ?? '',
     createdAt: parseTimestamp(row['created_at'] as String),
+    media: [
+      for (final item in (row['media'] as List<dynamic>? ?? const []))
+        RoomMessageMedia.fromJson(item as Map<String, dynamic>),
+    ],
     authorName: (row['author'] as Map<String, dynamic>?)?['name'] as String?,
     deletedAt: row['deleted_at'] == null
         ? null
@@ -239,6 +318,31 @@ String roomAvatarPath({
   required String token,
   required String ext,
 }) => 'rooms/$roomId/$token.$ext';
+
+/// Where one attachment of a message lives:
+/// `messages/<room_id>/<author_id>/<send token>/<file token>.<ext>`.
+///
+/// Every segment is load-bearing, and by two independent readers: the storage
+/// policies (a member of that room may read it, its author may write it) and
+/// the CHECK on `room_messages.media`, which refuses a row whose paths sit
+/// outside its own room and author. The send token groups one submission, the
+/// file token names the item — minted once per pick, so a retry addresses the
+/// same object instead of leaving a copy behind.
+String roomMessageMediaPath({
+  required String roomId,
+  required String authorId,
+  required String clientToken,
+  required String mediaToken,
+  required String ext,
+}) => 'messages/$roomId/$authorId/$clientToken/$mediaToken.$ext';
+
+/// Path of a video's poster frame — same prefix as its video, own file.
+String roomMessagePosterPath({
+  required String roomId,
+  required String authorId,
+  required String clientToken,
+  required String mediaToken,
+}) => 'messages/$roomId/$authorId/$clientToken/${mediaToken}_poster.jpg';
 
 class RoomsRepository {
   RoomsRepository(this._client);
@@ -446,8 +550,25 @@ class RoomsRepository {
     required String authorId,
     required String text,
     required String clientToken,
+    List<PickedMedia> media = const [],
   }) async {
     const columns = '*, author:users(name)';
+    // Files first, row second, exactly as the composer publishes a post: the
+    // row is what everyone else's screen reacts to, so it must not name bytes
+    // that are not there yet. A send that dies in between leaves objects
+    // nothing points at — `reap_orphaned_media()` collects those, and since
+    // 20260828120000 it knows the `messages/` prefix too.
+    final items = <RoomMessageMedia>[];
+    for (final item in media) {
+      items.add(
+        await _uploadMessageMedia(
+          roomId: roomId,
+          authorId: authorId,
+          clientToken: clientToken,
+          item: item,
+        ),
+      );
+    }
     try {
       final row = await _client
           .from('room_messages')
@@ -456,6 +577,7 @@ class RoomsRepository {
             'author_id': authorId,
             'text': text,
             'client_token': clientToken,
+            'media': [for (final item in items) item.toJson()],
           })
           .select(columns)
           .single()
@@ -474,12 +596,90 @@ class RoomsRepository {
     }
   }
 
-  /// Tombstones own message. Server-side it clears the text in the same
-  /// statement, so nothing is left to read back.
+  /// Uploads one picked file and returns the attachment that will name it in
+  /// the row.
+  ///
+  /// A video is uploaded from its path rather than its bytes (only the file
+  /// being sent is ever resident), and its poster frame goes up as a second
+  /// object under the same prefix.
+  Future<RoomMessageMedia> _uploadMessageMedia({
+    required String roomId,
+    required String authorId,
+    required String clientToken,
+    required PickedMedia item,
+  }) async {
+    final path = roomMessageMediaPath(
+      roomId: roomId,
+      authorId: authorId,
+      clientToken: clientToken,
+      mediaToken: item.token,
+      ext: item.ext,
+    );
+    if (item.isVideo) {
+      final posterPath = roomMessagePosterPath(
+        roomId: roomId,
+        authorId: authorId,
+        clientToken: clientToken,
+        mediaToken: item.token,
+      );
+      await uploadTolerantFile(
+        _client,
+        bucket: mediaBucket,
+        path: path,
+        file: File(item.filePath!),
+      );
+      await uploadTolerant(
+        _client,
+        bucket: mediaBucket,
+        path: posterPath,
+        bytes: item.posterBytes!,
+      );
+      return RoomMessageMedia(
+        storagePath: path,
+        posterPath: posterPath,
+        isVideo: true,
+      );
+    }
+    await uploadTolerant(
+      _client,
+      bucket: mediaBucket,
+      path: path,
+      bytes: item.bytes!,
+    );
+    return RoomMessageMedia(storagePath: path, isVideo: false);
+  }
+
+  /// Signs attachment paths so they can be shown. Same call the feed makes
+  /// for post media — one bucket, one TTL (see [resolveSignedUrls]).
+  Future<Map<String, String>> resolveMediaUrls(List<String> storagePaths) =>
+      resolveSignedUrls(_client, storagePaths);
+
+  /// Tombstones own message. Server-side it clears the text AND the
+  /// attachments in the same statement, so nothing is left to read back — and
+  /// hands back the paths that nothing points at any more, which is why the
+  /// objects go only after the row write has committed (see
+  /// [deleteRowsThenObjects]): bytes nobody names are just bytes, a row
+  /// naming bytes that are gone is a hole every member sees.
   Future<void> deleteMessage(String messageId) async {
-    await _client
-        .rpc('delete_own_room_message', params: {'p_message_id': messageId})
-        .timeout(networkTimeout);
+    var orphaned = const <String>[];
+    await deleteRowsThenObjects(
+      rows: () async {
+        final rows = await _client
+            .rpc('delete_own_room_message', params: {'p_message_id': messageId})
+            .timeout(networkTimeout);
+        orphaned = [
+          for (final row in (rows as List<dynamic>? ?? const []))
+            (row as Map<String, dynamic>)['storage_path'] as String,
+        ];
+      },
+      objects: () async {
+        if (orphaned.isEmpty) return;
+        await _client.storage
+            .from(mediaBucket)
+            .remove(orphaned)
+            .timeout(networkTimeout);
+      },
+    );
   }
 
   /// Silences (or unsilences) this one room's pushes for this viewer.

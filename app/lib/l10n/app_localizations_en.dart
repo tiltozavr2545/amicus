@@ -665,10 +665,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get roomChatTitle => 'Chat';
 
   @override
+  String get mediaMessagePreview => 'Photo';
+
+  @override
   String get messageHint => 'Message';
 
   @override
   String get sendMessageTooltip => 'Send';
+
+  @override
+  String get attachMediaTooltip => 'Attach a photo or video';
+
+  @override
+  String get removeAttachmentTooltip => 'Remove attachment';
 
   @override
   String get noMessagesYetMessage => 'Quiet in here. Send the first message.';

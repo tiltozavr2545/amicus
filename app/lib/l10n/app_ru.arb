@@ -225,8 +225,11 @@
   "failedToUpdateRoomNotificationsError": "Не удалось изменить уведомления. Попробуйте ещё раз.",
 
   "roomChatTitle": "Чат",
+  "mediaMessagePreview": "Фото",
   "messageHint": "Сообщение",
   "sendMessageTooltip": "Отправить",
+  "attachMediaTooltip": "Прикрепить фото или видео",
+  "removeAttachmentTooltip": "Убрать вложение",
   "noMessagesYetMessage": "Здесь пока тихо. Напишите первое сообщение.",
   "deletedMessageLabel": "Сообщение удалено",
   "deleteMessageDialogTitle": "Удалить сообщение?",

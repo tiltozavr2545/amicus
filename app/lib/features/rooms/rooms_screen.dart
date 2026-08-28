@@ -93,11 +93,19 @@ class _RoomListItem extends StatelessWidget {
   /// What the row says under the room's name: the last thing said in the
   /// chat, or — while nobody has said anything — how many people are in it.
   /// A two-person room says neither: "2 участника" about a pair is noise.
+  ///
+  /// A message that is only a photo has no text to preview, and a blank line
+  /// under the name reads as an empty room; it says "Photo" instead — on the
+  /// reader's own language, which is why the server sends one bit rather than
+  /// a ready-made line.
   String? _subtitle(AppLocalizations l10n) {
     final text = room.lastMessageText;
-    if (text != null && text.isNotEmpty) {
+    final preview = (text == null || text.isEmpty)
+        ? (room.lastMessageHasMedia ? l10n.mediaMessagePreview : null)
+        : text;
+    if (preview != null) {
       final author = room.memberById(room.lastMessageAuthorId);
-      return author == null ? text : '${author.name}: $text';
+      return author == null ? preview : '${author.name}: $preview';
     }
     return room.isDirect ? null : l10n.roomMembersCount(room.members.length);
   }
