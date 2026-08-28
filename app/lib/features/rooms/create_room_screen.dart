@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/app_localizations.dart';
 import '../connections/connections_repository.dart';
 import '../connections/connections_screen.dart';
-import 'room_feed_screen.dart';
+import 'room_chat_screen.dart';
 import 'rooms_repository.dart';
 
 /// Picks who a new room is for.
@@ -54,11 +54,11 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           );
       ref.read(roomsRefreshTickProvider.notifier).bump();
       if (!mounted) return;
-      // Straight into the new room's feed: the room was created to be used,
+      // Straight into the new room's chat: the room was created to be used,
       // and coming back to a list to find it again is a wasted tap. Replacing
       // this route rather than stacking on it keeps Back going to the list.
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => RoomFeedScreen(roomId: roomId)),
+        MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: roomId)),
       );
     } catch (e) {
       if (!mounted) return;

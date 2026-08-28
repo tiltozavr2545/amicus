@@ -10,14 +10,15 @@ import 'create_room_screen.dart';
 import 'room_avatar.dart';
 import 'room_chat_screen.dart';
 import 'room_details_screen.dart';
-import 'room_feed_screen.dart';
 import 'rooms_repository.dart';
 
-/// The rooms tab: every room the viewer is in, most recently active first.
+/// The rooms tab: every room the viewer is in, the most recently talked-in
+/// first.
 ///
-/// Each row is the room itself (tap it to manage members, rename it or leave)
-/// plus the two buttons that open what the room actually holds: its feed and
-/// its chat.
+/// A room is its chat, so a row opens the chat — the way a row in any list of
+/// conversations does. Who is in the room, its name and its picture live one
+/// level down, behind the room's own picture here and behind the members
+/// button in the chat's app bar.
 class RoomsScreen extends ConsumerWidget {
   const RoomsScreen({super.key});
 
@@ -136,36 +137,14 @@ class _RoomListItem extends StatelessWidget {
           ? null
           : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => RoomDetailsScreen(roomId: room.id)),
+        MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: room.id)),
       ),
-      // Two buttons, no labels: the room's feed and the room's chat.
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.dynamic_feed_outlined),
-            tooltip: l10n.openRoomFeedTooltip,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => RoomFeedScreen(roomId: room.id),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: Badge.count(
-              count: room.unreadCount,
-              isLabelVisible: room.unreadCount > 0,
-              child: const Icon(Icons.chat_bubble_outline),
-            ),
-            tooltip: l10n.openRoomChatTooltip,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => RoomChatScreen(roomId: room.id),
-              ),
-            ),
-          ),
-        ],
-      ),
+      // The count alone, not a button: the whole row already opens the chat,
+      // and a second tap target that does the same thing only makes the row
+      // harder to hit.
+      trailing: room.unreadCount == 0
+          ? null
+          : Badge.count(count: room.unreadCount),
     );
   }
 }

@@ -21,7 +21,6 @@ class NotificationPreferences {
     this.digest = true,
     this.inactiveWeek = true,
     this.roomMessages = true,
-    this.roomPosts = true,
   });
 
   final bool systemAccount;
@@ -30,7 +29,6 @@ class NotificationPreferences {
   final bool digest;
   final bool inactiveWeek;
   final bool roomMessages;
-  final bool roomPosts;
 
   /// [row] is null when the user has never visited Settings — no row exists
   /// yet, and the server-side triggers read that same absence as "all on" via
@@ -44,7 +42,6 @@ class NotificationPreferences {
       digest: row['notify_digest'] as bool? ?? true,
       inactiveWeek: row['notify_inactive_week'] as bool? ?? true,
       roomMessages: row['notify_room_messages'] as bool? ?? true,
-      roomPosts: row['notify_room_posts'] as bool? ?? true,
     );
   }
 
@@ -55,7 +52,6 @@ class NotificationPreferences {
     bool? digest,
     bool? inactiveWeek,
     bool? roomMessages,
-    bool? roomPosts,
   }) => NotificationPreferences(
     systemAccount: systemAccount ?? this.systemAccount,
     favorites: favorites ?? this.favorites,
@@ -63,7 +59,6 @@ class NotificationPreferences {
     digest: digest ?? this.digest,
     inactiveWeek: inactiveWeek ?? this.inactiveWeek,
     roomMessages: roomMessages ?? this.roomMessages,
-    roomPosts: roomPosts ?? this.roomPosts,
   );
 }
 
@@ -96,7 +91,6 @@ class NotificationPreferencesRepository {
           'notify_digest': prefs.digest,
           'notify_inactive_week': prefs.inactiveWeek,
           'notify_room_messages': prefs.roomMessages,
-          'notify_room_posts': prefs.roomPosts,
         })
         .timeout(networkTimeout);
   }

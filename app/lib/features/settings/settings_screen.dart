@@ -222,12 +222,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onChanged: (value) =>
                     _toggle((p, v) => p.copyWith(roomMessages: v), value),
               ),
-              SwitchListTile(
-                title: Text(l10n.notifyRoomPostsLabel),
-                value: prefs.roomPosts,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(roomPosts: v), value),
-              ),
               const Divider(height: 32),
               ListTile(
                 title: Text(

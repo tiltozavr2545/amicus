@@ -219,11 +219,9 @@
 
   "roomsTitle": "Rooms",
   "roomFallbackName": "Room",
-  "noRoomsYetMessage": "No rooms yet. A room is a separate feed for the people you invite into it.",
+  "noRoomsYetMessage": "No rooms yet. A room is a separate chat for the people you invite into it.",
   "newRoomTitle": "New room",
   "createRoomButton": "Create room",
-  "openRoomFeedTooltip": "Room feed",
-  "roomEmptyFeedMessage": "Nothing posted in this room yet.",
   "failedToLoadRoomsError": "Failed to load rooms. Please try again.",
 
   "selectRoomMembersMessage": "Pick who joins. One person makes a room just for the two of you, and it can never take a third.",
@@ -253,15 +251,10 @@
   "failedToRenameRoomError": "Failed to rename the room. Please try again.",
   "leaveRoomButton": "Leave room",
   "leaveRoomDialogTitle": "Leave room?",
-  "leaveRoomDialogContent": "The room disappears from your list and its feed goes with it. Only the owner can bring you back.",
-  "leaveDirectRoomDialogContent": "This room is just the two of you, so it goes for both — along with everything posted in it.",
+  "leaveRoomDialogContent": "The room disappears from your list and its conversation goes with it. Only the owner can bring you back.",
+  "leaveDirectRoomDialogContent": "This room is just the two of you, so it goes for both — along with everything said in it.",
   "failedToLeaveRoomError": "Failed to leave the room. Please try again.",
 
-  "postDestinationsLabel": "Where to publish",
-  "generalFeedLabel": "Main feed",
-  "pickDestinationError": "Pick at least one place to publish to.",
-
-  "openRoomChatTooltip": "Room chat",
   "roomChatTitle": "Chat",
   "messageHint": "Message",
   "sendMessageTooltip": "Send",
@@ -292,7 +285,6 @@
   "failedToDeleteMessageError": "Failed to delete the message. Please try again.",
 
   "notifyRoomMessagesLabel": "Messages in rooms",
-  "notifyRoomPostsLabel": "Posts in rooms",
 
   "roomAvatarLabel": "Room picture",
   "changeRoomAvatarButton": "Change picture",

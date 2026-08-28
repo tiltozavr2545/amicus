@@ -114,12 +114,6 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'Вам пишут в комнате: {author_name}',
       'В комнате новое сообщение от {author_name}',
     ],
-    room_post: [
-      '{author_name} опубликовал(а) пост в комнате',
-      'Новый пост от {author_name} в комнате',
-      'В комнате новый пост — от {author_name}',
-      '{author_name} поделился(ась) постом в комнате',
-    ],
   },
   en: {
     new_post: [
@@ -169,12 +163,6 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name} wrote in a room',
       '{author_name} sent a message in a room',
       'A room has a new message from {author_name}',
-    ],
-    room_post: [
-      '{author_name} posted in a room',
-      'New post from {author_name} in a room',
-      'A room has a new post from {author_name}',
-      '{author_name} shared something in a room',
     ],
   },
 };

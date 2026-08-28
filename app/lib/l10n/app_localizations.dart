@@ -1025,7 +1025,7 @@ abstract class AppLocalizations {
   /// No description provided for @noRoomsYetMessage.
   ///
   /// In en, this message translates to:
-  /// **'No rooms yet. A room is a separate feed for the people you invite into it.'**
+  /// **'No rooms yet. A room is a separate chat for the people you invite into it.'**
   String get noRoomsYetMessage;
 
   /// No description provided for @newRoomTitle.
@@ -1039,18 +1039,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create room'**
   String get createRoomButton;
-
-  /// No description provided for @openRoomFeedTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Room feed'**
-  String get openRoomFeedTooltip;
-
-  /// No description provided for @roomEmptyFeedMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Nothing posted in this room yet.'**
-  String get roomEmptyFeedMessage;
 
   /// No description provided for @failedToLoadRoomsError.
   ///
@@ -1175,13 +1163,13 @@ abstract class AppLocalizations {
   /// No description provided for @leaveRoomDialogContent.
   ///
   /// In en, this message translates to:
-  /// **'The room disappears from your list and its feed goes with it. Only the owner can bring you back.'**
+  /// **'The room disappears from your list and its conversation goes with it. Only the owner can bring you back.'**
   String get leaveRoomDialogContent;
 
   /// No description provided for @leaveDirectRoomDialogContent.
   ///
   /// In en, this message translates to:
-  /// **'This room is just the two of you, so it goes for both — along with everything posted in it.'**
+  /// **'This room is just the two of you, so it goes for both — along with everything said in it.'**
   String get leaveDirectRoomDialogContent;
 
   /// No description provided for @failedToLeaveRoomError.
@@ -1189,30 +1177,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to leave the room. Please try again.'**
   String get failedToLeaveRoomError;
-
-  /// No description provided for @postDestinationsLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Where to publish'**
-  String get postDestinationsLabel;
-
-  /// No description provided for @generalFeedLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Main feed'**
-  String get generalFeedLabel;
-
-  /// No description provided for @pickDestinationError.
-  ///
-  /// In en, this message translates to:
-  /// **'Pick at least one place to publish to.'**
-  String get pickDestinationError;
-
-  /// No description provided for @openRoomChatTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Room chat'**
-  String get openRoomChatTooltip;
 
   /// No description provided for @roomChatTitle.
   ///
@@ -1315,12 +1279,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Messages in rooms'**
   String get notifyRoomMessagesLabel;
-
-  /// No description provided for @notifyRoomPostsLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Posts in rooms'**
-  String get notifyRoomPostsLabel;
 
   /// No description provided for @roomAvatarLabel.
   ///

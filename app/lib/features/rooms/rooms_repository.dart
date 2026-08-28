@@ -26,8 +26,7 @@ class RoomMember {
   );
 }
 
-/// A room: its own isolated feed (and, from stage 2, its own chat) shared by
-/// [members].
+/// A room: a chat shared by [members].
 ///
 /// [isDirect] is the two-person case, and it is a different thing rather than
 /// a smaller one: it has no name of its own (each side sees the other's
@@ -43,7 +42,6 @@ class Room {
     required this.createdAt,
     required this.members,
     this.name,
-    this.lastPostAt,
     this.lastMessageAt,
     this.lastMessageText,
     this.lastMessageAuthorId,
@@ -72,13 +70,10 @@ class Room {
 
   final DateTime createdAt;
 
-  /// When the room's feed last got a post, or null while it is empty. Sorts
-  /// the list.
-  final DateTime? lastPostAt;
-
   /// The room chat's last message — what the list shows instead of a member
-  /// count once anybody has said anything. Null while the chat is empty, and
-  /// deleted messages don't count: the preview would be a blank line.
+  /// count once anybody has said anything, and what sorts the list. Null while
+  /// the chat is empty, and deleted messages don't count: the preview would be
+  /// a blank line.
   final DateTime? lastMessageAt;
   final String? lastMessageText;
   final String? lastMessageAuthorId;
@@ -97,9 +92,6 @@ class Room {
     isDirect: row['is_direct'] as bool,
     ownerId: row['owner_id'] as String,
     createdAt: parseTimestamp(row['created_at'] as String),
-    lastPostAt: row['last_post_at'] == null
-        ? null
-        : parseTimestamp(row['last_post_at'] as String),
     lastMessageAt: row['last_message_at'] == null
         ? null
         : parseTimestamp(row['last_message_at'] as String),

@@ -549,19 +549,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noRoomsYetMessage =>
-      'No rooms yet. A room is a separate feed for the people you invite into it.';
+      'No rooms yet. A room is a separate chat for the people you invite into it.';
 
   @override
   String get newRoomTitle => 'New room';
 
   @override
   String get createRoomButton => 'Create room';
-
-  @override
-  String get openRoomFeedTooltip => 'Room feed';
-
-  @override
-  String get roomEmptyFeedMessage => 'Nothing posted in this room yet.';
 
   @override
   String get failedToLoadRoomsError =>
@@ -643,27 +637,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get leaveRoomDialogContent =>
-      'The room disappears from your list and its feed goes with it. Only the owner can bring you back.';
+      'The room disappears from your list and its conversation goes with it. Only the owner can bring you back.';
 
   @override
   String get leaveDirectRoomDialogContent =>
-      'This room is just the two of you, so it goes for both — along with everything posted in it.';
+      'This room is just the two of you, so it goes for both — along with everything said in it.';
 
   @override
   String get failedToLeaveRoomError =>
       'Failed to leave the room. Please try again.';
-
-  @override
-  String get postDestinationsLabel => 'Where to publish';
-
-  @override
-  String get generalFeedLabel => 'Main feed';
-
-  @override
-  String get pickDestinationError => 'Pick at least one place to publish to.';
-
-  @override
-  String get openRoomChatTooltip => 'Room chat';
 
   @override
   String get roomChatTitle => 'Chat';
@@ -722,9 +704,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notifyRoomMessagesLabel => 'Messages in rooms';
-
-  @override
-  String get notifyRoomPostsLabel => 'Posts in rooms';
 
   @override
   String get roomAvatarLabel => 'Room picture';

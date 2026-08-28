@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../auth/auth_providers.dart';
+import 'room_details_screen.dart';
 import 'rooms_repository.dart';
 
 /// A room's chat: everyone in the room reads and writes, nobody else can do
@@ -273,6 +274,19 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          // Who is in the room, its name and its picture — one level down
+          // from the conversation, the way a messenger puts them.
+          IconButton(
+            icon: const Icon(Icons.group_outlined),
+            tooltip: l10n.roomMembersTitle,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => RoomDetailsScreen(roomId: widget.roomId),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [

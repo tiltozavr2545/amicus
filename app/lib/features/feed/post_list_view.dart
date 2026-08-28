@@ -15,30 +15,17 @@ import 'feed_cache.dart';
 import 'feed_repository.dart';
 
 /// A paginated, pull-to-refresh list of posts, optionally scoped to a single
-/// author or to a single room. Shared by [FeedScreen] (all connections, both
-/// scopes null), the profile screen's "my posts" section ([authorId] the
-/// current user) and a room's feed ([roomId] that room).
+/// author. Shared by [FeedScreen] (all connections, scope null) and the
+/// profile screen's "my posts" section ([authorId] the current user).
 class PostListView extends ConsumerStatefulWidget {
-  const PostListView({
-    super.key,
-    this.authorId,
-    this.roomId,
-    this.emptyState,
-    this.header,
-  });
+  const PostListView({super.key, this.authorId, this.emptyState, this.header});
 
   /// When set, only posts by this author are shown. When null, shows the
   /// full feed (subject to RLS visibility rules).
   final String? authorId;
 
-  /// When set, shows one room's feed: the posts addressed to that room, by
-  /// every member. Never combined with [authorId].
-  final String? roomId;
-
-  /// Which slot in [FeedCache] this list's first page belongs to. A room's
-  /// feed is a scope of its own — cached separately from the main feed and
-  /// from any profile wall, and never mixed with them.
-  String? get cacheScope => roomId != null ? 'room_$roomId' : authorId;
+  /// Which slot in [FeedCache] this list's first page belongs to.
+  String? get cacheScope => authorId;
 
   /// Rendered instead of the default "no posts" message when the list is
   /// empty and there is no error.
@@ -162,11 +149,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
     try {
       final page = await ref
           .read(feedRepositoryProvider)
-          .fetchPage(
-            cursor: _cursor,
-            authorId: widget.authorId,
-            roomId: widget.roomId,
-          );
+          .fetchPage(cursor: _cursor, authorId: widget.authorId);
       // A refresh (or unmount) happened while this page was loading — its data
       // is for a superseded feed state, so drop it.
       if (!mounted || epoch != _loadEpoch) return;

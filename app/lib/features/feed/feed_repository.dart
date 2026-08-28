@@ -504,31 +504,14 @@ class FeedRepository {
   /// can carry up to 20 items and resolving all of them for every post on
   /// every page would multiply this call's cost by up to 20x for slides most
   /// users never see.
-  Future<List<Post>> fetchPage({
-    Post? cursor,
-    String? authorId,
-    String? roomId,
-  }) async {
-    // The room feed asks for the same post rows through the join table, as an
-    // inner embed: `post_rooms!inner(room_id)` turns the embed into a join and
-    // `.eq('post_rooms.room_id', …)` filters on it, so one room's feed is the
-    // posts addressed to it and nothing else. Every other scope is the general
-    // feed and says so explicitly — a post addressed only to a room is visible
-    // to its members by RLS, and without this filter it would surface in their
-    // main feed and on the author's profile wall, which is exactly what "room
-    // feed" is supposed to rule out.
+  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
     var query = _client
         .from('posts')
         .select(
-          roomId != null
-              ? '*, author:users(name, dislikes_disabled), media:post_media(*), '
-                    'post_rooms!inner(room_id)'
-              : '*, author:users(name, dislikes_disabled), media:post_media(*)',
+          '*, author:users(name, dislikes_disabled), media:post_media(*)',
         );
-    if (roomId != null) {
-      query = query.eq('post_rooms.room_id', roomId);
-    } else if (authorId != null) {
-      query = query.eq('author_id', authorId).eq('in_general_feed', true);
+    if (authorId != null) {
+      query = query.eq('author_id', authorId);
     } else {
       final excluded = await _systemAccounts.ids();
       // Skipped rather than sent empty: `not.in.()` is not a filter PostgREST
@@ -539,7 +522,6 @@ class FeedRepository {
       if (excluded.isNotEmpty) {
         query = query.not('author_id', 'in', '(${excluded.join(',')})');
       }
-      query = query.eq('in_general_feed', true);
     }
     final filter = keysetFilter(cursor);
     if (filter != null) {
@@ -767,19 +749,11 @@ class FeedRepository {
   /// when this never runs at all — it only collects objects older than 24 h,
   /// a hundred at a time, which is the wrong instrument for a 100 MB clip the
   /// author removed from the draft a second ago.
-  /// [roomIds] and [inGeneralFeed] are the post's destinations: the main feed,
-  /// any number of rooms, or both. They travel with the same call that writes
-  /// the post, so a post is never briefly visible under the wrong audience —
-  /// and a retry of the same [clientToken] rewrites the destinations along
-  /// with the text and media, since the server treats a repeat token as "the
-  /// same submission, here is its current state".
   Future<void> createPost({
     required String clientToken,
     required String authorId,
     String? text,
     List<PendingMedia> media = const [],
-    List<String> roomIds = const [],
-    bool inGeneralFeed = true,
   }) async {
     for (final item in media) {
       await _uploadMediaItem(
@@ -798,8 +772,6 @@ class FeedRepository {
               params: {
                 'p_client_token': clientToken,
                 'p_text': (text != null && text.isNotEmpty) ? text : null,
-                'p_room_ids': roomIds,
-                'p_in_general_feed': inGeneralFeed,
                 'p_items': [
                   for (final item in media)
                     _pendingMediaItem(

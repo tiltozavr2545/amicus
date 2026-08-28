@@ -119,7 +119,6 @@ void main() {
         'is_direct': false,
         'owner_id': 'me',
         'created_at': '2026-08-26T10:00:00+00:00',
-        'last_post_at': '2026-08-26T12:30:00+00:00',
         'members': [
           {'id': 'me', 'name': 'Тимофей', 'avatar_path': null},
           {'id': 'anya', 'name': 'Аня', 'avatar_path': 'avatars/anya/1.jpg'},
@@ -134,8 +133,6 @@ void main() {
       expect(room.members.map((m) => m.name), ['Тимофей', 'Аня']);
       expect(room.members.last.avatarPath, 'avatars/anya/1.jpg');
       expect(room.othersThan('me').single.userId, 'anya');
-      // `timestamptz` out of PostgREST is UTC, parsed at the row boundary.
-      expect(room.lastPostAt, DateTime.utc(2026, 8, 26, 12, 30).toLocal());
     });
 
     test('reads the chat half: last message, its author, unread count', () {
@@ -145,7 +142,6 @@ void main() {
         'is_direct': false,
         'owner_id': 'me',
         'created_at': '2026-08-26T10:00:00+00:00',
-        'last_post_at': null,
         'last_message_at': '2026-08-26T18:05:00+00:00',
         'last_message_text': 'приду позже',
         'last_message_author_id': 'anya',
@@ -169,7 +165,6 @@ void main() {
         'is_direct': true,
         'owner_id': 'me',
         'created_at': '2026-08-26T10:00:00+00:00',
-        'last_post_at': null,
         'last_message_at': null,
         'last_message_text': null,
         'last_message_author_id': null,
@@ -186,23 +181,6 @@ void main() {
       // not in `members` — every caller has to survive that.
       expect(room.memberById('gone'), isNull);
       expect(room.memberById(null), isNull);
-    });
-
-    test('an empty room feed leaves lastPostAt null', () {
-      final room = Room.fromRow({
-        'id': 'room-1',
-        'name': 'Дача',
-        'is_direct': false,
-        'owner_id': 'me',
-        'created_at': '2026-08-26T10:00:00+00:00',
-        'last_post_at': null,
-        'members': [
-          {'id': 'me', 'name': 'Тимофей', 'avatar_path': null},
-        ],
-      });
-
-      expect(room.lastPostAt, isNull);
-      expect(room.name, 'Дача');
     });
   });
 }

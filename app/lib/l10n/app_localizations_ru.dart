@@ -557,20 +557,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noRoomsYetMessage =>
-      'Пока нет ни одной комнаты. Комната — это отдельная лента для тех, кого вы в неё позвали.';
+      'Пока нет ни одной комнаты. Комната — это отдельный чат для тех, кого вы в неё позвали.';
 
   @override
   String get newRoomTitle => 'Новая комната';
 
   @override
   String get createRoomButton => 'Создать комнату';
-
-  @override
-  String get openRoomFeedTooltip => 'Лента комнаты';
-
-  @override
-  String get roomEmptyFeedMessage =>
-      'В этой комнате пока ничего не опубликовано.';
 
   @override
   String get failedToLoadRoomsError =>
@@ -654,28 +647,15 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get leaveRoomDialogContent =>
-      'Комната пропадёт из списка, а её лента станет недоступна. Вернуть вас сможет только владелец.';
+      'Комната пропадёт из списка, а её переписка станет недоступна. Вернуть вас сможет только владелец.';
 
   @override
   String get leaveDirectRoomDialogContent =>
-      'Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всем, что в ней опубликовано.';
+      'Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всей перепиской.';
 
   @override
   String get failedToLeaveRoomError =>
       'Не удалось выйти из комнаты. Попробуйте ещё раз.';
-
-  @override
-  String get postDestinationsLabel => 'Куда опубликовать';
-
-  @override
-  String get generalFeedLabel => 'Общая лента';
-
-  @override
-  String get pickDestinationError =>
-      'Выберите хотя бы одно место для публикации.';
-
-  @override
-  String get openRoomChatTooltip => 'Чат комнаты';
 
   @override
   String get roomChatTitle => 'Чат';
@@ -736,9 +716,6 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get notifyRoomMessagesLabel => 'Сообщения в комнатах';
-
-  @override
-  String get notifyRoomPostsLabel => 'Посты в комнатах';
 
   @override
   String get roomAvatarLabel => 'Аватарка комнаты';
