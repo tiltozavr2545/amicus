@@ -23,6 +23,16 @@ void main() {
       }
     });
 
+    test('a connection request and its answer open Connections', () {
+      for (final kind in ['connection_request', 'connection_accepted']) {
+        expect(
+          pushTargetFrom({'kind': kind, 'user_id': 'anya'}),
+          isA<ConnectionsTarget>(),
+          reason: kind,
+        );
+      }
+    });
+
     test('the feed answers everything that is only "something is new"', () {
       for (final kind in ['new_post', 'digest', 'inactive_week']) {
         expect(pushTargetFrom({'kind': kind}), isA<FeedTarget>(), reason: kind);

@@ -32,6 +32,27 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   int createCalls = 0;
   int rotateCalls = 0;
 
+  /// Requests recorded by the room screen / the requests section.
+  final List<String> requestedIds = [];
+  final List<(String, bool)> answeredRequests = [];
+  List<ConnectionRequest> pendingRequests = [];
+
+  @override
+  Future<List<ConnectionRequest>> fetchPendingRequests(String viewerId) async =>
+      pendingRequests;
+
+  @override
+  Future<bool> requestConnection(String userId) async {
+    requestedIds.add(userId);
+    return false;
+  }
+
+  @override
+  Future<void> respondToRequest({
+    required String requestId,
+    required bool accept,
+  }) async => answeredRequests.add((requestId, accept));
+
   @override
   Future<String> createInviteLink() async {
     createCalls++;
@@ -532,5 +553,77 @@ void main() {
     await tester.pump();
 
     expect(container.read(feedRefreshTickProvider), before);
+  });
+
+  group('connection requests', () {
+    testWidgets('an incoming request can be accepted', (tester) async {
+      final repo = _FakeConnectionsRepository()
+        ..pendingRequests = const [
+          ConnectionRequest(
+            id: 'req-1',
+            otherId: 'anya',
+            otherName: 'Аня',
+            isIncoming: true,
+          ),
+        ];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Аня'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.check));
+      await tester.pumpAndSettle();
+
+      expect(repo.answeredRequests, [('req-1', true)]);
+    });
+
+    testWidgets('an incoming request can be declined', (tester) async {
+      final repo = _FakeConnectionsRepository()
+        ..pendingRequests = const [
+          ConnectionRequest(
+            id: 'req-1',
+            otherId: 'anya',
+            otherName: 'Аня',
+            isIncoming: true,
+          ),
+        ];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(repo.answeredRequests, [('req-1', false)]);
+    });
+
+    testWidgets('own outgoing request is not something to answer', (
+      tester,
+    ) async {
+      // It shows on the room screen as "asked"; here it would be a request
+      // from oneself with an Accept button under it.
+      final repo = _FakeConnectionsRepository()
+        ..pendingRequests = const [
+          ConnectionRequest(
+            id: 'req-1',
+            otherId: 'anya',
+            otherName: 'Аня',
+            isIncoming: false,
+          ),
+        ];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connection requests'), findsNothing);
+      expect(find.byIcon(Icons.check), findsNothing);
+    });
+
+    testWidgets('with nothing pending the section is not there at all', (
+      tester,
+    ) async {
+      final repo = _FakeConnectionsRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connection requests'), findsNothing);
+    });
   });
 }

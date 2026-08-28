@@ -226,6 +226,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unblockButton => 'Unblock';
 
   @override
+  String get connectionRequestsTitle => 'Connection requests';
+
+  @override
+  String get connectionRequestSubtitle => 'Wants to add you as a connection';
+
+  @override
+  String get acceptRequestTooltip => 'Accept';
+
+  @override
+  String get declineRequestTooltip => 'Decline';
+
+  @override
+  String get failedToAnswerRequestError =>
+      'Failed to answer the request. Please try again.';
+
+  @override
+  String get askToConnectTooltip => 'Ask to connect';
+
+  @override
+  String get connectionRequestPendingLabel => 'Request sent';
+
+  @override
+  String connectionRequestSentMessage(String name) {
+    return 'Request sent to $name';
+  }
+
+  @override
+  String connectionRequestMutualMessage(String name) {
+    return '$name had asked you too — you are connections now';
+  }
+
+  @override
+  String get failedToRequestConnectionError =>
+      'Failed to send the request. Please try again.';
+
+  @override
   String get blockedUsersTooltip => 'Blocked users';
 
   @override

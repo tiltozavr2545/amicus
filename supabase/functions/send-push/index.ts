@@ -108,6 +108,21 @@ const TEXTS: Record<string, Record<string, string[]>> = {
     // без названия — перечисление остальных участников), собирает его клиент,
     // и вторая копия этого правила разошлась бы с первой при первом же
     // переименовании. В payload при этом едет room_id — под будущий deep link.
+    // У заявок нет настройки-выключателя: они адресованы лично и приходят
+    // раз в несколько месяцев, а «больше никогда не узнаю, что меня позвали»
+    // — не тот выбор, который стоит предлагать.
+    connection_request: [
+      '{user_name} хочет добавить вас в знакомые',
+      'Заявка в знакомые от {user_name}',
+      '{user_name} зовёт вас в знакомые',
+      'Вас зовёт в знакомые {user_name}',
+    ],
+    connection_accepted: [
+      '{user_name} принял(а) вашу заявку — теперь вы знакомые',
+      'Теперь вы знакомые с {user_name}',
+      '{user_name} теперь ваш(а) знакомый(ая)',
+      'Заявка принята: {user_name} теперь в ваших знакомых',
+    ],
     room_message: [
       'Новое сообщение от {author_name}',
       '{author_name} написал(а) в комнате',
@@ -157,6 +172,18 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'New reply from {author_name} to your comment',
       '{author_name} replied to you',
       '{author_name} answered your comment',
+    ],
+    connection_request: [
+      '{user_name} wants to add you as a connection',
+      'Connection request from {user_name}',
+      '{user_name} would like to connect with you',
+      'You have a connection request from {user_name}',
+    ],
+    connection_accepted: [
+      '{user_name} accepted your request — you are connections now',
+      'You and {user_name} are connections now',
+      '{user_name} is now one of your connections',
+      'Request accepted: {user_name} is in your connections',
     ],
     room_message: [
       'New message from {author_name}',

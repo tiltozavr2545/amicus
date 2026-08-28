@@ -59,6 +59,49 @@ class BlockedUser {
   final String? avatarPath;
 }
 
+/// A pending "let's be connections" ask, in whichever direction.
+///
+/// Only ever about someone the viewer shares a room with — that is the one
+/// door this feature opens, and the server holds it (`request_connection()`
+/// refuses anyone else). There is no people search here and none is implied.
+class ConnectionRequest {
+  const ConnectionRequest({
+    required this.id,
+    required this.otherId,
+    required this.otherName,
+    required this.isIncoming,
+    this.otherAvatarPath,
+  });
+
+  final String id;
+
+  /// The other side, whichever of the two columns they sit in — the screen
+  /// shows one person either way, and [isIncoming] is what changes what it
+  /// offers to do about them.
+  final String otherId;
+  final String otherName;
+  final String? otherAvatarPath;
+
+  /// They asked us. The other direction is shown too, as "asked" next to
+  /// their name, so nobody asks twice into a silence.
+  final bool isIncoming;
+
+  factory ConnectionRequest.fromRow(Map<String, dynamic> row, String viewerId) {
+    final isIncoming = row['recipient_id'] == viewerId;
+    final other =
+        (isIncoming ? row['requester'] : row['recipient'])
+            as Map<String, dynamic>;
+    return ConnectionRequest(
+      id: row['id'] as String,
+      otherId:
+          (isIncoming ? row['requester_id'] : row['recipient_id']) as String,
+      otherName: other['name'] as String,
+      otherAvatarPath: other['avatar_path'] as String?,
+      isIncoming: isIncoming,
+    );
+  }
+}
+
 class ConnectionsRepository {
   ConnectionsRepository(this._client);
 
@@ -162,6 +205,54 @@ class ConnectionsRepository {
         isFavorite: favoriteIds.contains(otherId),
       );
     }).toList();
+  }
+
+  /// Every request this viewer is a side of, still waiting for an answer.
+  ///
+  /// A plain select: the RLS policy already scopes the table to the two
+  /// people a row is about, so there is nothing an RPC would add — and the
+  /// names come through the same embed the rest of the app uses, readable
+  /// because sharing a room is enough to see someone's profile.
+  Future<List<ConnectionRequest>> fetchPendingRequests(String viewerId) async {
+    final rows = await _client
+        .from('connection_requests')
+        .select(
+          'id, requester_id, recipient_id, '
+          'requester:users!connection_requests_requester_id_fkey(name, avatar_path), '
+          'recipient:users!connection_requests_recipient_id_fkey(name, avatar_path)',
+        )
+        .eq('status', 'pending')
+        .order('created_at', ascending: false)
+        .timeout(networkTimeout);
+    return [for (final row in rows) ConnectionRequest.fromRow(row, viewerId)];
+  }
+
+  /// Asks [userId] to become a Connection. Returns whether that already
+  /// settled it: two people who both asked are two people who both agreed, so
+  /// the server connects them on the spot rather than staging a ceremony.
+  ///
+  /// Throws PostgrestException — PT403 when there is no shared room (or a
+  /// block, deliberately answered the same way), PT409 when they are already
+  /// connected or were already asked once.
+  Future<bool> requestConnection(String userId) async {
+    final result = await _client
+        .rpc('request_connection', params: {'p_user_id': userId})
+        .timeout(networkTimeout);
+    return result == 'connected';
+  }
+
+  /// Accepts or declines an incoming request. A decline is silent by design:
+  /// the other side simply never gets the button back.
+  Future<void> respondToRequest({
+    required String requestId,
+    required bool accept,
+  }) async {
+    await _client
+        .rpc(
+          'respond_to_connection_request',
+          params: {'p_request_id': requestId, 'p_accept': accept},
+        )
+        .timeout(networkTimeout);
   }
 
   Future<Set<String>> _fetchIdSet({
@@ -276,3 +367,32 @@ final friendsProvider = FutureProvider.autoDispose<List<Friend>>((ref) {
   final userId = ref.watch(currentUserIdProvider);
   return ref.watch(connectionsRepositoryProvider).fetchFriends(userId!);
 });
+
+/// Pending connection requests in both directions, for the Connections screen
+/// (which answers them) and the room screen (which must not offer to ask
+/// twice).
+///
+/// Not autoDispose: the room screen and the Connections tab both read it, and
+/// dropping it between them would refetch on every switch. [requestsRefreshTick]
+/// is what makes it reload once something has actually changed it.
+final pendingConnectionRequestsProvider =
+    FutureProvider<List<ConnectionRequest>>((ref) {
+      ref.watch(connectionRequestsTickProvider);
+      final userId = ref.watch(currentUserIdProvider);
+      if (userId == null) return Future.value(const []);
+      return ref
+          .watch(connectionsRepositoryProvider)
+          .fetchPendingRequests(userId);
+    });
+
+/// Bumped whenever a request is sent or answered. Same shape and same reason
+/// as `roomsRefreshTickProvider`.
+class ConnectionRequestsTick extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state++;
+}
+
+final connectionRequestsTickProvider =
+    NotifierProvider<ConnectionRequestsTick, int>(ConnectionRequestsTick.new);

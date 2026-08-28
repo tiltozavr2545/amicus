@@ -31,6 +31,11 @@ class RoomDetailsScreen extends ConsumerStatefulWidget {
 class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
   bool _isBusy = false;
 
+  /// Members whose "ask to connect" is in flight, so a second tap can't send
+  /// a second request. Per member, not per screen: asking one person must not
+  /// freeze the row of the next.
+  final _asking = <String>{};
+
   /// Runs one membership/name change, refreshes the list, and reports failure
   /// in place. Returns whether it worked, so callers that navigate afterwards
   /// (leaving the room) can tell.
@@ -53,6 +58,45 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
       return false;
     } finally {
       if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  /// Asks a room peer to become a Connection.
+  ///
+  /// Allowed only because they are in this room: the server checks exactly
+  /// that (`request_connection()`), and the button exists here for the same
+  /// reason — this is where two people who are not connections actually meet.
+  ///
+  /// PT409 means they were already asked (or already answered), which is not
+  /// a failure worth a red message: the list refreshes and the button turns
+  /// into "asked".
+  Future<void> _askToConnect(RoomMember member) async {
+    final l10n = AppLocalizations.of(context)!;
+    if (!_asking.add(member.userId)) return;
+    setState(() {});
+    try {
+      final connected = await ref
+          .read(connectionsRepositoryProvider)
+          .requestConnection(member.userId);
+      ref.read(connectionRequestsTickProvider.notifier).bump();
+      if (connected) ref.invalidate(friendsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            connected
+                ? l10n.connectionRequestMutualMessage(member.name)
+                : l10n.connectionRequestSentMessage(member.name),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.failedToRequestConnectionError)),
+      );
+    } finally {
+      if (mounted) setState(() => _asking.remove(member.userId));
     }
   }
 
@@ -333,15 +377,25 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
               subtitle: showsOwnership && member.userId == room.ownerId
                   ? Text(l10n.roomOwnerLabel)
                   : null,
-              trailing: canManage && member.userId != viewerId
-                  ? IconButton(
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (member.userId != viewerId)
+                    _ConnectAction(
+                      member: member,
+                      isBusy: _asking.contains(member.userId),
+                      onAsk: () => _askToConnect(member),
+                    ),
+                  if (canManage && member.userId != viewerId)
+                    IconButton(
                       icon: const Icon(Icons.person_remove_outlined),
                       tooltip: l10n.removeMemberTooltip,
                       onPressed: _isBusy
                           ? null
                           : () => _removeMember(room, member),
-                    )
-                  : null,
+                    ),
+                ],
+              ),
             ),
           if (canManage)
             ListTile(
@@ -387,6 +441,65 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The one control that turns a room peer into a Connection — or says why it
+/// is not on offer.
+///
+/// Three states, and no fourth: already connected (nothing at all — the
+/// relationship exists and this screen is not where it is managed), asked
+/// (a label, so nobody asks into a silence twice, in either direction), or
+/// the button.
+class _ConnectAction extends ConsumerWidget {
+  const _ConnectAction({
+    required this.member,
+    required this.isBusy,
+    required this.onAsk,
+  });
+
+  final RoomMember member;
+  final bool isBusy;
+  final VoidCallback onAsk;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final friends = ref.watch(friendsProvider).value;
+    // While the Connections list is still loading, nothing is offered:
+    // showing "ask" to somebody who is already a connection would be a
+    // button that only ever answers PT409.
+    if (friends == null) return const SizedBox.shrink();
+    if (friends.any((friend) => friend.userId == member.userId)) {
+      return const SizedBox.shrink();
+    }
+
+    final pending = ref.watch(pendingConnectionRequestsProvider).value;
+    if (pending != null &&
+        pending.any((request) => request.otherId == member.userId)) {
+      return Text(
+        l10n.connectionRequestPendingLabel,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    if (isBusy) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: SizedBox(
+          height: 16,
+          width: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return IconButton(
+      icon: const Icon(Icons.person_add_alt),
+      tooltip: l10n.askToConnectTooltip,
+      onPressed: onAsk,
     );
   }
 }

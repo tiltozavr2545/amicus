@@ -74,6 +74,23 @@
   "blockFriendContent": "Ни вы, ни он не будете видеть посты друг друга. Знакомство не разорвётся.",
   "blockButton": "Заблокировать",
   "unblockButton": "Разблокировать",
+  "connectionRequestsTitle": "Заявки в знакомые",
+  "connectionRequestSubtitle": "Хочет добавить вас в знакомые",
+  "acceptRequestTooltip": "Принять",
+  "declineRequestTooltip": "Отклонить",
+  "failedToAnswerRequestError": "Не удалось ответить на заявку. Попробуйте ещё раз.",
+  "askToConnectTooltip": "Позвать в знакомые",
+  "connectionRequestPendingLabel": "Заявка отправлена",
+  "connectionRequestSentMessage": "Заявка отправлена: {name}",
+  "@connectionRequestSentMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "connectionRequestMutualMessage": "{name} тоже звал(а) вас — теперь вы знакомые",
+  "@connectionRequestMutualMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "failedToRequestConnectionError": "Не удалось отправить заявку. Попробуйте ещё раз.",
+
   "blockedUsersTooltip": "Заблокированные",
   "blockedUsersTitle": "Заблокированные",
   "noBlockedUsersMessage": "Вы никого не заблокировали",

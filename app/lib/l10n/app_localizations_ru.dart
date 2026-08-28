@@ -223,6 +223,42 @@ class AppLocalizationsRu extends AppLocalizations {
   String get unblockButton => 'Разблокировать';
 
   @override
+  String get connectionRequestsTitle => 'Заявки в знакомые';
+
+  @override
+  String get connectionRequestSubtitle => 'Хочет добавить вас в знакомые';
+
+  @override
+  String get acceptRequestTooltip => 'Принять';
+
+  @override
+  String get declineRequestTooltip => 'Отклонить';
+
+  @override
+  String get failedToAnswerRequestError =>
+      'Не удалось ответить на заявку. Попробуйте ещё раз.';
+
+  @override
+  String get askToConnectTooltip => 'Позвать в знакомые';
+
+  @override
+  String get connectionRequestPendingLabel => 'Заявка отправлена';
+
+  @override
+  String connectionRequestSentMessage(String name) {
+    return 'Заявка отправлена: $name';
+  }
+
+  @override
+  String connectionRequestMutualMessage(String name) {
+    return '$name тоже звал(а) вас — теперь вы знакомые';
+  }
+
+  @override
+  String get failedToRequestConnectionError =>
+      'Не удалось отправить заявку. Попробуйте ещё раз.';
+
+  @override
   String get blockedUsersTooltip => 'Заблокированные';
 
   @override

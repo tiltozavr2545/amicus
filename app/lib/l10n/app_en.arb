@@ -89,6 +89,23 @@
   "blockFriendContent": "Neither of you will see each other's posts. You'll still be connected.",
   "blockButton": "Block",
   "unblockButton": "Unblock",
+  "connectionRequestsTitle": "Connection requests",
+  "connectionRequestSubtitle": "Wants to add you as a connection",
+  "acceptRequestTooltip": "Accept",
+  "declineRequestTooltip": "Decline",
+  "failedToAnswerRequestError": "Failed to answer the request. Please try again.",
+  "askToConnectTooltip": "Ask to connect",
+  "connectionRequestPendingLabel": "Request sent",
+  "connectionRequestSentMessage": "Request sent to {name}",
+  "@connectionRequestSentMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "connectionRequestMutualMessage": "{name} had asked you too — you are connections now",
+  "@connectionRequestMutualMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "failedToRequestConnectionError": "Failed to send the request. Please try again.",
+
   "blockedUsersTooltip": "Blocked users",
   "blockedUsersTitle": "Blocked",
   "noBlockedUsersMessage": "You haven't blocked anyone",

@@ -459,6 +459,10 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                   )
                 : Text(l10n.activateButton),
           ),
+          // Incoming asks come first: they are the only thing on this screen
+          // that is waiting on the viewer, and an unanswered one is somebody
+          // standing at the door. Nothing is drawn when there are none.
+          const _IncomingRequests(),
           const SizedBox(height: 32),
           Text(
             l10n.myConnectionsTitle,
@@ -483,6 +487,100 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The "somebody wants to be your connection" section.
+///
+/// Only ever people the viewer already shares a room with — the server allows
+/// no others — so a request here is never a stranger out of nowhere.
+class _IncomingRequests extends ConsumerStatefulWidget {
+  const _IncomingRequests();
+
+  @override
+  ConsumerState<_IncomingRequests> createState() => _IncomingRequestsState();
+}
+
+class _IncomingRequestsState extends ConsumerState<_IncomingRequests> {
+  /// Ids being answered right now, so a second tap can't send a second answer
+  /// while the first is in flight — per row, not per section: answering one
+  /// must not freeze the others.
+  final _busy = <String>{};
+
+  Future<void> _answer(ConnectionRequest request, bool accept) async {
+    final l10n = AppLocalizations.of(context)!;
+    if (!_busy.add(request.id)) return;
+    setState(() {});
+    try {
+      await ref
+          .read(connectionsRepositoryProvider)
+          .respondToRequest(requestId: request.id, accept: accept);
+      ref.read(connectionRequestsTickProvider.notifier).bump();
+      // Accepting adds a Connection, and the list right below this one is
+      // where it lands.
+      if (accept) ref.invalidate(friendsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.failedToAnswerRequestError)));
+    } finally {
+      if (mounted) setState(() => _busy.remove(request.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final incoming = [
+      for (final request
+          in ref.watch(pendingConnectionRequestsProvider).value ??
+              const <ConnectionRequest>[])
+        if (request.isIncoming) request,
+    ];
+    // Silent while there is nothing to answer, and silent while the list is
+    // still loading or failed to: a heading over an empty space is worse
+    // than no heading.
+    if (incoming.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 32),
+        Text(
+          l10n.connectionRequestsTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        for (final request in incoming)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: FriendAvatar(avatarPath: request.otherAvatarPath),
+            title: Text(request.otherName),
+            subtitle: Text(l10n.connectionRequestSubtitle),
+            trailing: _busy.contains(request.id)
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.check),
+                        tooltip: l10n.acceptRequestTooltip,
+                        onPressed: () => _answer(request, true),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: l10n.declineRequestTooltip,
+                        onPressed: () => _answer(request, false),
+                      ),
+                    ],
+                  ),
+          ),
+      ],
     );
   }
 }

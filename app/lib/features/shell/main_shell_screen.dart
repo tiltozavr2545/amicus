@@ -21,6 +21,12 @@ import '../rooms/room_chat_screen.dart';
 /// feed · new post · rooms · connections · profile.
 const _addPostDestinationIndex = 1;
 
+/// Branch indices in [routerProvider]'s shell — feed · rooms · connections ·
+/// profile. Named because a tapped notification navigates by them, and a bare
+/// `goBranch(2)` says nothing about where it lands.
+const _feedBranchIndex = 0;
+const _connectionsBranchIndex = 2;
+
 /// Bottom-nav shell wrapping the four tab branches
 /// (feed/rooms/connections/profile) registered on [routerProvider].
 /// [navigationShell] preserves each branch's own navigation stack and
@@ -71,11 +77,13 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         navigator.push(
           MaterialPageRoute(builder: (_) => CommentsScreen(postId: postId)),
         );
+      case ConnectionsTarget():
+        widget.navigationShell.goBranch(_connectionsBranchIndex);
       case FeedTarget():
         // A branch switch, not a push: the feed is already at the bottom of
         // this stack, and pushing a second copy of it over itself would take
         // two backs to leave.
-        widget.navigationShell.goBranch(0);
+        widget.navigationShell.goBranch(_feedBranchIndex);
     }
   }
 

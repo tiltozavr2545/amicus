@@ -25,6 +25,12 @@ class PostCommentsTarget extends PushTarget {
   final String postId;
 }
 
+/// Somebody asked to be a connection, or answered such an ask: open the
+/// Connections screen, which is where both are handled.
+class ConnectionsTarget extends PushTarget {
+  const ConnectionsTarget();
+}
+
 /// Nothing more specific than "there is something new in the feed" — a new
 /// post from a favourite, a digest, a nudge after a quiet week. The feed is
 /// the answer to all three, and it is also the tab the app opens on, so this
@@ -46,6 +52,7 @@ PushTarget? pushTargetFrom(Map<String, dynamic> data) {
     'room_message' when roomId != null => RoomChatTarget(roomId),
     'post_comment' ||
     'comment_reply' when postId != null => PostCommentsTarget(postId),
+    'connection_request' || 'connection_accepted' => const ConnectionsTarget(),
     'new_post' || 'digest' || 'inactive_week' => const FeedTarget(),
     // Includes 'app_update'/'app_update_important' — and anything a future
     // migration adds before this table hears about it. Opening the app is

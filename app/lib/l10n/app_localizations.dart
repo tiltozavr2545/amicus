@@ -482,6 +482,66 @@ abstract class AppLocalizations {
   /// **'Unblock'**
   String get unblockButton;
 
+  /// No description provided for @connectionRequestsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection requests'**
+  String get connectionRequestsTitle;
+
+  /// No description provided for @connectionRequestSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wants to add you as a connection'**
+  String get connectionRequestSubtitle;
+
+  /// No description provided for @acceptRequestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get acceptRequestTooltip;
+
+  /// No description provided for @declineRequestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get declineRequestTooltip;
+
+  /// No description provided for @failedToAnswerRequestError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to answer the request. Please try again.'**
+  String get failedToAnswerRequestError;
+
+  /// No description provided for @askToConnectTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask to connect'**
+  String get askToConnectTooltip;
+
+  /// No description provided for @connectionRequestPendingLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent'**
+  String get connectionRequestPendingLabel;
+
+  /// No description provided for @connectionRequestSentMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent to {name}'**
+  String connectionRequestSentMessage(String name);
+
+  /// No description provided for @connectionRequestMutualMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} had asked you too — you are connections now'**
+  String connectionRequestMutualMessage(String name);
+
+  /// No description provided for @failedToRequestConnectionError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to send the request. Please try again.'**
+  String get failedToRequestConnectionError;
+
   /// No description provided for @blockedUsersTooltip.
   ///
   /// In en, this message translates to:
