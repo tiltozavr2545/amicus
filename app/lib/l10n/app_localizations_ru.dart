@@ -678,6 +678,27 @@ class AppLocalizationsRu extends AppLocalizations {
   String get mediaMessagePreview => 'Фото';
 
   @override
+  String get typingStatus => 'печатает…';
+
+  @override
+  String someoneTypingStatus(String name) {
+    return '$name печатает…';
+  }
+
+  @override
+  String severalTypingStatus(int count) {
+    return '$count печатают…';
+  }
+
+  @override
+  String get onlineStatus => 'в сети';
+
+  @override
+  String onlineCountStatus(int count) {
+    return '$count в сети';
+  }
+
+  @override
   String get messageHint => 'Сообщение';
 
   @override

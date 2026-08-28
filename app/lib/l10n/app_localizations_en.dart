@@ -668,6 +668,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mediaMessagePreview => 'Photo';
 
   @override
+  String get typingStatus => 'typing…';
+
+  @override
+  String someoneTypingStatus(String name) {
+    return '$name is typing…';
+  }
+
+  @override
+  String severalTypingStatus(int count) {
+    return '$count people typing…';
+  }
+
+  @override
+  String get onlineStatus => 'online';
+
+  @override
+  String onlineCountStatus(int count) {
+    return '$count online';
+  }
+
+  @override
   String get messageHint => 'Message';
 
   @override

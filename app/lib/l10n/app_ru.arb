@@ -226,6 +226,20 @@
 
   "roomChatTitle": "Чат",
   "mediaMessagePreview": "Фото",
+  "typingStatus": "печатает…",
+  "someoneTypingStatus": "{name} печатает…",
+  "@someoneTypingStatus": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "severalTypingStatus": "{count} печатают…",
+  "@severalTypingStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "onlineStatus": "в сети",
+  "onlineCountStatus": "{count} в сети",
+  "@onlineCountStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
   "messageHint": "Сообщение",
   "sendMessageTooltip": "Отправить",
   "attachMediaTooltip": "Прикрепить фото или видео",

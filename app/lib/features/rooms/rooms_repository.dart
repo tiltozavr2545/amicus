@@ -309,6 +309,28 @@ class RoomMemberReceipt {
       );
 }
 
+/// The live half of a room's chat: what this screen is allowed to say about
+/// itself while it is open, and how to stop saying it.
+///
+/// A pair of callbacks rather than the channel itself, for the same reason
+/// [RoomsRepository.subscribeToMessages] hands back one: the screen has no
+/// other reason to know that Realtime exists, and a test can hand back no-ops
+/// instead of building a socket.
+class RoomPresenceHandle {
+  const RoomPresenceHandle({
+    required this.setTyping,
+    required this.unsubscribe,
+  });
+
+  /// Announces (or withdraws) "typing" for this viewer. Cheap enough to call
+  /// on a keystroke's debounce — it re-tracks one small payload.
+  final Future<void> Function(bool typing) setTyping;
+
+  /// Must be called when the screen goes away, or the channel outlives it and
+  /// the viewer stays "present" in a chat they have left.
+  final void Function() unsubscribe;
+}
+
 /// Where a room's own picture lives: `rooms/<room_id>/<token>.<ext>`, one
 /// folder per room the way `avatars/` and `posts/` use one per user. Both the
 /// CHECK on `rooms.avatar_path` and the storage policies read the room id out
@@ -789,6 +811,67 @@ class RoomsRepository {
         )
         .subscribe();
     return () => channel.unsubscribe();
+  }
+
+  /// Who is in this room's chat right now, and who is typing in it.
+  ///
+  /// Realtime presence, not a table: both facts are only true while a screen
+  /// is open, and a value that goes stale a second after it is written has
+  /// nowhere to be stored. That also draws the feature's edge — "online" here
+  /// means "in this chat now", not "opened the app today", and "last seen at
+  /// 12:40" is deliberately not on offer.
+  ///
+  /// The channel is PRIVATE (migration 20260828130000). An ordinary Realtime
+  /// channel is open to anyone who knows its name: presence and broadcast,
+  /// unlike Postgres Changes, check no RLS at all, because they read no
+  /// tables. A private one does — subscribing and announcing go through
+  /// `realtime.messages`, whose policies ask the one question that matters
+  /// here: is this topic a room I am in.
+  ///
+  /// [onChange] is called with everyone present and everyone typing, the
+  /// caller included — the screen filters itself out, since only it knows
+  /// who is looking.
+  RoomPresenceHandle subscribeToPresence({
+    required String roomId,
+    required String userId,
+    required void Function(Set<String> present, Set<String> typing) onChange,
+  }) {
+    final channel = _client.channel(
+      'room:$roomId',
+      opts: const RealtimeChannelConfig(private: true),
+    );
+
+    void emit() {
+      final present = <String>{};
+      final typing = <String>{};
+      for (final state in channel.presenceState()) {
+        for (final presence in state.presences) {
+          final id = presence.payload['user_id'] as String?;
+          if (id == null) continue;
+          present.add(id);
+          if (presence.payload['typing'] == true) typing.add(id);
+        }
+      }
+      onChange(present, typing);
+    }
+
+    channel
+        .onPresenceSync((_) => emit())
+        .onPresenceJoin((_) => emit())
+        .onPresenceLeave((_) => emit())
+        .subscribe((status, error) async {
+          // Announcing before the channel is up is dropped silently, so it
+          // waits for the callback rather than firing right after subscribe().
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            await channel.track({'user_id': userId, 'typing': false});
+          }
+        });
+
+    return RoomPresenceHandle(
+      setTyping: (typing) =>
+          channel.track({'user_id': userId, 'typing': typing}),
+      unsubscribe: () => channel.unsubscribe(),
+    );
   }
 
   /// Leaves the room. This can end the room: a two-person room always goes

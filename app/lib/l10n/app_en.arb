@@ -262,6 +262,20 @@
 
   "roomChatTitle": "Chat",
   "mediaMessagePreview": "Photo",
+  "typingStatus": "typing…",
+  "someoneTypingStatus": "{name} is typing…",
+  "@someoneTypingStatus": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "severalTypingStatus": "{count} people typing…",
+  "@severalTypingStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "onlineStatus": "online",
+  "onlineCountStatus": "{count} online",
+  "@onlineCountStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
   "messageHint": "Message",
   "sendMessageTooltip": "Send",
   "attachMediaTooltip": "Attach a photo or video",

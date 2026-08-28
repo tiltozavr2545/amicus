@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +14,14 @@ import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
 import 'room_details_screen.dart';
 import 'rooms_repository.dart';
+
+/// How long after the last keystroke this viewer stops being "typing".
+///
+/// Long enough to survive a pause for thought, short enough that a draft
+/// abandoned mid-word doesn't leave a lie on someone else's screen. The flag
+/// is also cleared on send and on leaving the screen — this timer is only
+/// for the case where neither happens.
+const _typingIdleTimeout = Duration(seconds: 4);
 
 /// How many photos/videos one message may carry. Mirrors the CHECK on
 /// `room_messages.media` (20260828120000) — the server refuses an eleventh,
@@ -56,6 +66,19 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   /// sending should cost the bucket nothing.
   final _attachments = <PickedMedia>[];
 
+  RoomPresenceHandle? _presence;
+
+  /// Everyone in this chat right now and everyone typing in it, the viewer
+  /// included — filtered out where it is shown, since only the screen knows
+  /// who is looking.
+  Set<String> _present = const {};
+  Set<String> _typing = const {};
+
+  /// What this viewer last announced, so a keystroke doesn't re-announce
+  /// "typing" on every character.
+  bool _announcedTyping = false;
+  Timer? _typingTimer;
+
   /// Every member's read/delivered marks, keyed by user id — what draws the
   /// ticks on the viewer's own messages. Absent while the first fetch is
   /// still in flight; a bubble with no entry for a member just shows no
@@ -73,6 +96,8 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     // while the screen is up: the server skips a member whose read mark is
     // fresher than a minute, and every arriving message moves it again.
     _markRead();
+    _subscribePresence();
+    _textController.addListener(_onTyping);
     _scrollController.addListener(() {
       final nearEnd =
           _scrollController.position.pixels >
@@ -87,6 +112,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     // otherwise, and its callbacks would call setState on a dead widget.
     _unsubscribe?.call();
     _unsubscribeReceipts?.call();
+    // Leaving the screen is leaving the chat: without this the viewer stays
+    // "present" in a room nobody has open, and "typing" can outlive the
+    // draft that caused it.
+    _typingTimer?.cancel();
+    _presence?.unsubscribe();
     _scrollController.dispose();
     _textController.dispose();
     super.dispose();
@@ -113,6 +143,72 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
             setState(() => _messages[index] = message);
           },
         );
+  }
+
+  void _subscribePresence() {
+    final viewerId = ref.read(currentUserIdProvider);
+    if (viewerId == null) return;
+    _presence = ref
+        .read(roomsRepositoryProvider)
+        .subscribeToPresence(
+          roomId: widget.roomId,
+          userId: viewerId,
+          onChange: (present, typing) {
+            if (!mounted) return;
+            setState(() {
+              _present = present;
+              _typing = typing;
+            });
+          },
+        );
+  }
+
+  /// Announces "typing" while there is something to type, and takes it back
+  /// [_typingIdleTimeout] after the last keystroke.
+  void _onTyping() {
+    final typing = _textController.text.trim().isNotEmpty;
+    _typingTimer?.cancel();
+    if (typing) {
+      _typingTimer = Timer(_typingIdleTimeout, () => _announceTyping(false));
+    }
+    _announceTyping(typing);
+  }
+
+  void _announceTyping(bool typing) {
+    if (typing == _announcedTyping) return;
+    _announcedTyping = typing;
+    // Fire-and-forget: an announcement that doesn't land costs an indicator
+    // nobody was promised, and there is nothing to report to.
+    unawaited(_presence?.setTyping(typing).catchError((Object _) {}));
+  }
+
+  /// The line under the room's name: who is typing, or who is here.
+  ///
+  /// Typing wins over presence — it is the more specific fact, and it is the
+  /// one worth watching. In a two-person room neither needs a name (there is
+  /// only one other person); in a group both are named, because "someone is
+  /// typing" in a room of five says almost nothing.
+  String? _presenceLine(AppLocalizations l10n, Room? room, String? viewerId) {
+    if (room == null) return null;
+    final others = {
+      for (final member in room.othersThan(viewerId)) member.userId,
+    };
+    final typing = _typing.intersection(others);
+    final present = _present.intersection(others);
+
+    if (typing.isNotEmpty) {
+      if (room.isDirect || typing.length > 1) {
+        return typing.length > 1
+            ? l10n.severalTypingStatus(typing.length)
+            : l10n.typingStatus;
+      }
+      final name = room.memberById(typing.first)?.name;
+      return name == null ? l10n.typingStatus : l10n.someoneTypingStatus(name);
+    }
+    if (present.isEmpty) return null;
+    return room.isDirect
+        ? l10n.onlineStatus
+        : l10n.onlineCountStatus(present.length);
   }
 
   Future<void> _markRead() async {
@@ -253,6 +349,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
             media: List.of(_attachments),
           );
       if (!mounted) return;
+      // Clearing the field fires [_onTyping] anyway; the timer is cancelled
+      // here so a pending one can't re-announce after the message is gone.
+      _typingTimer?.cancel();
       _textController.clear();
       setState(() {
         _attachments.clear();
@@ -323,18 +422,38 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     final room = ref.watch(roomProvider(widget.roomId));
     final viewerId = ref.watch(currentUserIdProvider);
 
+    final status = _presenceLine(l10n, room, viewerId);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          room == null
-              ? l10n.roomChatTitle
-              : roomDisplayName(
-                  room,
-                  viewerId,
-                  fallback: l10n.roomFallbackName,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              room == null
+                  ? l10n.roomChatTitle
+                  : roomDisplayName(
+                      room,
+                      viewerId,
+                      fallback: l10n.roomFallbackName,
+                    ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            // Under the name, where every messenger puts it — and only when
+            // there is something to say: an empty second line would push the
+            // name up for nothing.
+            if (status != null)
+              Text(
+                status,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+              ),
+          ],
         ),
         actions: [
           // Who is in the room, its name and its picture — one level down

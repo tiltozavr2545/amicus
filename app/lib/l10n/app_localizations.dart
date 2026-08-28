@@ -1214,6 +1214,36 @@ abstract class AppLocalizations {
   /// **'Photo'**
   String get mediaMessagePreview;
 
+  /// No description provided for @typingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'typing…'**
+  String get typingStatus;
+
+  /// No description provided for @someoneTypingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is typing…'**
+  String someoneTypingStatus(String name);
+
+  /// No description provided for @severalTypingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} people typing…'**
+  String severalTypingStatus(int count);
+
+  /// No description provided for @onlineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'online'**
+  String get onlineStatus;
+
+  /// No description provided for @onlineCountStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} online'**
+  String onlineCountStatus(int count);
+
   /// No description provided for @messageHint.
   ///
   /// In en, this message translates to:
