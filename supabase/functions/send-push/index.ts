@@ -337,10 +337,31 @@ function isDeadTokenError(status: number, errorBody: unknown): boolean {
 // `sent_at` and answering 200 — silent, total, permanent push loss that looked
 // healthy from every side. Hoisting it turns that same failure into one 500
 // with the claim released, so nothing is consumed and the next run retries.
+// What a tap on this notification should open, as FCM `data`.
+//
+// The outbox payload has carried these ids since rooms landed, but they used
+// to stop here: the message went out as `notification` alone, so the app was
+// opened on whatever screen it was last on and the reader had to go find what
+// the push was about. FCM data values must be strings, and an absent id is
+// left out rather than sent as "undefined" — the client reads a missing key
+// as "no destination of that kind".
+function deepLinkData(
+  kind: string,
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const data: Record<string, string> = { kind };
+  for (const key of ['room_id', 'post_id', 'comment_id', 'author_id']) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.length > 0) data[key] = value;
+  }
+  return data;
+}
+
 async function sendToToken(
   accessToken: string,
   token: string,
   body: string,
+  data: Record<string, string>,
 ): Promise<'ok' | 'stale' | 'error'> {
   try {
     const resp = await fetch(
@@ -352,7 +373,7 @@ async function sendToToken(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: { token, notification: { title: APP_TITLE, body } },
+          message: { token, notification: { title: APP_TITLE, body }, data },
         }),
       },
     );
@@ -451,7 +472,12 @@ Deno.serve(async (req) => {
 
   // Flattened to (row, device) pairs so the concurrency limiter sees every
   // independent send at once instead of one recipient at a time.
-  type Delivery = { userId: string; token: string; body: string };
+  type Delivery = {
+    userId: string;
+    token: string;
+    body: string;
+    data: Record<string, string>;
+  };
   const deliveries: Delivery[] = [];
   const skippedKinds = new Set<string>();
   const doneIds: string[] = [];
@@ -472,7 +498,12 @@ Deno.serve(async (req) => {
         skippedKinds.add(row.kind);
         continue;
       }
-      deliveries.push({ userId: row.user_id, token, body });
+      deliveries.push({
+        userId: row.user_id,
+        token,
+        body,
+        data: deepLinkData(row.kind, row.payload ?? {}),
+      });
     }
   }
 
@@ -483,7 +514,7 @@ Deno.serve(async (req) => {
   const staleTokens = new Set<string>();
 
   await forEachLimited(deliveries, MAX_IN_FLIGHT, async (d) => {
-    const result = await sendToToken(accessToken, d.token, d.body);
+    const result = await sendToToken(accessToken, d.token, d.body, d.data);
     if (result === 'ok') sentCount++;
     if (result === 'stale') staleTokens.add(`${d.userId} ${d.token}`);
   });

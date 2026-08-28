@@ -4,11 +4,14 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/sized_memory_image.dart';
+import '../feed/comments_screen.dart';
 import '../feed/create_post_screen.dart';
 import '../feed/feed_repository.dart';
+import '../notifications/push_deep_link.dart';
 import '../notifications/push_notifications_repository.dart';
 import '../notifications/user_activity_repository.dart';
 import '../profile/profile_repository.dart';
+import '../rooms/room_chat_screen.dart';
 
 /// Destination index of the "new post" button in the bottom bar. It doesn't
 /// correspond to a shell branch — tapping it pushes [CreatePostScreen] on top
@@ -49,6 +52,33 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     if (created) ref.read(feedRefreshTickProvider.notifier).bump();
   }
 
+  /// Opens what a tapped notification was about.
+  ///
+  /// Handled here rather than in each feature because this is the one widget
+  /// that is always mounted while signed in — including on a cold start,
+  /// where the tap arrives before any screen the target belongs to exists.
+  /// The composer is closed first: landing on a chat with a half-written post
+  /// still underneath would leave the tab bar pointing at the wrong place.
+  void _openPushTarget(PushTarget target) {
+    if (_composing) setState(() => _composing = false);
+    final navigator = Navigator.of(context);
+    switch (target) {
+      case RoomChatTarget(:final roomId):
+        navigator.push(
+          MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: roomId)),
+        );
+      case PostCommentsTarget(:final postId):
+        navigator.push(
+          MaterialPageRoute(builder: (_) => CommentsScreen(postId: postId)),
+        );
+      case FeedTarget():
+        // A branch switch, not a push: the feed is already at the bottom of
+        // this stack, and pushing a second copy of it over itself would take
+        // two backs to leave.
+        widget.navigationShell.goBranch(0);
+    }
+  }
+
   /// The "profile" destination's icon: the user's own avatar once it's
   /// loaded, falling back to the generic person icon while it isn't (first
   /// frame, still loading, no photo set, or the fetch failed).
@@ -78,6 +108,11 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     // since — see notification_preferences' notify_digest and migration
     // 20260819190000.
     ref.watch(userActivityProvider);
+    // Taps on notifications, cold start included. `listen` rather than
+    // `watch`: this is an event to act on once, not state to paint.
+    ref.listen(pushTapsProvider, (previous, next) {
+      if (next.value case final target?) _openPushTarget(target);
+    });
     return Scaffold(
       body: _composing
           // `canPop: false` scopes the back-button interception to exactly
