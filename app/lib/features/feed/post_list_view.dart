@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../l10n/app_localizations.dart';
 import '../../shared/media_gallery.dart';
 import '../auth/auth_providers.dart';
+import '../connections/connections_repository.dart';
 import 'carousel_position_cache.dart';
 import 'comments_screen.dart';
 import 'create_post_screen.dart';
@@ -61,6 +62,21 @@ class _PostListViewState extends ConsumerState<PostListView> {
   // apply it twice.
   late final Future<List<Post>?> _cacheLoadFuture;
 
+  // Who this viewer has muted, i.e. who the *main feed* leaves out — mute is
+  // no longer part of the server's visibility rule, so this is what still
+  // makes it mean something (see [FeedRepository.fetchPage]).
+  //
+  // One read per load cycle rather than one per page: every page of a feed
+  // has to hide the same people, and re-asking on each would be a round trip
+  // per page for an answer that cannot change mid-scroll. [_refresh] replaces
+  // it, and muting or unmuting bumps `feedRefreshTickProvider`, which calls
+  // [_refresh] — so the list is never stale for longer than a refresh.
+  //
+  // Empty, without a query, on a profile list: a person's own page shows
+  // their posts whether or not the viewer muted them. That is the entire
+  // point of the change.
+  late Future<Set<String>> _mutedAuthorsFuture;
+
   // The viewer every cache entry this list touches is filed under. See
   // [FeedCache]: a page holds content RLS only ever showed to this account.
   String? _cacheUserId;
@@ -110,6 +126,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
     _cacheLoadFuture = ref
         .read(feedCacheProvider)
         .load(_cacheUserId, widget.cacheScope);
+    _mutedAuthorsFuture = _loadMutedAuthors();
     _primeFromCache();
     _loadMore();
     _scrollController.addListener(() {
@@ -137,6 +154,21 @@ class _PostListViewState extends ConsumerState<PostListView> {
     setState(() => _posts.addAll(cached));
   }
 
+  /// The muted-author ids this list's pages are filtered by, or an empty set
+  /// on a profile list (which filters nothing) and when there is no session.
+  ///
+  /// Failures propagate to [_loadMore]'s own catch rather than being
+  /// swallowed into an empty set: an empty set is indistinguishable from
+  /// "nobody is muted", and quietly rendering a feed full of people the
+  /// viewer asked not to see is worse than the ordinary "failed to load"
+  /// their offline cache already answers.
+  Future<Set<String>> _loadMutedAuthors() async {
+    if (widget.authorId != null) return const {};
+    final userId = _cacheUserId;
+    if (userId == null) return const {};
+    return ref.read(connectionsRepositoryProvider).fetchMutedIds(userId);
+  }
+
   Future<void> _loadMore() async {
     if (_isLoading || !_hasMore) return;
     final epoch = _loadEpoch;
@@ -146,9 +178,14 @@ class _PostListViewState extends ConsumerState<PostListView> {
       _errorMessage = null;
     });
     try {
+      final muted = await _mutedAuthorsFuture;
       final page = await ref
           .read(feedRepositoryProvider)
-          .fetchPage(cursor: _cursor, authorId: widget.authorId);
+          .fetchPage(
+            cursor: _cursor,
+            authorId: widget.authorId,
+            mutedAuthorIds: muted,
+          );
       // A refresh (or unmount) happened while this page was loading — its data
       // is for a superseded feed state, so drop it.
       if (!mounted || epoch != _loadEpoch) return;
@@ -220,6 +257,10 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 
   Future<void> _refresh() async {
+    // Re-read before the pages, not alongside them: a refresh triggered by
+    // the tick is usually a mute or an unmute, and that is exactly the answer
+    // that just changed.
+    _mutedAuthorsFuture = _loadMutedAuthors();
     setState(() {
       // Invalidate any in-flight load and reset paging from scratch. Not
       // clearing `_posts` up front means an offline pull-to-refresh falls

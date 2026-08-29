@@ -533,11 +533,14 @@ class _IncomingRequestsState extends ConsumerState<_IncomingRequests> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    // Incoming AND still pending: the provider now also carries this viewer's
+    // own answered requests (so the room screen can keep the "ask" button
+    // away), and an answered row has nothing left to offer buttons for.
     final incoming = [
       for (final request
-          in ref.watch(pendingConnectionRequestsProvider).value ??
+          in ref.watch(connectionRequestsProvider).value ??
               const <ConnectionRequest>[])
-        if (request.isIncoming) request,
+        if (request.isIncoming && request.isPending) request,
     ];
     // Silent while there is nothing to answer, and silent while the list is
     // still loading or failed to: a heading over an empty space is worse

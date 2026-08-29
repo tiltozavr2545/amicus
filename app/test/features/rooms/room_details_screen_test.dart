@@ -71,7 +71,7 @@ Widget _wrap(
       connections ?? _FakeConnectionsRepository(),
     ),
     friendsProvider.overrideWith((ref) => friends),
-    pendingConnectionRequestsProvider.overrideWith((ref) => requests),
+    connectionRequestsProvider.overrideWith((ref) => requests),
   ],
   child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -233,6 +233,7 @@ void main() {
             otherId: 'anya',
             otherName: 'Аня',
             isIncoming: false,
+            isPending: true,
           ),
         ],
       ),
@@ -241,5 +242,61 @@ void main() {
 
     expect(find.byIcon(Icons.person_add_alt), findsNothing);
     expect(find.text('Request sent'), findsOneWidget);
+  });
+
+  testWidgets('an ask that was declined does not offer to ask again', (
+    tester,
+  ) async {
+    // The regression this pair of tests exists for. The screen used to be
+    // handed only `status = 'pending'` rows, so a declined request vanished
+    // from it — and since a decline is deliberately silent, nothing else told
+    // the sender either. The button came back for someone
+    // `connection_requests_pair_key` can never accept a second row for, and
+    // answered PT409 on every tap, forever.
+    await tester.pumpWidget(
+      _wrap(
+        _room(isDirect: false),
+        requests: const [
+          ConnectionRequest(
+            id: 'req-1',
+            otherId: 'anya',
+            otherName: 'Аня',
+            isIncoming: false,
+            isPending: false,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.person_add_alt), findsNothing);
+    expect(find.text('Request sent'), findsOneWidget);
+  });
+
+  testWidgets('declining someone leaves you free to ask them yourself', (
+    tester,
+  ) async {
+    // The other half of the same rule, and why "any request at all" is the
+    // wrong test: the unique index is on (requester, recipient), so a request
+    // this viewer refused does not stand in the way of one they send. That is
+    // their own decision rather than a repeated plea — see data-model.md.
+    await tester.pumpWidget(
+      _wrap(
+        _room(isDirect: false),
+        requests: const [
+          ConnectionRequest(
+            id: 'req-1',
+            otherId: 'anya',
+            otherName: 'Аня',
+            isIncoming: true,
+            isPending: false,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.person_add_alt), findsOneWidget);
+    expect(find.text('Request sent'), findsNothing);
   });
 }

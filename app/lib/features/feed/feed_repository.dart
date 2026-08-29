@@ -547,6 +547,23 @@ class FeedRepository {
   /// reachable directly, via [authorId]) but is excluded here on the
   /// unscoped call — its posts no longer clutter the general feed.
   ///
+  /// [mutedAuthorIds] is left out the same way and for the same reason, and
+  /// only on the same unscoped call. Mute used to be part of the server's
+  /// visibility rule, which meant it hid the muted person from *everywhere* —
+  /// including their own profile, which then read as "they have no posts" or
+  /// "they blocked you" over a setting they never knew about and never made.
+  /// Since 20260829130000 the rule no longer mentions mute, so their posts
+  /// arrive like any connection's and the profile scope (`authorId` set) shows
+  /// them; keeping them out of the *feed* is this parameter's whole job. RLS
+  /// cannot do it: the feed and a profile are the same query but for the
+  /// caller's `author_id` filter, and expressing "hide here, show there" in a
+  /// policy would mean a second copy of the visibility rule — the exact
+  /// mistake the one-rule design exists to prevent.
+  ///
+  /// Block is untouched by any of this and stays entirely server-side: it is
+  /// mutual and it is the actual boundary. Mute is a preference, so applying
+  /// it client-side costs nothing that was ever protected.
+  ///
   /// Each post's *first* media slide gets a signed URL resolved eagerly here
   /// (the `media` bucket is private, so a plain public URL wouldn't be
   /// servable) — the rest of a multi-media post's slides are resolved lazily
@@ -554,7 +571,11 @@ class FeedRepository {
   /// can carry up to 20 items and resolving all of them for every post on
   /// every page would multiply this call's cost by up to 20x for slides most
   /// users never see.
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    Set<String> mutedAuthorIds = const {},
+  }) async {
     var query = _client
         .from('posts')
         .select(
@@ -563,12 +584,14 @@ class FeedRepository {
     if (authorId != null) {
       query = query.eq('author_id', authorId);
     } else {
-      final excluded = await _systemAccounts.ids();
+      // One filter for both, so a muted system account (odd, but nothing
+      // forbids it) doesn't produce two clauses naming the same id.
+      final excluded = {...await _systemAccounts.ids(), ...mutedAuthorIds};
       // Skipped rather than sent empty: `not.in.()` is not a filter PostgREST
       // accepts, it is a 400 — and [SystemAccounts] caches its answer, so one
       // empty result would have wedged the feed for the rest of the session
       // while the offline fallback stood by unused (the lookup *succeeded*, it
-      // just said "none"). No system accounts means nothing to leave out.
+      // just said "none"). Nothing to leave out means no clause at all.
       if (excluded.isNotEmpty) {
         query = query.not('author_id', 'in', '(${excluded.join(',')})');
       }

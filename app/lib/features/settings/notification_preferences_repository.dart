@@ -6,13 +6,22 @@ import '../auth/auth_providers.dart';
 
 /// One on/off switch per notification producer that already writes to
 /// `notification_outbox` server-side (posts, favorites, comments/replies,
-/// digest, inactivity nudge, and both room kinds) — see migrations
+/// digest, inactivity nudge, and room messages) — see migrations
 /// `20260819180000` and `20260826200000`. All default to on, matching how
 /// every one of these already behaved before this screen existed.
 ///
-/// Rooms get two switches rather than one on purpose: chat messages arrive
-/// often and room posts rarely, and silencing the first would otherwise cost
-/// the second.
+/// Rooms briefly had two switches, the second for posts published into a
+/// room. Room feeds were dropped whole in 20260828100000 and
+/// `notify_room_posts` went with them: a switch that silences nothing is the
+/// worst kind, because it is visible and it lies.
+///
+/// Not every kind has one. `app_update`/`app_update_important` and both
+/// connection-request kinds are deliberately unswitchable — they are
+/// addressed personally and arrive a few times a year, and "I will never
+/// again find out that someone asked for me" is not a choice worth offering.
+/// Muting one room is a separate thing again and lives on the member's own
+/// `room_members` row (`set_room_muted()`), not here: this screen answers
+/// "do I want pushes from chats at all", not "from this one".
 class NotificationPreferences {
   const NotificationPreferences({
     this.systemAccount = true,
@@ -77,7 +86,7 @@ class NotificationPreferencesRepository {
     return NotificationPreferences.fromRow(row);
   }
 
-  /// Upserts the whole row — seven booleans is little enough that writing all
+  /// Upserts the whole row — six booleans is little enough that writing all
   /// of them on every toggle is simpler than tracking which one column
   /// changed, and it's what creates the row on a user's first-ever toggle.
   Future<void> save(String userId, NotificationPreferences prefs) {

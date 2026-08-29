@@ -35,11 +35,15 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   /// Requests recorded by the room screen / the requests section.
   final List<String> requestedIds = [];
   final List<(String, bool)> answeredRequests = [];
-  List<ConnectionRequest> pendingRequests = [];
+  List<ConnectionRequest> requests = [];
 
   @override
-  Future<List<ConnectionRequest>> fetchPendingRequests(String viewerId) async =>
-      pendingRequests;
+  Future<List<ConnectionRequest>> fetchRequests(String viewerId) async =>
+      requests;
+
+  /// Muted ids the feed filters by; no test here exercises the feed.
+  @override
+  Future<Set<String>> fetchMutedIds(String userId) async => const {};
 
   @override
   Future<bool> requestConnection(String userId) async {
@@ -558,12 +562,13 @@ void main() {
   group('connection requests', () {
     testWidgets('an incoming request can be accepted', (tester) async {
       final repo = _FakeConnectionsRepository()
-        ..pendingRequests = const [
+        ..requests = const [
           ConnectionRequest(
             id: 'req-1',
             otherId: 'anya',
             otherName: 'Аня',
             isIncoming: true,
+            isPending: true,
           ),
         ];
       await tester.pumpWidget(_wrap(repo));
@@ -578,12 +583,13 @@ void main() {
 
     testWidgets('an incoming request can be declined', (tester) async {
       final repo = _FakeConnectionsRepository()
-        ..pendingRequests = const [
+        ..requests = const [
           ConnectionRequest(
             id: 'req-1',
             otherId: 'anya',
             otherName: 'Аня',
             isIncoming: true,
+            isPending: true,
           ),
         ];
       await tester.pumpWidget(_wrap(repo));
@@ -601,12 +607,13 @@ void main() {
       // It shows on the room screen as "asked"; here it would be a request
       // from oneself with an Accept button under it.
       final repo = _FakeConnectionsRepository()
-        ..pendingRequests = const [
+        ..requests = const [
           ConnectionRequest(
             id: 'req-1',
             otherId: 'anya',
             otherName: 'Аня',
             isIncoming: false,
+            isPending: true,
           ),
         ];
       await tester.pumpWidget(_wrap(repo));

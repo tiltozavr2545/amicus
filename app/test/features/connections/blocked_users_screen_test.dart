@@ -14,11 +14,15 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   /// Requests recorded by the room screen / the requests section.
   final List<String> requestedIds = [];
   final List<(String, bool)> answeredRequests = [];
-  List<ConnectionRequest> pendingRequests = [];
+  List<ConnectionRequest> requests = [];
 
   @override
-  Future<List<ConnectionRequest>> fetchPendingRequests(String viewerId) async =>
-      pendingRequests;
+  Future<List<ConnectionRequest>> fetchRequests(String viewerId) async =>
+      requests;
+
+  /// Muted ids the feed filters by; no test here exercises the feed.
+  @override
+  Future<Set<String>> fetchMutedIds(String userId) async => const {};
 
   @override
   Future<bool> requestConnection(String userId) async {
