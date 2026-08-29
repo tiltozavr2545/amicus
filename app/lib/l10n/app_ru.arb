@@ -8,7 +8,10 @@
 
   "nameLabel": "Имя",
   "passwordLabel": "Пароль",
-  "nameRequiredError": "Введи имя",
+  "nameRequiredError": "Введите имя",
+  "emailRequiredError": "Введите email",
+  "invalidEmailError": "Проверьте адрес \u2014 он выглядит неправильно.",
+  "undeliverableEmailError": "На этот домен нельзя отправить письмо. Укажите настоящий адрес.",
   "invalidCredentialsError": "Неверный email или пароль.",
   "emailNotConfirmedError": "Подтвердите email, прежде чем входить.",
   "weakPasswordError": "Слишком простой пароль. Попробуйте длиннее.",
@@ -19,8 +22,8 @@
   "signUpButton": "Зарегистрироваться",
   "goToSignInButton": "Перейти ко входу",
   "alreadyHaveAccountButton": "Уже есть аккаунт? Войти",
-  "emailAlreadyRegisteredError": "Этот email уже зарегистрирован. Попробуй войти.",
-  "confirmationEmailSentMessage": "Письмо со ссылкой для подтверждения отправлено на {email}. Перейди по ссылке в письме, потом вернись сюда и войди с этим email и паролем.",
+  "emailAlreadyRegisteredError": "Этот email уже зарегистрирован. Попробуйте войти.",
+  "confirmationEmailSentMessage": "Письмо со ссылкой для подтверждения отправлено на {email}. Перейдите по ссылке в письме, потом вернитесь сюда и войдите с этим email и паролем.",
 
   "signInTitle": "Вход",
   "signInButton": "Войти",
@@ -28,7 +31,7 @@
   "forgotPasswordButton": "Забыли пароль?",
 
   "resetPasswordTitle": "Сброс пароля",
-  "resetPasswordInstructions": "Введи email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.",
+  "resetPasswordInstructions": "Введите email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.",
   "resetPasswordSuccessMessage": "Если аккаунт с email {email} существует, на него отправлено письмо со ссылкой для сброса пароля.",
   "sendLinkButton": "Отправить ссылку",
   "backToSignInButton": "Вернуться ко входу",
@@ -43,16 +46,18 @@
   "codeCopiedMessage": "Код скопирован",
   "createInviteCodeButton": "Создать код приглашения",
   "createNewCodeButton": "Создать новый код",
+  "rotateInviteCodeTitle": "Создать новый код?",
+  "rotateInviteCodeContent": "Текущий код сразу перестанет работать. Тот, кому вы его уже отправили, воспользоваться им не сможет.",
   "haveCodeSectionTitle": "У меня есть код",
   "inviteCodeLabel": "Код приглашения",
-  "inviteCodeRequiredError": "Введи код приглашения",
-  "inviteCodeNotFoundError": "Код приглашения не найден. Проверь его и попробуй ещё раз.",
+  "inviteCodeRequiredError": "Введите код приглашения",
+  "inviteCodeNotFoundError": "Код приглашения не найден. Проверьте его и попробуйте ещё раз.",
   "inviteCodeAlreadyUsedError": "Этот код приглашения уже использован.",
-  "ownInviteCodeError": "Это твой собственный код — отправь его кому-нибудь другому.",
+  "ownInviteCodeError": "Это ваш собственный код — отправьте его кому-нибудь другому.",
   "activateButton": "Активировать",
   "myConnectionsTitle": "Мои знакомые",
   "failedToLoadConnectionsError": "Не удалось загрузить список. Попробуйте ещё раз.",
-  "noConnectionsYetMessage": "Пока нет знакомых — активируй код или создай свой выше",
+  "noConnectionsYetMessage": "Пока нет знакомых — активируйте код или создайте свой выше",
   "nowConnectedWithMessage": "Вы теперь знакомы с {name}",
 
   "favoriteFriendTooltip": "В избранное",
@@ -69,22 +74,56 @@
   "blockFriendContent": "Ни вы, ни он не будете видеть посты друг друга. Знакомство не разорвётся.",
   "blockButton": "Заблокировать",
   "unblockButton": "Разблокировать",
+  "connectionRequestsTitle": "Заявки в знакомые",
+  "connectionRequestSubtitle": "Хочет добавить вас в знакомые",
+  "acceptRequestTooltip": "Принять",
+  "declineRequestTooltip": "Отклонить",
+  "failedToAnswerRequestError": "Не удалось ответить на заявку. Попробуйте ещё раз.",
+  "askToConnectTooltip": "Позвать в знакомые",
+  "connectionRequestPendingLabel": "Заявка отправлена",
+  "connectionRequestSentMessage": "Заявка отправлена: {name}",
+  "@connectionRequestSentMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "connectionRequestMutualMessage": "{name} тоже звал(а) вас — теперь вы знакомые",
+  "@connectionRequestMutualMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "failedToRequestConnectionError": "Не удалось отправить заявку. Попробуйте ещё раз.",
+
   "blockedUsersTooltip": "Заблокированные",
   "blockedUsersTitle": "Заблокированные",
   "noBlockedUsersMessage": "Вы никого не заблокировали",
 
   "publishButton": "Опубликовать",
+  "editPostTitle": "Редактировать пост",
+  "editButton": "Редактировать",
   "whatsNewHint": "Что нового?",
-  "addPhotoButton": "Добавить фото",
-  "replacePhotoButton": "Заменить фото",
-  "addTextOrPhotoError": "Добавь текст или фото",
+  "postVisibilityLabel": "Кому виден пост",
+  "visibilityConnectionsLabel": "Всем знакомым",
+  "visibilityFavoritesLabel": "Только избранным",
+  "visibilityConnectionsDescription": "Пост увидят все ваши знакомые.",
+  "visibilityFavoritesDescription": "Пост увидят только те, кого вы добавили в избранное. Они об этом не узнают.",
+  "visibilityFavoritesBadge": "Только избранные",
+
+  "addMediaButton": "Добавить фото или видео",
+  "removeMediaTooltip": "Убрать",
+  "playVideoTooltip": "Воспроизвести видео",
+  "mediaLimitMessage": "Можно добавить до 20 фото или видео",
+  "videoTooLongError": "Видео должно быть короче 60 секунд",
+  "videoTooLargeError": "Видео должно быть меньше 100 МБ",
+  "failedToAddMediaError": "Некоторые файлы не удалось добавить",
+  "unsupportedImageFormatError": "Формат изображения не поддерживается. Подойдут JPEG, PNG, WebP или HEIC.",
+  "unsupportedVideoFormatError": "Формат видео не поддерживается. Подойдут MP4, MOV, M4V, 3GP, WebM или MKV.",
+  "addTextOrPhotoError": "Добавьте текст, фото или видео",
   "failedToPublishError": "Не удалось опубликовать. Попробуйте ещё раз.",
+  "failedToSaveChangesError": "Не удалось сохранить изменения. Попробуйте ещё раз.",
 
   "deletePostTitle": "Удалить пост?",
-  "deletePostContent": "Пост, фото и комментарии к нему будут удалены.",
+  "deletePostContent": "Пост, медиа и комментарии к нему будут удалены.",
   "failedToLoadFeedError": "Не удалось загрузить ленту. Попробуйте ещё раз.",
   "failedToDeletePostError": "Не удалось удалить пост. Попробуйте ещё раз.",
-  "noPostsYetMessage": "Пока нет постов от знакомых. Добавь знакомых или напиши первым.",
+  "noPostsYetMessage": "Пока нет постов от знакомых. Добавьте знакомых или напишите первым.",
   "addConnectionsButton": "Добавить знакомых",
   "myPostsTitle": "Мои посты",
   "noOwnPostsYetMessage": "Вы ещё не публиковали посты",
@@ -94,11 +133,22 @@
   "neutralTooltip": "Нейтрально",
   "dislikeTooltip": "Не нравится",
 
-  "signOutTooltip": "Выйти",
   "darkThemeToggleTooltip": "Переключить тёмную тему",
   "failedToLoadProfileError": "Не удалось загрузить профиль. Попробуйте ещё раз.",
   "failedToSaveNameError": "Не удалось сохранить имя. Попробуйте ещё раз.",
-  "failedToUploadAvatarError": "Не удалось загрузить фото. Попробуйте ещё раз.",
+
+  "addPhotoButton": "Добавить фото",
+  "reorderPhotosButton": "Порядок фото",
+  "deletePhotoButton": "Удалить фото",
+  "reorderPhotosTitle": "Порядок фото",
+  "deletePhotosTitle": "Удаление фото",
+  "photoLimitMessage": "Можно добавить до 80 фото",
+  "failedToLoadPhotosError": "Не удалось загрузить фото. Попробуйте ещё раз.",
+  "failedToAddPhotosError": "Не удалось добавить фото. Попробуйте ещё раз.",
+  "failedToReorderPhotosError": "Не удалось изменить порядок. Попробуйте ещё раз.",
+  "failedToDeletePhotosError": "Не удалось удалить фото. Попробуйте ещё раз.",
+  "deletePhotosConfirmTitle": "Удалить выбранные фото?",
+  "deletePhotosConfirmContent": "Выбранные фото будут удалены без возможности восстановления.",
 
   "commentsTitle": "Комментарии",
   "deleteCommentTitle": "Удалить комментарий?",
@@ -119,6 +169,10 @@
   "failedToLoadCommentsError": "Не удалось загрузить комментарии. Попробуйте ещё раз.",
   "failedToDeleteCommentError": "Не удалось удалить комментарий. Попробуйте ещё раз.",
   "failedToSendCommentError": "Не удалось отправить. Попробуйте ещё раз.",
+  "commentsTruncatedNotice": "Показаны первые {count} комментариев. Более новые не показаны.",
+  "@commentsTruncatedNotice": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "connectionKnownLessThanDay": "Знакомы меньше дня",
   "connectionKnownDays": "Знакомы {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}",
@@ -129,12 +183,121 @@
   "settingsTooltip": "Настройки",
   "settingsTitle": "Настройки",
   "notificationsSectionTitle": "Уведомления",
-  "notifyAmicusLabel": "Уведомления от Amicus",
-  "notifyFavoritesLabel": "Уведомления от постов избранных друзей",
-  "notifyCommentsLabel": "Уведомления от оставленных комментариев",
-  "notifyDigestLabel": "Уведомления о накопившихся постах остальных людей",
-  "notifyInactiveLabel": "Уведомления о долгой неактивности",
+  "notifyAppUpdatesLabel": "Анонсы обновлений приложения",
+  "notifyFavoritesLabel": "Посты избранных друзей",
+  "notifyCommentsLabel": "Комментарии к вашим постам и ответы вам",
+  "notifyDigestLabel": "Подборка постов от остальных знакомых",
+  "notifyInactiveLabel": "Напоминания после недели без постов",
   "failedToLoadSettingsError": "Не удалось загрузить настройки. Попробуйте ещё раз.",
   "failedToSaveSettingsError": "Не удалось сохранить. Попробуйте ещё раз.",
-  "appVersionLabel": "Версия {version} ({build})"
+  "appVersionLabel": "Версия {version} ({build})",
+
+  "languageSectionTitle": "Язык",
+  "languageSystemLabel": "Как в системе",
+
+  "accountSectionTitle": "Аккаунт",
+  "signOutButton": "Выйти",
+  "signOutDialogTitle": "Выйти?",
+  "signOutDialogContent": "Чтобы снова пользоваться приложением, понадобится войти заново.",
+  "failedToSignOutError": "Не удалось выйти. Попробуйте ещё раз.",
+  "deleteAccountLabel": "Удалить аккаунт",
+  "deleteAccountDialogTitle": "Удалить аккаунт?",
+  "deleteAccountDialogContent": "Это необратимо: профиль, посты, комментарии и знакомства будут удалены навсегда. Отменить не получится.",
+  "failedToDeleteAccountError": "Не удалось удалить аккаунт. Попробуйте ещё раз.",
+
+  "roomsTitle": "Комнаты",
+  "roomFallbackName": "Комната",
+  "noRoomsYetMessage": "Пока нет ни одной комнаты. Комната — это отдельный чат для тех, кого вы в неё позвали.",
+  "newRoomTitle": "Новая комната",
+  "createRoomButton": "Создать комнату",
+  "failedToLoadRoomsError": "Не удалось загрузить комнаты. Попробуйте ещё раз.",
+
+  "selectRoomMembersMessage": "Выберите, кого позвать. Один человек — комната на двоих, и её уже нельзя будет расширить.",
+  "pickAtLeastOneMemberError": "Выберите хотя бы одного человека.",
+  "roomNameLabel": "Название комнаты",
+  "roomNameHint": "Оставьте пустым — будут имена участников",
+  "failedToCreateRoomError": "Не удалось создать комнату. Попробуйте ещё раз.",
+  "notYourConnectionError": "Добавить в комнату можно только своих знакомых.",
+
+  "roomMembersTitle": "Участники",
+  "roomMembersCount": "{count, plural, one{{count} участник} few{{count} участника} many{{count} участников} other{{count} участника}}",
+  "@roomMembersCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "roomOwnerLabel": "Владелец",
+  "addMemberButton": "Добавить участника",
+  "noConnectionsToAddMessage": "Все ваши знакомые уже в этой комнате.",
+  "removeMemberTooltip": "Исключить из комнаты",
+  "removeMemberDialogTitle": "Исключить {name}?",
+  "@removeMemberDialogTitle": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "removeMemberDialogContent": "Лента комнаты станет ему недоступна. Позже его можно добавить снова.",
+  "failedToUpdateRoomMembersError": "Не удалось изменить состав комнаты. Попробуйте ещё раз.",
+
+  "renameRoomTitle": "Переименовать комнату",
+  "failedToRenameRoomError": "Не удалось переименовать комнату. Попробуйте ещё раз.",
+  "leaveRoomButton": "Выйти из комнаты",
+  "leaveRoomDialogTitle": "Выйти из комнаты?",
+  "leaveRoomDialogContent": "Комната пропадёт из списка, а её переписка станет недоступна. Вернуть вас сможет только владелец.",
+  "leaveDirectRoomDialogContent": "Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всей перепиской.",
+  "failedToLeaveRoomError": "Не удалось выйти из комнаты. Попробуйте ещё раз.",
+
+  "roomNotificationsLabel": "Уведомления",
+  "roomNotificationsDescription": "Пуши о новых сообщениях в этой комнате. Непрочитанные считаются в любом случае.",
+  "roomMutedLabel": "Уведомления выключены",
+  "failedToUpdateRoomNotificationsError": "Не удалось изменить уведомления. Попробуйте ещё раз.",
+
+  "roomChatTitle": "Чат",
+  "mediaMessagePreview": "Фото",
+  "typingStatus": "печатает…",
+  "someoneTypingStatus": "{name} печатает…",
+  "@someoneTypingStatus": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "severalTypingStatus": "{count} печатают…",
+  "@severalTypingStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "onlineStatus": "в сети",
+  "onlineCountStatus": "{count} в сети",
+  "@onlineCountStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "messageHint": "Сообщение",
+  "sendMessageTooltip": "Отправить",
+  "attachMediaTooltip": "Прикрепить фото или видео",
+  "removeAttachmentTooltip": "Убрать вложение",
+  "noMessagesYetMessage": "Здесь пока тихо. Напишите первое сообщение.",
+  "deletedMessageLabel": "Сообщение удалено",
+  "deleteMessageDialogTitle": "Удалить сообщение?",
+  "deleteMessageDialogContent": "Оно исчезнет у всех в комнате, останется только пометка.",
+  "formerMemberLabel": "Бывший участник",
+  "roomMessageStatusSentLabel": "Отправлено",
+  "roomMessageStatusDeliveredLabel": "Доставлено",
+  "roomMessageStatusReadLabel": "Прочитано",
+  "roomMessageReadCount": "Прочитано {read}/{total}",
+  "@roomMessageReadCount": {
+    "placeholders": {
+      "read": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "roomMessageDeliveredCount": "Доставлено {delivered}/{total}",
+  "@roomMessageDeliveredCount": {
+    "placeholders": {
+      "delivered": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "failedToLoadMessagesError": "Не удалось загрузить сообщения. Попробуйте ещё раз.",
+  "failedToSendMessageError": "Не удалось отправить. Попробуйте ещё раз.",
+  "failedToDeleteMessageError": "Не удалось удалить сообщение. Попробуйте ещё раз.",
+
+  "notifyRoomMessagesLabel": "Сообщения в комнатах",
+
+  "roomAvatarLabel": "Аватарка комнаты",
+  "changeRoomAvatarButton": "Сменить аватарку",
+  "removeRoomAvatarButton": "Убрать аватарку",
+  "failedToUpdateRoomAvatarError": "Не удалось изменить аватарку комнаты. Попробуйте ещё раз."
 }

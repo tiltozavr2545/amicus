@@ -13,6 +13,7 @@ import 'blocked_users_screen.dart';
 import 'connection_duration.dart';
 import 'connections_repository.dart';
 import 'friend_profile_screen.dart';
+import '../../shared/sized_memory_image.dart';
 
 class FriendAvatar extends ConsumerWidget {
   const FriendAvatar({super.key, required this.avatarPath});
@@ -28,7 +29,7 @@ class FriendAvatar extends ConsumerWidget {
     final avatarAsync = ref.watch(avatarBytesProvider(avatarPath!));
     return CircleAvatar(
       backgroundImage: avatarAsync.value != null
-          ? MemoryImage(avatarAsync.value!)
+          ? sizedMemoryImage(context, avatarAsync.value!, logicalWidth: 40)
           : null,
       child: avatarAsync.value == null ? const Icon(Icons.person) : null,
     );
@@ -41,46 +42,33 @@ class _FriendListItem extends ConsumerWidget {
   final Friend friend;
   final String currentUserId;
 
+  /// Runs one relation change and refreshes the list, reporting any failure.
+  ///
+  /// [refreshFeed] is the whole difference between the two variants this used
+  /// to have. Muting or blocking changes what the feed is allowed to show, but
+  /// the feed tab lives in the shell's IndexedStack and keeps whatever it
+  /// loaded last — leaving the newly hidden person's posts on screen, with
+  /// buttons whose requests RLS now rejects. Same on the way back: unmuting has
+  /// to bring the posts back without a manual pull-to-refresh. Favoriting is
+  /// different: it's purely personal bookkeeping for notifications, changes
+  /// nothing about visibility, and bumping the feed for it would just be a
+  /// pointless reload.
   Future<void> _run(
     BuildContext context,
     WidgetRef ref,
-    Future<void> Function() action,
-  ) async {
+    Future<void> Function() action, {
+    bool refreshFeed = true,
+  }) async {
     final l10n = AppLocalizations.of(context)!;
     try {
       await action();
       ref.invalidate(friendsProvider);
-      // Muting or blocking changes what the feed is allowed to show, but the
-      // feed tab lives in the shell's IndexedStack and keeps whatever it loaded
-      // last — leaving the newly hidden person's posts on screen, with buttons
-      // whose requests RLS now rejects. Same on the way back: unmuting has to
-      // bring the posts back without a manual pull-to-refresh.
-      ref.read(feedRefreshTickProvider.notifier).bump();
+      if (refreshFeed) ref.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.unexpectedError)));
-    }
-  }
-
-  // Favoriting doesn't change what the feed is allowed to show — unlike
-  // mute/block, it's purely personal bookkeeping for notifications — so
-  // there's nothing for the feed tab to catch up on, and bumping it would
-  // just be a pointless reload.
-  Future<void> _runFavoriteToggle(
-    BuildContext context,
-    WidgetRef ref,
-    Future<void> Function() action,
-  ) async {
-    try {
-      await action();
-      ref.invalidate(friendsProvider);
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context)!.unexpectedError)),
-      );
     }
   }
 
@@ -147,27 +135,16 @@ class _FriendListItem extends ConsumerWidget {
             tooltip: friend.isFavorite
                 ? l10n.unfavoriteFriendTooltip
                 : l10n.favoriteFriendTooltip,
-            onPressed: () {
-              if (friend.isFavorite) {
-                _runFavoriteToggle(
-                  context,
-                  ref,
-                  () => repo.unfavoriteUser(
+            onPressed: () => _run(
+              context,
+              ref,
+              () =>
+                  (friend.isFavorite ? repo.unfavoriteUser : repo.favoriteUser)(
                     userId: currentUserId,
                     favoriteId: friend.userId,
                   ),
-                );
-              } else {
-                _runFavoriteToggle(
-                  context,
-                  ref,
-                  () => repo.favoriteUser(
-                    userId: currentUserId,
-                    favoriteId: friend.userId,
-                  ),
-                );
-              }
-            },
+              refreshFeed: false,
+            ),
           ),
           IconButton(
             icon: Icon(friend.isMuted ? Icons.volume_off : Icons.volume_up),
@@ -262,15 +239,49 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     super.dispose();
   }
 
+  /// Shows the caller's invite code, or replaces it when one is already on
+  /// screen — the button relabels itself to "create new code" at that point,
+  /// and until `rotate_invite_link()` existed it did not do that: the RPC
+  /// behind it is idempotent and handed back the very same string, so a code
+  /// sent to the wrong chat could never be taken back.
+  ///
+  /// Replacing is confirmed first, like every other irreversible action on
+  /// this screen: whoever already holds the old code loses it, and if it was
+  /// sent to the right person and simply not redeemed yet, that is a real
+  /// loss rather than a cosmetic one.
   Future<void> _createInviteLink() async {
+    final l10n = AppLocalizations.of(context)!;
+    final isRotating = _myInviteCode != null;
+    if (isRotating) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l10n.rotateInviteCodeTitle),
+          content: Text(l10n.rotateInviteCodeContent),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.cancelButton),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.createNewCodeButton),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
     setState(() {
       _isCreatingLink = true;
       _createLinkError = null;
     });
     try {
-      final code = await ref
-          .read(connectionsRepositoryProvider)
-          .createInviteLink();
+      final repo = ref.read(connectionsRepositoryProvider);
+      final code = isRotating
+          ? await repo.rotateInviteLink()
+          : await repo.createInviteLink();
       if (!mounted) return;
       setState(() => _myInviteCode = code);
     } catch (e) {
@@ -448,6 +459,10 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                   )
                 : Text(l10n.activateButton),
           ),
+          // Incoming asks come first: they are the only thing on this screen
+          // that is waiting on the viewer, and an unanswered one is somebody
+          // standing at the door. Nothing is drawn when there are none.
+          const _IncomingRequests(),
           const SizedBox(height: 32),
           Text(
             l10n.myConnectionsTitle,
@@ -472,6 +487,103 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The "somebody wants to be your connection" section.
+///
+/// Only ever people the viewer already shares a room with — the server allows
+/// no others — so a request here is never a stranger out of nowhere.
+class _IncomingRequests extends ConsumerStatefulWidget {
+  const _IncomingRequests();
+
+  @override
+  ConsumerState<_IncomingRequests> createState() => _IncomingRequestsState();
+}
+
+class _IncomingRequestsState extends ConsumerState<_IncomingRequests> {
+  /// Ids being answered right now, so a second tap can't send a second answer
+  /// while the first is in flight — per row, not per section: answering one
+  /// must not freeze the others.
+  final _busy = <String>{};
+
+  Future<void> _answer(ConnectionRequest request, bool accept) async {
+    final l10n = AppLocalizations.of(context)!;
+    if (!_busy.add(request.id)) return;
+    setState(() {});
+    try {
+      await ref
+          .read(connectionsRepositoryProvider)
+          .respondToRequest(requestId: request.id, accept: accept);
+      ref.read(connectionRequestsTickProvider.notifier).bump();
+      // Accepting adds a Connection, and the list right below this one is
+      // where it lands.
+      if (accept) ref.invalidate(friendsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.failedToAnswerRequestError)));
+    } finally {
+      if (mounted) setState(() => _busy.remove(request.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    // Incoming AND still pending: the provider now also carries this viewer's
+    // own answered requests (so the room screen can keep the "ask" button
+    // away), and an answered row has nothing left to offer buttons for.
+    final incoming = [
+      for (final request
+          in ref.watch(connectionRequestsProvider).value ??
+              const <ConnectionRequest>[])
+        if (request.isIncoming && request.isPending) request,
+    ];
+    // Silent while there is nothing to answer, and silent while the list is
+    // still loading or failed to: a heading over an empty space is worse
+    // than no heading.
+    if (incoming.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 32),
+        Text(
+          l10n.connectionRequestsTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        for (final request in incoming)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: FriendAvatar(avatarPath: request.otherAvatarPath),
+            title: Text(request.otherName),
+            subtitle: Text(l10n.connectionRequestSubtitle),
+            trailing: _busy.contains(request.id)
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.check),
+                        tooltip: l10n.acceptRequestTooltip,
+                        onPressed: () => _answer(request, true),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: l10n.declineRequestTooltip,
+                        onPressed: () => _answer(request, false),
+                      ),
+                    ],
+                  ),
+          ),
+      ],
     );
   }
 }

@@ -11,6 +11,31 @@ import 'package:amicus/l10n/app_localizations.dart';
 /// Only the members `BlockedUsersScreen` actually calls need real behaviour;
 /// the rest satisfy the `implements` contract.
 class _FakeConnectionsRepository implements ConnectionsRepository {
+  /// Requests recorded by the room screen / the requests section.
+  final List<String> requestedIds = [];
+  final List<(String, bool)> answeredRequests = [];
+  List<ConnectionRequest> requests = [];
+
+  @override
+  Future<List<ConnectionRequest>> fetchRequests(String viewerId) async =>
+      requests;
+
+  /// Muted ids the feed filters by; no test here exercises the feed.
+  @override
+  Future<Set<String>> fetchMutedIds(String userId) async => const {};
+
+  @override
+  Future<bool> requestConnection(String userId) async {
+    requestedIds.add(userId);
+    return false;
+  }
+
+  @override
+  Future<void> respondToRequest({
+    required String requestId,
+    required bool accept,
+  }) async => answeredRequests.add((requestId, accept));
+
   List<BlockedUser> blockedUsers = [];
   int unblockCalls = 0;
   String? lastUnblockedId;
@@ -19,8 +44,11 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   Future<String> createInviteLink() async => 'stub-code';
 
   @override
+  Future<String> rotateInviteLink() async => 'stub-code-2';
+
+  @override
   Future<ActivatedConnection> activateInviteLink(String code) async {
-    return const ActivatedConnection(ownerId: 'owner-1', ownerName: 'Owner');
+    return const ActivatedConnection(ownerName: 'Owner');
   }
 
   @override
@@ -98,13 +126,7 @@ void main() {
   testWidgets('Lists blocked users and unblocks without a confirmation '
       'dialog', (tester) async {
     final repo = _FakeConnectionsRepository()
-      ..blockedUsers = [
-        BlockedUser(
-          userId: 'blocked-1',
-          name: 'Bob',
-          blockedAt: DateTime(2026, 1, 1),
-        ),
-      ];
+      ..blockedUsers = [BlockedUser(userId: 'blocked-1', name: 'Bob')];
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 
@@ -120,13 +142,7 @@ void main() {
   testWidgets('Unblocking bumps the feed refresh tick so their posts come '
       'back', (tester) async {
     final repo = _FakeConnectionsRepository()
-      ..blockedUsers = [
-        BlockedUser(
-          userId: 'blocked-1',
-          name: 'Bob',
-          blockedAt: DateTime(2026, 1, 1),
-        ),
-      ];
+      ..blockedUsers = [BlockedUser(userId: 'blocked-1', name: 'Bob')];
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 

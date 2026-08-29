@@ -9,9 +9,30 @@ import 'comment_thread.dart';
 import 'feed_repository.dart';
 
 class CommentsScreen extends ConsumerStatefulWidget {
-  const CommentsScreen({super.key, required this.postId});
+  const CommentsScreen({super.key, required this.postId, this.onCountChanged});
 
   final String postId;
+
+  /// Сообщает открывшему экрану, сколько комментариев у поста на самом деле —
+  /// после каждой успешной загрузки списка, то есть и после отправки, и после
+  /// удаления.
+  ///
+  /// Колбэк, а не возвращаемое значение маршрута: экран закрывают системной
+  /// кнопкой «назад», у которой результата нет, а перехватывать её через
+  /// PopScope ради счётчика — вмешательство в жест, который в этом проекте
+  /// проверить нечем (см. «Грабли» в CLAUDE.md). Заодно карточка под
+  /// экраном обновляется сразу, а не при выходе.
+  ///
+  /// Дёргать [FeedRefreshTick] здесь было бы неверно по цене: он перезагружает
+  /// первую страницу КАЖДОГО открытого списка, а изменилось одно число на
+  /// одной карточке.
+  ///
+  /// Не вызывается вовсе, когда список обрезан по [commentFetchLimit]: длина
+  /// обрезанного списка — уже не «сколько их на самом деле», а потолок, и
+  /// подставить её значило бы уронить счётчик на карточке с настоящего числа
+  /// до 500. Карточка в этом случае остаётся с числом от `comment_summary()`,
+  /// которое считает всё и на сервере.
+  final ValueChanged<int>? onCountChanged;
 
   @override
   ConsumerState<CommentsScreen> createState() => _CommentsScreenState();
@@ -20,6 +41,11 @@ class CommentsScreen extends ConsumerStatefulWidget {
 class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   final _textController = TextEditingController();
   List<ThreadedComment>? _comments;
+
+  /// У поста больше комментариев, чем вернул один запрос (см.
+  /// [commentFetchLimit]). Рисует сноску в конце списка и запирает
+  /// [CommentsScreen.onCountChanged].
+  bool _isTruncated = false;
 
   /// Set only when the list itself could not be loaded — it is rendered *in
   /// place of* the list, so it can say nothing about a failure that happens
@@ -56,23 +82,50 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// Returns whether the list now reflects the server.
+  ///
+  /// The failure branch has to pick its channel the same way [_send] does:
+  /// `_errorMessage` is rendered only *in place of* the list, so once comments
+  /// are on screen, assigning to it puts the message nowhere at all. A reload
+  /// that failed after a successful send was therefore completely silent — the
+  /// composer cleared, the comment was missing, and the user reasonably
+  /// concluded it had not sent.
+  Future<bool> _load() async {
     try {
-      final comments = await ref
+      final page = await ref
           .read(feedRepositoryProvider)
           .fetchComments(widget.postId);
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
-        _comments = threadComments(comments);
+        _comments = threadComments(page.comments);
+        _isTruncated = page.isTruncated;
         _errorMessage = null;
       });
+      // Из СЫРОГО списка, не из threadComments(): счётчик на карточке рисует
+      // `comment_summary()`, а он считает `count(*) … where deleted_at is
+      // null` — то есть ровно видимые нетомбстоненные строки. threadComments()
+      // сверх этого прячет ответы без корня и заглушки без ответов, так что
+      // его длина дала бы другое число.
+      //
+      // И только когда список пришёл целиком: у обрезанного длина — это
+      // потолок, а не количество (см. [CommentsScreen.onCountChanged]).
+      if (!page.isTruncated) {
+        widget.onCountChanged?.call(
+          page.comments.where((c) => !c.isDeleted).length,
+        );
+      }
+      return true;
     } catch (e) {
-      if (!mounted) return;
-      setState(
-        () => _errorMessage = AppLocalizations.of(
+      if (!mounted) return false;
+      final message = AppLocalizations.of(context)!.failedToLoadCommentsError;
+      if (_comments == null) {
+        setState(() => _errorMessage = message);
+      } else {
+        ScaffoldMessenger.of(
           context,
-        )!.failedToLoadCommentsError,
-      );
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+      return false;
     }
   }
 
@@ -123,7 +176,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final target = _replyTarget;
     setState(() => _isSending = true);
     try {
-      final userId = ref.read(currentUserIdProvider)!;
+      // Not `!`: the session can clear while this screen is still mounted.
+      final userId = ref.read(currentUserIdProvider);
+      if (userId == null) return;
       final parentCommentId = target == null
           ? null
           : target.comment.parentCommentId ?? target.comment.id;
@@ -146,18 +201,62 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             parentCommentId: parentCommentId,
             replyToId: replyToId,
           );
-      _pendingToken = null;
-      _pendingSignature = null;
-      _textController.clear();
-      if (mounted) setState(() => _replyTarget = null);
-      await _load();
+      // Both under the same guard. The clear() used to sit above it, one line
+      // too early: nothing stops the user pressing back while the send is in
+      // flight, and by the time this resumes `dispose()` may already have
+      // disposed the controller — writing to one throws
+      // "A TextEditingController was used after being disposed" (verified: it
+      // throws, it is not a no-op).
+      //
+      // Nothing visible came of it, and that is the whole reason it survived:
+      // the throw lands in this method's own `catch`, which then returns on
+      // `!mounted`, so the exception never reaches a screen or a log. What it
+      // actually did was divert control — the reload below and the retiring of
+      // the idempotency token were skipped, which on a screen that is already
+      // gone costs nothing. It stops costing nothing the moment that `catch`
+      // is narrowed to the failures it is meant for. Guarded here rather than
+      // left to that.
+      if (mounted) {
+        _textController.clear();
+        setState(() => _replyTarget = null);
+      }
+      // The token is retired only once the reload has confirmed the comment
+      // landed. Clearing it right after the insert defeated the whole
+      // idempotency scheme on the one path that needs it: send succeeds,
+      // reload fails, the user retypes the identical text — and with the token
+      // already gone, `_pendingSignature != signature` minted a fresh one, so
+      // `onConflict: 'author_id,client_token'` matched nothing and the comment
+      // was inserted a second time. Keeping it means that retry reuses the same
+      // token and the server no-ops it.
+      if (await _load()) {
+        _pendingToken = null;
+        _pendingSignature = null;
+      }
     } catch (e) {
+      if (!mounted) return;
+      // Re-read the thread before reporting the failure. `.timeout()` stops
+      // waiting without cancelling, so "failed to send" routinely means "we
+      // stopped listening", not "nothing landed" — and this list is the only
+      // place the user can tell the two apart. Without the reload they are
+      // told it failed while their comment sits one refresh away, and the
+      // natural response — retype it, a little differently — changes the
+      // signature, mints a fresh `_pendingToken` and posts it a second time.
+      //
+      // This narrows that window; it does not close it. A resend whose text
+      // changed still cannot be arbitrated server-side the way a re-published
+      // post now is (`create_post_with_media()` rewrites its row on a repeat
+      // token, migration 20260824100000), because `comments` has no UPDATE
+      // policy on purpose — see data-model.md. Between the two outcomes, a
+      // duplicate comment is something its author can delete, whereas an
+      // edit discarded under a reused token is gone with no sign it existed.
+      // Hence the trade stays this way round.
+      await _load();
+      if (!mounted) return;
       // A snackbar, not _errorMessage: that field is rendered only in place of
       // the list, so once comments have loaded — which is the normal state when
       // sending — assigning to it puts the message nowhere. The composer would
       // just stop, and the server rejects a reply for several ordinary reasons
       // (its target was deleted or blocked while the reply was being typed).
-      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.failedToSendCommentError)));
@@ -182,9 +281,19 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                 ? Center(child: Text(l10n.noCommentsYetMessage))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _comments!.length,
-                    itemBuilder: (context, index) =>
-                        _buildComment(l10n, _comments![index]),
+                    // Сноска идёт последним элементом ТОГО ЖЕ списка, а не
+                    // отдельным блоком под ним: обрезается хвост, и сказать об
+                    // этом надо там, где хвост кончился.
+                    itemCount: _comments!.length + (_isTruncated ? 1 : 0),
+                    itemBuilder: (context, index) => index == _comments!.length
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              l10n.commentsTruncatedNotice(commentFetchLimit),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          )
+                        : _buildComment(l10n, _comments![index]),
                   ),
           ),
           SafeArea(

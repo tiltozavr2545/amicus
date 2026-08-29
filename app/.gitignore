@@ -48,3 +48,6 @@ app.*.map.json
 .env
 .env.*
 !.env.example
+
+# flutter test --coverage output
+/coverage/

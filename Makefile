@@ -36,8 +36,13 @@ verify: deps format-check analyze test
 verify-version:
 	BASE_REF="$(BASE_REF)" ./scripts/verify-version.sh
 
+# -PallowDebugSigning=true: this target is a compile check, not a shippable
+# build, so it opts in to the debug-key fallback that a release build otherwise
+# refuses (see android/app/build.gradle.kts). Never add this flag to anything
+# that produces an artifact for distribution.
 build-android:
 	cd $(APP_DIR) && $(FLUTTER) build appbundle --release \
+		-PallowDebugSigning=true \
 		--dart-define=SUPABASE_URL=https://example.invalid \
 		--dart-define=SUPABASE_ANON_KEY=ci-placeholder
 

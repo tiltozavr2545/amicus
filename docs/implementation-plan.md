@@ -1,6 +1,8 @@
-# Implementation Plan: Amicus (ранее «Круг») (MVP)
+# План реализации: Amicus (ранее «Круг») (MVP)
 
 Пошаговый план реализации MVP из [project-brief.md](project-brief.md), с CI и деплоем, встроенными в этапы, а не отложенными на конец. Проект mobile-first (Android; iOS через Flutter отложен — см. [future-development.md](future-development.md)), web не рассматривается.
+
+**Документ исторический.** MVP закрыт, все пять этапов сделаны; ниже — как он шёл, а не как всё устроено сейчас. Текущее состояние схемы — в [data-model.md](data-model.md), эксплуатация — в [operations.md](operations.md), что появилось в какой версии — в [../CHANGELOG.md](../CHANGELOG.md). Отметки вида «позже сужено/заменено» расставлены там, где реальность с тех пор ушла вперёд.
 
 ## Прогресс
 
@@ -23,7 +25,7 @@
    - ✅ Android toolchain: Android Studio + cmdline-tools установлены, лицензии приняты, `flutter doctor` зелёный по Android.
    - ⏸️ Xcode: не устанавливается — решено делать сначала только Android, iOS отложен до обновления macOS (см. future-development.md).
 2. ✅ `flutter create --platforms=android,ios` в `app/` (org `com.github.tiltozavr2545`), подключены `supabase_flutter`, `go_router`, `flutter_riverpod`, `cached_network_image`.
-3. ✅ Supabase: проект `lk-system` создан, Auth (email/password) включён, Storage bucket `media` создан (приватный, политики доступа настроим на Этапе 1/3).
+3. ✅ Supabase: проект `lk-system` создан, Auth (email/password) включён, Storage bucket `media` создан (приватный, политики доступа настроим на Этапе 1/3). (Позже бакет завели и миграцией, чтобы проект собирался из репозитория с нуля, — 20260822260000.)
 4. ✅ `.env` заполнен (`SUPABASE_URL`, `SUPABASE_ANON_KEY` — используется Publishable key), в `.gitignore` (с исключением `.env.example` как шаблона).
 5. ✅ Репозиторий на GitHub: [github.com/tiltozavr2545/amicus](https://github.com/tiltozavr2545/amicus) (публичный).
 6. ✅ CI: `.github/workflows/ci.yml` — `dart format`, `flutter analyze`, `flutter test` на каждый push/PR, первый прогон прошёл успешно.
@@ -33,9 +35,9 @@
 **Статус:** сделано
 
 1. ✅ Экраны регистрации/входа (`sign_in_screen.dart`, `sign_up_screen.dart`) через Supabase Auth SDK; go_router с редиректом по auth-состоянию (`router.dart`).
-2. ✅ Таблица `users` создана миграцией, RLS: чтение — всем authenticated, запись/обновление — только своя строка (`auth.uid() = id`). (Чтение позже, в 0.4.0, сужено до «своя строка ИЛИ мой Connection» — см. CHANGELOG.md и раздел «Безопасность и приватность» в future-development.md.)
-3. ✅ Экран профиля: редактирование имени, выбор и загрузка аватара в приватный bucket `media` (`avatars/{user_id}/...`), отображение через `storage.download()` — SDK сам подставляет access token, ручные signed URL не понадобились. (SELECT-политику Storage на аватарки позже, в 0.5.0, тоже сузили до Connections — см. future-development.md.)
-4. ⏸️ CI-job для проверки миграций (`supabase db push --dry-run` в пайплайне) — **не сделано**, отложено. Миграции применяются вручную через Supabase CLI с personal access token (используется только локально, не хранится в репозитории/CI). Для соло-проекта это приемлемо; если станет больно — добавить токен в GitHub Secrets и настроить job.
+2. ✅ Таблица `users` создана миграцией, RLS: чтение — всем authenticated, запись/обновление — только своя строка (`auth.uid() = id`). (Чтение позже, в 0.4.0, сужено до «своя строка ИЛИ мой Connection» — см. CHANGELOG.md.)
+3. ✅ Экран профиля: редактирование имени, выбор и загрузка аватара в приватный bucket `media` (`avatars/{user_id}/...`), отображение через `storage.download()` — SDK сам подставляет access token, ручные signed URL не понадобились. (SELECT-политику Storage на аватарки позже, в 0.5.0, тоже сузили до Connections — см. CHANGELOG.md.)
+4. ⏸️ CI-job для проверки миграций (`supabase db push --dry-run` в пайплайне) — **не сделано**, отложено. Миграции применяются вручную; на момент этапа — через Supabase CLI, позже перешли на Management API (`POST /v1/projects/<ref>/database/query`) с токеном, который даётся на время задачи и нигде не хранится — актуальный порядок в разделе «Конвенции работы» [../CLAUDE.md](../CLAUDE.md). Для соло-проекта это приемлемо; если станет больно — добавить токен в GitHub Secrets и настроить job.
 
 Секреты передаются в приложение через `--dart-define-from-file=.env` (не `flutter_dotenv`) — так `.env` не нужно объявлять Flutter-ассетом, и CI (`flutter analyze`/`flutter test`) не ломается из-за отсутствия файла с секретами.
 
@@ -55,7 +57,7 @@
 
 1. ✅ Таблица `posts` (`posts.author_id` ссылается на `public.users`, не на `auth.users` — так PostgREST может делать embed `.select('*, author:users(name)')` в один запрос), экран создания поста (текст + фото), загрузка в приватный bucket `media` (`posts/{author_id}/...`).
 2. ✅ RLS на `posts`: SELECT — автор или его Connection (та же логика, что и в `activate_invite_link`, но как обычная политика, не функция — не нужна атомарность); Storage-политики для `posts/...` зеркалят то же условие.
-3. ✅ Лента: pull-to-refresh + бесконечный скролл (keyset-пагинация по `(created_at, id)`, по 20 постов за раз — курсор по последнему посту вместо `range()`-смещения, чтобы вставка/удаление постов сверху между страницами не давала дублей/пропусков; чистая функция `keysetFilter()` в `feed_repository.dart` покрыта юнит-тестами). Фото — через `createSignedUrl` (бакет приватный), URL живёт 24 часа и стабилен на сессию, поэтому кеш `cached_network_image` реально работает.
+3. ✅ Лента: pull-to-refresh + бесконечный скролл (keyset-пагинация по `(created_at, id)`, по 20 постов за раз — курсор по последнему посту вместо `range()`-смещения, чтобы вставка/удаление постов сверху между страницами не давала дублей/пропусков; чистая функция `keysetFilter()` в `feed_repository.dart` покрыта юнит-тестами). Фото — через `createSignedUrl` (бакет приватный), URL живёт 24 часа. (Считалось, что он стабилен и потому годится в ключ кеша; на деле он перевыпускается на каждый заход, из-за чего фото перекачивалось заново — в 0.14.0 ключом кеша стал путь в Storage, см. CHANGELOG.md.)
 4. ✅ Протестировано вручную на устройстве: публикация с фото и без, видимость по Connections корректна.
    - Найден и починен баг: `RefreshIndicator` не срабатывал на непустой ленте — стандартная физика скролла не даёт потянуть, если контент не выходит за экран. Добавлен `AlwaysScrollableScrollPhysics`.
    - По фидбеку: добавлен список «Мои знакомые» на экран Connections (потребовал перевести `connections.user_a_id`/`user_b_id` на FK к `public.users` вместо `auth.users` — так же, как раньше сделали для `posts`, чтобы работал embed на обе стороны связи). Кнопка перехода к Connections перенесена с профиля на ленту (теперь это лендинг-экран, профиль — на `/profile`).
@@ -71,36 +73,27 @@
 5. ⏸️ Supabase Realtime — не добавляли, как и планировалось (необязательно для MVP).
 6. ✅ Протестировано вручную на устройстве: лайк/анлайк, комментарии, счётчики — всё корректно.
 
-Счётчик комментариев на странице ленты считается батч-запросом (`comments` с `post_id in (...)`), не по одному запросу на пост. Счётчики реакций с 0.4.0 приходят одним вызовом `security definer`-функции `reaction_summary(uuid[])` (числа + собственная реакция, без чужих `user_id`) — раньше это тоже был батч-запрос по `reactions`, но он отдавал наружу, кто что поставил.
+Счётчик комментариев на странице ленты считался батч-запросом (`comments` с `post_id in (...)`), не по одному запросу на пост; с 0.16.x это `comment_summary(uuid[])` — `security invoker`, так что RLS фильтрует сама, и на провод уходит строка на пост, а не на комментарий. Счётчики реакций с 0.4.0 приходят одним вызовом `security definer`-функции `reaction_summary(uuid[])` (числа + собственная реакция, без чужих `user_id`) — раньше это тоже был батч-запрос по `reactions`, но он отдавал наружу, кто что поставил.
 
 ## Этап 5 — Полировка + деплой (mobile-first)
 
 **Статус:** сделано (Android). iOS сознательно отложен за пределы MVP — см. [future-development.md](future-development.md).
 
 1. ✅ Signing config (keystore, `android/key.properties`, не в репозитории) + сборка `.aab`.
-2. ✅ Google Play Console → внутреннее тестирование (Internal Testing track) — приложение опубликовано.
+2. ✅ Google Play Console — приложение опубликовано. (Начиналось с Internal Testing; сейчас выкладка идёт в Closed testing, трек `alpha`.)
 3. ✅ Пустые состояния (нет постов/нет знакомых/нет комментариев) — строки `noPostsYetMessage`/`noConnectionsYetMessage`/`noCommentsYetMessage` в `app_en.arb`/`app_ru.arb`.
 4. ✅ README с описанием и скриншотами.
 5. ⏸️ Демо-видео — сознательно решено не делать.
 
-CI/CD для сборок (Fastlane/Codemagic) осталось ручным процессом — по желанию, не обязательно для портфолио; можно добавить в 1.0, если сборки станут частыми.
+CI/CD для сборок на момент этапа осталось ручным процессом. Позже автоматизировано без Fastlane/Codemagic: пуш в `main` запускает `deploy-closed-testing.yml`, который сам проверяет, собирает подписанный `.aab` и выкладывает его — см. [operations.md](operations.md).
 
-Мелкая полировка обработки ошибок (не выводить сырой текст исключения пользователю) осталась как есть — см. раздел «Безопасность и приватность» в future-development.md.
+Мелкая полировка обработки ошибок (не выводить сырой текст исключения пользователю) — закрыта в 0.9.1, см. CHANGELOG.md.
 
 ---
 
 ## Технические решения по умолчанию
 
-- **State management:** Riverpod
-- **Навигация:** go_router
-- **Backend SDK:** supabase_flutter
-- **Кеширование картинок:** cached_network_image
-- **Версионирование схемы БД:** Supabase CLI migrations (не ручные правки в дашборде)
-- **Линтинг/форматирование:** flutter_lints + `dart format`, проверяются в CI с первого коммита
-- **Структура репозитория:** `docs/` — планирование, `app/` — Flutter-проект (org `com.github.tiltozavr2545`, имя пакета `amicus`)
-- **Название проекта:** Amicus (переименовано с рабочего «Круг» после старта разработки — см. project-brief.md)
-- **Репозиторий:** [github.com/tiltozavr2545/amicus](https://github.com/tiltozavr2545/amicus) (публичный)
-- **Версия Flutter:** закреплена на 3.32.8 (SDK в `~/development/flutter`) — новее нельзя, пока dev-машина на macOS 12; при обновлении macOS до 14+ можно снять пин и перейти на актуальную стабильную версию
-- **Supabase API keys:** используется новый формат (Publishable/Secret вместо legacy anon/service_role) — в `SUPABASE_ANON_KEY` кладём именно Publishable key (`sb_publishable_...`); Secret key нигде в клиентском коде не используется
-
-Отклонения от этого списка (например, замена Riverpod на что-то другое) стоит фиксировать здесь, чтобы не расходиться с планом без причины.
+Переехали в [client-architecture.md](client-architecture.md): список живой —
+это то, чем проект собран сейчас, — а этот документ исторический, и держать
+в нём справочник, который положено обновлять, значило бы обещать
+актуальность там, где её нет.

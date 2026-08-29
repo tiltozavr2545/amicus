@@ -27,7 +27,17 @@ class AppLocalizationsRu extends AppLocalizations {
   String get passwordLabel => 'Пароль';
 
   @override
-  String get nameRequiredError => 'Введи имя';
+  String get nameRequiredError => 'Введите имя';
+
+  @override
+  String get emailRequiredError => 'Введите email';
+
+  @override
+  String get invalidEmailError => 'Проверьте адрес — он выглядит неправильно.';
+
+  @override
+  String get undeliverableEmailError =>
+      'На этот домен нельзя отправить письмо. Укажите настоящий адрес.';
 
   @override
   String get invalidCredentialsError => 'Неверный email или пароль.';
@@ -59,11 +69,11 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get emailAlreadyRegisteredError =>
-      'Этот email уже зарегистрирован. Попробуй войти.';
+      'Этот email уже зарегистрирован. Попробуйте войти.';
 
   @override
   String confirmationEmailSentMessage(String email) {
-    return 'Письмо со ссылкой для подтверждения отправлено на $email. Перейди по ссылке в письме, потом вернись сюда и войди с этим email и паролем.';
+    return 'Письмо со ссылкой для подтверждения отправлено на $email. Перейдите по ссылке в письме, потом вернитесь сюда и войдите с этим email и паролем.';
   }
 
   @override
@@ -83,7 +93,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get resetPasswordInstructions =>
-      'Введи email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.';
+      'Введите email, привязанный к аккаунту, — пришлём ссылку для сброса пароля.';
 
   @override
   String resetPasswordSuccessMessage(String email) {
@@ -124,17 +134,24 @@ class AppLocalizationsRu extends AppLocalizations {
   String get createNewCodeButton => 'Создать новый код';
 
   @override
+  String get rotateInviteCodeTitle => 'Создать новый код?';
+
+  @override
+  String get rotateInviteCodeContent =>
+      'Текущий код сразу перестанет работать. Тот, кому вы его уже отправили, воспользоваться им не сможет.';
+
+  @override
   String get haveCodeSectionTitle => 'У меня есть код';
 
   @override
   String get inviteCodeLabel => 'Код приглашения';
 
   @override
-  String get inviteCodeRequiredError => 'Введи код приглашения';
+  String get inviteCodeRequiredError => 'Введите код приглашения';
 
   @override
   String get inviteCodeNotFoundError =>
-      'Код приглашения не найден. Проверь его и попробуй ещё раз.';
+      'Код приглашения не найден. Проверьте его и попробуйте ещё раз.';
 
   @override
   String get inviteCodeAlreadyUsedError =>
@@ -142,7 +159,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get ownInviteCodeError =>
-      'Это твой собственный код — отправь его кому-нибудь другому.';
+      'Это ваш собственный код — отправьте его кому-нибудь другому.';
 
   @override
   String get activateButton => 'Активировать';
@@ -156,7 +173,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noConnectionsYetMessage =>
-      'Пока нет знакомых — активируй код или создай свой выше';
+      'Пока нет знакомых — активируйте код или создайте свой выше';
 
   @override
   String nowConnectedWithMessage(String name) {
@@ -206,6 +223,42 @@ class AppLocalizationsRu extends AppLocalizations {
   String get unblockButton => 'Разблокировать';
 
   @override
+  String get connectionRequestsTitle => 'Заявки в знакомые';
+
+  @override
+  String get connectionRequestSubtitle => 'Хочет добавить вас в знакомые';
+
+  @override
+  String get acceptRequestTooltip => 'Принять';
+
+  @override
+  String get declineRequestTooltip => 'Отклонить';
+
+  @override
+  String get failedToAnswerRequestError =>
+      'Не удалось ответить на заявку. Попробуйте ещё раз.';
+
+  @override
+  String get askToConnectTooltip => 'Позвать в знакомые';
+
+  @override
+  String get connectionRequestPendingLabel => 'Заявка отправлена';
+
+  @override
+  String connectionRequestSentMessage(String name) {
+    return 'Заявка отправлена: $name';
+  }
+
+  @override
+  String connectionRequestMutualMessage(String name) {
+    return '$name тоже звал(а) вас — теперь вы знакомые';
+  }
+
+  @override
+  String get failedToRequestConnectionError =>
+      'Не удалось отправить заявку. Попробуйте ещё раз.';
+
+  @override
   String get blockedUsersTooltip => 'Заблокированные';
 
   @override
@@ -218,27 +271,80 @@ class AppLocalizationsRu extends AppLocalizations {
   String get publishButton => 'Опубликовать';
 
   @override
+  String get editPostTitle => 'Редактировать пост';
+
+  @override
+  String get editButton => 'Редактировать';
+
+  @override
   String get whatsNewHint => 'Что нового?';
 
   @override
-  String get addPhotoButton => 'Добавить фото';
+  String get postVisibilityLabel => 'Кому виден пост';
 
   @override
-  String get replacePhotoButton => 'Заменить фото';
+  String get visibilityConnectionsLabel => 'Всем знакомым';
 
   @override
-  String get addTextOrPhotoError => 'Добавь текст или фото';
+  String get visibilityFavoritesLabel => 'Только избранным';
+
+  @override
+  String get visibilityConnectionsDescription =>
+      'Пост увидят все ваши знакомые.';
+
+  @override
+  String get visibilityFavoritesDescription =>
+      'Пост увидят только те, кого вы добавили в избранное. Они об этом не узнают.';
+
+  @override
+  String get visibilityFavoritesBadge => 'Только избранные';
+
+  @override
+  String get addMediaButton => 'Добавить фото или видео';
+
+  @override
+  String get removeMediaTooltip => 'Убрать';
+
+  @override
+  String get playVideoTooltip => 'Воспроизвести видео';
+
+  @override
+  String get mediaLimitMessage => 'Можно добавить до 20 фото или видео';
+
+  @override
+  String get videoTooLongError => 'Видео должно быть короче 60 секунд';
+
+  @override
+  String get videoTooLargeError => 'Видео должно быть меньше 100 МБ';
+
+  @override
+  String get failedToAddMediaError => 'Некоторые файлы не удалось добавить';
+
+  @override
+  String get unsupportedImageFormatError =>
+      'Формат изображения не поддерживается. Подойдут JPEG, PNG, WebP или HEIC.';
+
+  @override
+  String get unsupportedVideoFormatError =>
+      'Формат видео не поддерживается. Подойдут MP4, MOV, M4V, 3GP, WebM или MKV.';
+
+  @override
+  String get addTextOrPhotoError => 'Добавьте текст, фото или видео';
 
   @override
   String get failedToPublishError =>
       'Не удалось опубликовать. Попробуйте ещё раз.';
 
   @override
+  String get failedToSaveChangesError =>
+      'Не удалось сохранить изменения. Попробуйте ещё раз.';
+
+  @override
   String get deletePostTitle => 'Удалить пост?';
 
   @override
   String get deletePostContent =>
-      'Пост, фото и комментарии к нему будут удалены.';
+      'Пост, медиа и комментарии к нему будут удалены.';
 
   @override
   String get failedToLoadFeedError =>
@@ -250,7 +356,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noPostsYetMessage =>
-      'Пока нет постов от знакомых. Добавь знакомых или напиши первым.';
+      'Пока нет постов от знакомых. Добавьте знакомых или напишите первым.';
 
   @override
   String get addConnectionsButton => 'Добавить знакомых';
@@ -277,9 +383,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get dislikeTooltip => 'Не нравится';
 
   @override
-  String get signOutTooltip => 'Выйти';
-
-  @override
   String get darkThemeToggleTooltip => 'Переключить тёмную тему';
 
   @override
@@ -291,8 +394,45 @@ class AppLocalizationsRu extends AppLocalizations {
       'Не удалось сохранить имя. Попробуйте ещё раз.';
 
   @override
-  String get failedToUploadAvatarError =>
+  String get addPhotoButton => 'Добавить фото';
+
+  @override
+  String get reorderPhotosButton => 'Порядок фото';
+
+  @override
+  String get deletePhotoButton => 'Удалить фото';
+
+  @override
+  String get reorderPhotosTitle => 'Порядок фото';
+
+  @override
+  String get deletePhotosTitle => 'Удаление фото';
+
+  @override
+  String get photoLimitMessage => 'Можно добавить до 80 фото';
+
+  @override
+  String get failedToLoadPhotosError =>
       'Не удалось загрузить фото. Попробуйте ещё раз.';
+
+  @override
+  String get failedToAddPhotosError =>
+      'Не удалось добавить фото. Попробуйте ещё раз.';
+
+  @override
+  String get failedToReorderPhotosError =>
+      'Не удалось изменить порядок. Попробуйте ещё раз.';
+
+  @override
+  String get failedToDeletePhotosError =>
+      'Не удалось удалить фото. Попробуйте ещё раз.';
+
+  @override
+  String get deletePhotosConfirmTitle => 'Удалить выбранные фото?';
+
+  @override
+  String get deletePhotosConfirmContent =>
+      'Выбранные фото будут удалены без возможности восстановления.';
 
   @override
   String get commentsTitle => 'Комментарии';
@@ -339,6 +479,11 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToSendCommentError =>
       'Не удалось отправить. Попробуйте ещё раз.';
+
+  @override
+  String commentsTruncatedNotice(int count) {
+    return 'Показаны первые $count комментариев. Более новые не показаны.';
+  }
 
   @override
   String get connectionKnownLessThanDay => 'Знакомы меньше дня';
@@ -397,20 +542,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get notificationsSectionTitle => 'Уведомления';
 
   @override
-  String get notifyAmicusLabel => 'Уведомления от Amicus';
+  String get notifyAppUpdatesLabel => 'Анонсы обновлений приложения';
 
   @override
-  String get notifyFavoritesLabel => 'Уведомления от постов избранных друзей';
+  String get notifyFavoritesLabel => 'Посты избранных друзей';
 
   @override
-  String get notifyCommentsLabel => 'Уведомления от оставленных комментариев';
+  String get notifyCommentsLabel => 'Комментарии к вашим постам и ответы вам';
 
   @override
-  String get notifyDigestLabel =>
-      'Уведомления о накопившихся постах остальных людей';
+  String get notifyDigestLabel => 'Подборка постов от остальных знакомых';
 
   @override
-  String get notifyInactiveLabel => 'Уведомления о долгой неактивности';
+  String get notifyInactiveLabel => 'Напоминания после недели без постов';
 
   @override
   String get failedToLoadSettingsError =>
@@ -424,4 +568,265 @@ class AppLocalizationsRu extends AppLocalizations {
   String appVersionLabel(String version, String build) {
     return 'Версия $version ($build)';
   }
+
+  @override
+  String get languageSectionTitle => 'Язык';
+
+  @override
+  String get languageSystemLabel => 'Как в системе';
+
+  @override
+  String get accountSectionTitle => 'Аккаунт';
+
+  @override
+  String get signOutButton => 'Выйти';
+
+  @override
+  String get signOutDialogTitle => 'Выйти?';
+
+  @override
+  String get signOutDialogContent =>
+      'Чтобы снова пользоваться приложением, понадобится войти заново.';
+
+  @override
+  String get failedToSignOutError => 'Не удалось выйти. Попробуйте ещё раз.';
+
+  @override
+  String get deleteAccountLabel => 'Удалить аккаунт';
+
+  @override
+  String get deleteAccountDialogTitle => 'Удалить аккаунт?';
+
+  @override
+  String get deleteAccountDialogContent =>
+      'Это необратимо: профиль, посты, комментарии и знакомства будут удалены навсегда. Отменить не получится.';
+
+  @override
+  String get failedToDeleteAccountError =>
+      'Не удалось удалить аккаунт. Попробуйте ещё раз.';
+
+  @override
+  String get roomsTitle => 'Комнаты';
+
+  @override
+  String get roomFallbackName => 'Комната';
+
+  @override
+  String get noRoomsYetMessage =>
+      'Пока нет ни одной комнаты. Комната — это отдельный чат для тех, кого вы в неё позвали.';
+
+  @override
+  String get newRoomTitle => 'Новая комната';
+
+  @override
+  String get createRoomButton => 'Создать комнату';
+
+  @override
+  String get failedToLoadRoomsError =>
+      'Не удалось загрузить комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get selectRoomMembersMessage =>
+      'Выберите, кого позвать. Один человек — комната на двоих, и её уже нельзя будет расширить.';
+
+  @override
+  String get pickAtLeastOneMemberError => 'Выберите хотя бы одного человека.';
+
+  @override
+  String get roomNameLabel => 'Название комнаты';
+
+  @override
+  String get roomNameHint => 'Оставьте пустым — будут имена участников';
+
+  @override
+  String get failedToCreateRoomError =>
+      'Не удалось создать комнату. Попробуйте ещё раз.';
+
+  @override
+  String get notYourConnectionError =>
+      'Добавить в комнату можно только своих знакомых.';
+
+  @override
+  String get roomMembersTitle => 'Участники';
+
+  @override
+  String roomMembersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count участника',
+      many: '$count участников',
+      few: '$count участника',
+      one: '$count участник',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get roomOwnerLabel => 'Владелец';
+
+  @override
+  String get addMemberButton => 'Добавить участника';
+
+  @override
+  String get noConnectionsToAddMessage =>
+      'Все ваши знакомые уже в этой комнате.';
+
+  @override
+  String get removeMemberTooltip => 'Исключить из комнаты';
+
+  @override
+  String removeMemberDialogTitle(String name) {
+    return 'Исключить $name?';
+  }
+
+  @override
+  String get removeMemberDialogContent =>
+      'Лента комнаты станет ему недоступна. Позже его можно добавить снова.';
+
+  @override
+  String get failedToUpdateRoomMembersError =>
+      'Не удалось изменить состав комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get renameRoomTitle => 'Переименовать комнату';
+
+  @override
+  String get failedToRenameRoomError =>
+      'Не удалось переименовать комнату. Попробуйте ещё раз.';
+
+  @override
+  String get leaveRoomButton => 'Выйти из комнаты';
+
+  @override
+  String get leaveRoomDialogTitle => 'Выйти из комнаты?';
+
+  @override
+  String get leaveRoomDialogContent =>
+      'Комната пропадёт из списка, а её переписка станет недоступна. Вернуть вас сможет только владелец.';
+
+  @override
+  String get leaveDirectRoomDialogContent =>
+      'Эта комната — вы вдвоём, поэтому она исчезнет у обоих вместе со всей перепиской.';
+
+  @override
+  String get failedToLeaveRoomError =>
+      'Не удалось выйти из комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get roomNotificationsLabel => 'Уведомления';
+
+  @override
+  String get roomNotificationsDescription =>
+      'Пуши о новых сообщениях в этой комнате. Непрочитанные считаются в любом случае.';
+
+  @override
+  String get roomMutedLabel => 'Уведомления выключены';
+
+  @override
+  String get failedToUpdateRoomNotificationsError =>
+      'Не удалось изменить уведомления. Попробуйте ещё раз.';
+
+  @override
+  String get roomChatTitle => 'Чат';
+
+  @override
+  String get mediaMessagePreview => 'Фото';
+
+  @override
+  String get typingStatus => 'печатает…';
+
+  @override
+  String someoneTypingStatus(String name) {
+    return '$name печатает…';
+  }
+
+  @override
+  String severalTypingStatus(int count) {
+    return '$count печатают…';
+  }
+
+  @override
+  String get onlineStatus => 'в сети';
+
+  @override
+  String onlineCountStatus(int count) {
+    return '$count в сети';
+  }
+
+  @override
+  String get messageHint => 'Сообщение';
+
+  @override
+  String get sendMessageTooltip => 'Отправить';
+
+  @override
+  String get attachMediaTooltip => 'Прикрепить фото или видео';
+
+  @override
+  String get removeAttachmentTooltip => 'Убрать вложение';
+
+  @override
+  String get noMessagesYetMessage =>
+      'Здесь пока тихо. Напишите первое сообщение.';
+
+  @override
+  String get deletedMessageLabel => 'Сообщение удалено';
+
+  @override
+  String get deleteMessageDialogTitle => 'Удалить сообщение?';
+
+  @override
+  String get deleteMessageDialogContent =>
+      'Оно исчезнет у всех в комнате, останется только пометка.';
+
+  @override
+  String get formerMemberLabel => 'Бывший участник';
+
+  @override
+  String get roomMessageStatusSentLabel => 'Отправлено';
+
+  @override
+  String get roomMessageStatusDeliveredLabel => 'Доставлено';
+
+  @override
+  String get roomMessageStatusReadLabel => 'Прочитано';
+
+  @override
+  String roomMessageReadCount(int read, int total) {
+    return 'Прочитано $read/$total';
+  }
+
+  @override
+  String roomMessageDeliveredCount(int delivered, int total) {
+    return 'Доставлено $delivered/$total';
+  }
+
+  @override
+  String get failedToLoadMessagesError =>
+      'Не удалось загрузить сообщения. Попробуйте ещё раз.';
+
+  @override
+  String get failedToSendMessageError =>
+      'Не удалось отправить. Попробуйте ещё раз.';
+
+  @override
+  String get failedToDeleteMessageError =>
+      'Не удалось удалить сообщение. Попробуйте ещё раз.';
+
+  @override
+  String get notifyRoomMessagesLabel => 'Сообщения в комнатах';
+
+  @override
+  String get roomAvatarLabel => 'Аватарка комнаты';
+
+  @override
+  String get changeRoomAvatarButton => 'Сменить аватарку';
+
+  @override
+  String get removeRoomAvatarButton => 'Убрать аватарку';
+
+  @override
+  String get failedToUpdateRoomAvatarError =>
+      'Не удалось изменить аватарку комнаты. Попробуйте ещё раз.';
 }

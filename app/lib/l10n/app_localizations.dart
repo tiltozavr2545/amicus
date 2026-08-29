@@ -140,6 +140,24 @@ abstract class AppLocalizations {
   /// **'Enter your name'**
   String get nameRequiredError;
 
+  /// No description provided for @emailRequiredError.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email'**
+  String get emailRequiredError;
+
+  /// No description provided for @invalidEmailError.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the email address — it doesn\'t look right.'**
+  String get invalidEmailError;
+
+  /// No description provided for @undeliverableEmailError.
+  ///
+  /// In en, this message translates to:
+  /// **'This domain can\'t receive mail. Enter a real email address.'**
+  String get undeliverableEmailError;
+
   /// No description provided for @invalidCredentialsError.
   ///
   /// In en, this message translates to:
@@ -314,6 +332,18 @@ abstract class AppLocalizations {
   /// **'Create new code'**
   String get createNewCodeButton;
 
+  /// No description provided for @rotateInviteCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a new code?'**
+  String get rotateInviteCodeTitle;
+
+  /// No description provided for @rotateInviteCodeContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The current code stops working immediately. Anyone you have already sent it to will not be able to use it.'**
+  String get rotateInviteCodeContent;
+
   /// No description provided for @haveCodeSectionTitle.
   ///
   /// In en, this message translates to:
@@ -452,6 +482,66 @@ abstract class AppLocalizations {
   /// **'Unblock'**
   String get unblockButton;
 
+  /// No description provided for @connectionRequestsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection requests'**
+  String get connectionRequestsTitle;
+
+  /// No description provided for @connectionRequestSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wants to add you as a connection'**
+  String get connectionRequestSubtitle;
+
+  /// No description provided for @acceptRequestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get acceptRequestTooltip;
+
+  /// No description provided for @declineRequestTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get declineRequestTooltip;
+
+  /// No description provided for @failedToAnswerRequestError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to answer the request. Please try again.'**
+  String get failedToAnswerRequestError;
+
+  /// No description provided for @askToConnectTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask to connect'**
+  String get askToConnectTooltip;
+
+  /// No description provided for @connectionRequestPendingLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent'**
+  String get connectionRequestPendingLabel;
+
+  /// No description provided for @connectionRequestSentMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent to {name}'**
+  String connectionRequestSentMessage(String name);
+
+  /// No description provided for @connectionRequestMutualMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} had asked you too — you are connections now'**
+  String connectionRequestMutualMessage(String name);
+
+  /// No description provided for @failedToRequestConnectionError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to send the request. Please try again.'**
+  String get failedToRequestConnectionError;
+
   /// No description provided for @blockedUsersTooltip.
   ///
   /// In en, this message translates to:
@@ -476,28 +566,118 @@ abstract class AppLocalizations {
   /// **'Publish'**
   String get publishButton;
 
+  /// No description provided for @editPostTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit post'**
+  String get editPostTitle;
+
+  /// No description provided for @editButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get editButton;
+
   /// No description provided for @whatsNewHint.
   ///
   /// In en, this message translates to:
   /// **'What\'s new?'**
   String get whatsNewHint;
 
-  /// No description provided for @addPhotoButton.
+  /// No description provided for @postVisibilityLabel.
   ///
   /// In en, this message translates to:
-  /// **'Add photo'**
-  String get addPhotoButton;
+  /// **'Who can see this post'**
+  String get postVisibilityLabel;
 
-  /// No description provided for @replacePhotoButton.
+  /// No description provided for @visibilityConnectionsLabel.
   ///
   /// In en, this message translates to:
-  /// **'Replace photo'**
-  String get replacePhotoButton;
+  /// **'All connections'**
+  String get visibilityConnectionsLabel;
+
+  /// No description provided for @visibilityFavoritesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourites only'**
+  String get visibilityFavoritesLabel;
+
+  /// No description provided for @visibilityConnectionsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you are connected with will see this post.'**
+  String get visibilityConnectionsDescription;
+
+  /// No description provided for @visibilityFavoritesDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the people you have added to favourites will see it. They are not told.'**
+  String get visibilityFavoritesDescription;
+
+  /// No description provided for @visibilityFavoritesBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourites only'**
+  String get visibilityFavoritesBadge;
+
+  /// No description provided for @addMediaButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Add photo or video'**
+  String get addMediaButton;
+
+  /// No description provided for @removeMediaTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get removeMediaTooltip;
+
+  /// No description provided for @playVideoTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Play video'**
+  String get playVideoTooltip;
+
+  /// No description provided for @mediaLimitMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add up to 20 photos or videos'**
+  String get mediaLimitMessage;
+
+  /// No description provided for @videoTooLongError.
+  ///
+  /// In en, this message translates to:
+  /// **'Video must be under 60 seconds'**
+  String get videoTooLongError;
+
+  /// No description provided for @videoTooLargeError.
+  ///
+  /// In en, this message translates to:
+  /// **'Video must be under 100 MB'**
+  String get videoTooLargeError;
+
+  /// No description provided for @failedToAddMediaError.
+  ///
+  /// In en, this message translates to:
+  /// **'Some files couldn\'t be added'**
+  String get failedToAddMediaError;
+
+  /// No description provided for @unsupportedImageFormatError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported image format. Use JPEG, PNG, WebP or HEIC.'**
+  String get unsupportedImageFormatError;
+
+  /// No description provided for @unsupportedVideoFormatError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported video format. Use MP4, MOV, M4V, 3GP, WebM or MKV.'**
+  String get unsupportedVideoFormatError;
 
   /// No description provided for @addTextOrPhotoError.
   ///
   /// In en, this message translates to:
-  /// **'Add text or a photo'**
+  /// **'Add text, a photo, or a video'**
   String get addTextOrPhotoError;
 
   /// No description provided for @failedToPublishError.
@@ -505,6 +685,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to publish. Please try again.'**
   String get failedToPublishError;
+
+  /// No description provided for @failedToSaveChangesError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save changes. Please try again.'**
+  String get failedToSaveChangesError;
 
   /// No description provided for @deletePostTitle.
   ///
@@ -515,7 +701,7 @@ abstract class AppLocalizations {
   /// No description provided for @deletePostContent.
   ///
   /// In en, this message translates to:
-  /// **'The post, its photo, and comments will be deleted.'**
+  /// **'The post, its media, and comments will be deleted.'**
   String get deletePostContent;
 
   /// No description provided for @failedToLoadFeedError.
@@ -584,12 +770,6 @@ abstract class AppLocalizations {
   /// **'Dislike'**
   String get dislikeTooltip;
 
-  /// No description provided for @signOutTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign out'**
-  String get signOutTooltip;
-
   /// No description provided for @darkThemeToggleTooltip.
   ///
   /// In en, this message translates to:
@@ -608,11 +788,77 @@ abstract class AppLocalizations {
   /// **'Failed to save name. Please try again.'**
   String get failedToSaveNameError;
 
-  /// No description provided for @failedToUploadAvatarError.
+  /// No description provided for @addPhotoButton.
   ///
   /// In en, this message translates to:
-  /// **'Failed to upload photo. Please try again.'**
-  String get failedToUploadAvatarError;
+  /// **'Add photo'**
+  String get addPhotoButton;
+
+  /// No description provided for @reorderPhotosButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder'**
+  String get reorderPhotosButton;
+
+  /// No description provided for @deletePhotoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete photo'**
+  String get deletePhotoButton;
+
+  /// No description provided for @reorderPhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo order'**
+  String get reorderPhotosTitle;
+
+  /// No description provided for @deletePhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete photos'**
+  String get deletePhotosTitle;
+
+  /// No description provided for @photoLimitMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add up to 80 photos'**
+  String get photoLimitMessage;
+
+  /// No description provided for @failedToLoadPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load photos. Please try again.'**
+  String get failedToLoadPhotosError;
+
+  /// No description provided for @failedToAddPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to add photos. Please try again.'**
+  String get failedToAddPhotosError;
+
+  /// No description provided for @failedToReorderPhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to reorder photos. Please try again.'**
+  String get failedToReorderPhotosError;
+
+  /// No description provided for @failedToDeletePhotosError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete photos. Please try again.'**
+  String get failedToDeletePhotosError;
+
+  /// No description provided for @deletePhotosConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete selected photos?'**
+  String get deletePhotosConfirmTitle;
+
+  /// No description provided for @deletePhotosConfirmContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected photos will be permanently deleted.'**
+  String get deletePhotosConfirmContent;
 
   /// No description provided for @commentsTitle.
   ///
@@ -692,6 +938,12 @@ abstract class AppLocalizations {
   /// **'Failed to send. Please try again.'**
   String get failedToSendCommentError;
 
+  /// No description provided for @commentsTruncatedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the first {count} comments. Newer ones are not shown.'**
+  String commentsTruncatedNotice(int count);
+
   /// No description provided for @connectionKnownLessThanDay.
   ///
   /// In en, this message translates to:
@@ -740,11 +992,11 @@ abstract class AppLocalizations {
   /// **'Notifications'**
   String get notificationsSectionTitle;
 
-  /// No description provided for @notifyAmicusLabel.
+  /// No description provided for @notifyAppUpdatesLabel.
   ///
   /// In en, this message translates to:
-  /// **'Posts from Amicus'**
-  String get notifyAmicusLabel;
+  /// **'App update announcements'**
+  String get notifyAppUpdatesLabel;
 
   /// No description provided for @notifyFavoritesLabel.
   ///
@@ -787,6 +1039,438 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Version {version} ({build})'**
   String appVersionLabel(String version, String build);
+
+  /// No description provided for @languageSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get languageSectionTitle;
+
+  /// No description provided for @languageSystemLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get languageSystemLabel;
+
+  /// No description provided for @accountSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSectionTitle;
+
+  /// No description provided for @signOutButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get signOutButton;
+
+  /// No description provided for @signOutDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get signOutDialogTitle;
+
+  /// No description provided for @signOutDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll need to sign in again to use the app.'**
+  String get signOutDialogContent;
+
+  /// No description provided for @failedToSignOutError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to sign out. Please try again.'**
+  String get failedToSignOutError;
+
+  /// No description provided for @deleteAccountLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get deleteAccountLabel;
+
+  /// No description provided for @deleteAccountDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get deleteAccountDialogTitle;
+
+  /// No description provided for @deleteAccountDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'This is permanent: your profile, posts, comments, and connections will all be deleted. This can\'t be undone.'**
+  String get deleteAccountDialogContent;
+
+  /// No description provided for @failedToDeleteAccountError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete account. Please try again.'**
+  String get failedToDeleteAccountError;
+
+  /// No description provided for @roomsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rooms'**
+  String get roomsTitle;
+
+  /// No description provided for @roomFallbackName.
+  ///
+  /// In en, this message translates to:
+  /// **'Room'**
+  String get roomFallbackName;
+
+  /// No description provided for @noRoomsYetMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'No rooms yet. A room is a separate chat for the people you invite into it.'**
+  String get noRoomsYetMessage;
+
+  /// No description provided for @newRoomTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New room'**
+  String get newRoomTitle;
+
+  /// No description provided for @createRoomButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create room'**
+  String get createRoomButton;
+
+  /// No description provided for @failedToLoadRoomsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load rooms. Please try again.'**
+  String get failedToLoadRoomsError;
+
+  /// No description provided for @selectRoomMembersMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick who joins. One person makes a room just for the two of you, and it can never take a third.'**
+  String get selectRoomMembersMessage;
+
+  /// No description provided for @pickAtLeastOneMemberError.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick at least one person.'**
+  String get pickAtLeastOneMemberError;
+
+  /// No description provided for @roomNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Room name'**
+  String get roomNameLabel;
+
+  /// No description provided for @roomNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave it empty to use the members\' names'**
+  String get roomNameHint;
+
+  /// No description provided for @failedToCreateRoomError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to create the room. Please try again.'**
+  String get failedToCreateRoomError;
+
+  /// No description provided for @notYourConnectionError.
+  ///
+  /// In en, this message translates to:
+  /// **'You can only add your own connections to a room.'**
+  String get notYourConnectionError;
+
+  /// No description provided for @roomMembersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get roomMembersTitle;
+
+  /// No description provided for @roomMembersCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 member} other{{count} members}}'**
+  String roomMembersCount(int count);
+
+  /// No description provided for @roomOwnerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get roomOwnerLabel;
+
+  /// No description provided for @addMemberButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Add member'**
+  String get addMemberButton;
+
+  /// No description provided for @noConnectionsToAddMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you know is already in this room.'**
+  String get noConnectionsToAddMessage;
+
+  /// No description provided for @removeMemberTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from room'**
+  String get removeMemberTooltip;
+
+  /// No description provided for @removeMemberDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String removeMemberDialogTitle(String name);
+
+  /// No description provided for @removeMemberDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'They lose access to this room\'s feed. You can add them again later.'**
+  String get removeMemberDialogContent;
+
+  /// No description provided for @failedToUpdateRoomMembersError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to change the room\'s members. Please try again.'**
+  String get failedToUpdateRoomMembersError;
+
+  /// No description provided for @renameRoomTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename room'**
+  String get renameRoomTitle;
+
+  /// No description provided for @failedToRenameRoomError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to rename the room. Please try again.'**
+  String get failedToRenameRoomError;
+
+  /// No description provided for @leaveRoomButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave room'**
+  String get leaveRoomButton;
+
+  /// No description provided for @leaveRoomDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave room?'**
+  String get leaveRoomDialogTitle;
+
+  /// No description provided for @leaveRoomDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'The room disappears from your list and its conversation goes with it. Only the owner can bring you back.'**
+  String get leaveRoomDialogContent;
+
+  /// No description provided for @leaveDirectRoomDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'This room is just the two of you, so it goes for both — along with everything said in it.'**
+  String get leaveDirectRoomDialogContent;
+
+  /// No description provided for @failedToLeaveRoomError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to leave the room. Please try again.'**
+  String get failedToLeaveRoomError;
+
+  /// No description provided for @roomNotificationsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get roomNotificationsLabel;
+
+  /// No description provided for @roomNotificationsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushes about new messages in this room. Unread messages are counted either way.'**
+  String get roomNotificationsDescription;
+
+  /// No description provided for @roomMutedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications off'**
+  String get roomMutedLabel;
+
+  /// No description provided for @failedToUpdateRoomNotificationsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to change notifications. Please try again.'**
+  String get failedToUpdateRoomNotificationsError;
+
+  /// No description provided for @roomChatTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get roomChatTitle;
+
+  /// No description provided for @mediaMessagePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get mediaMessagePreview;
+
+  /// No description provided for @typingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'typing…'**
+  String get typingStatus;
+
+  /// No description provided for @someoneTypingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is typing…'**
+  String someoneTypingStatus(String name);
+
+  /// No description provided for @severalTypingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} people typing…'**
+  String severalTypingStatus(int count);
+
+  /// No description provided for @onlineStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'online'**
+  String get onlineStatus;
+
+  /// No description provided for @onlineCountStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} online'**
+  String onlineCountStatus(int count);
+
+  /// No description provided for @messageHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Message'**
+  String get messageHint;
+
+  /// No description provided for @sendMessageTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get sendMessageTooltip;
+
+  /// No description provided for @attachMediaTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a photo or video'**
+  String get attachMediaTooltip;
+
+  /// No description provided for @removeAttachmentTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove attachment'**
+  String get removeAttachmentTooltip;
+
+  /// No description provided for @noMessagesYetMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet in here. Send the first message.'**
+  String get noMessagesYetMessage;
+
+  /// No description provided for @deletedMessageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Message deleted'**
+  String get deletedMessageLabel;
+
+  /// No description provided for @deleteMessageDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete message?'**
+  String get deleteMessageDialogTitle;
+
+  /// No description provided for @deleteMessageDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'It disappears for everyone in the room, leaving only a note.'**
+  String get deleteMessageDialogContent;
+
+  /// No description provided for @formerMemberLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Former member'**
+  String get formerMemberLabel;
+
+  /// No description provided for @roomMessageStatusSentLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get roomMessageStatusSentLabel;
+
+  /// No description provided for @roomMessageStatusDeliveredLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered'**
+  String get roomMessageStatusDeliveredLabel;
+
+  /// No description provided for @roomMessageStatusReadLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Read'**
+  String get roomMessageStatusReadLabel;
+
+  /// No description provided for @roomMessageReadCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Read {read}/{total}'**
+  String roomMessageReadCount(int read, int total);
+
+  /// No description provided for @roomMessageDeliveredCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivered {delivered}/{total}'**
+  String roomMessageDeliveredCount(int delivered, int total);
+
+  /// No description provided for @failedToLoadMessagesError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load messages. Please try again.'**
+  String get failedToLoadMessagesError;
+
+  /// No description provided for @failedToSendMessageError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to send. Please try again.'**
+  String get failedToSendMessageError;
+
+  /// No description provided for @failedToDeleteMessageError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete the message. Please try again.'**
+  String get failedToDeleteMessageError;
+
+  /// No description provided for @notifyRoomMessagesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages in rooms'**
+  String get notifyRoomMessagesLabel;
+
+  /// No description provided for @roomAvatarLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Room picture'**
+  String get roomAvatarLabel;
+
+  /// No description provided for @changeRoomAvatarButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Change picture'**
+  String get changeRoomAvatarButton;
+
+  /// No description provided for @removeRoomAvatarButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove picture'**
+  String get removeRoomAvatarButton;
+
+  /// No description provided for @failedToUpdateRoomAvatarError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to change the room picture. Please try again.'**
+  String get failedToUpdateRoomAvatarError;
 }
 
 class _AppLocalizationsDelegate

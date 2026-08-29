@@ -9,6 +9,9 @@
   "nameLabel": "Name",
   "passwordLabel": "Password",
   "nameRequiredError": "Enter your name",
+  "emailRequiredError": "Enter your email",
+  "invalidEmailError": "Check the email address \u2014 it doesn't look right.",
+  "undeliverableEmailError": "This domain can't receive mail. Enter a real email address.",
   "invalidCredentialsError": "Incorrect email or password.",
   "emailNotConfirmedError": "Please confirm your email before signing in.",
   "weakPasswordError": "This password is too weak. Try a longer one.",
@@ -49,6 +52,8 @@
   "codeCopiedMessage": "Code copied",
   "createInviteCodeButton": "Create invite code",
   "createNewCodeButton": "Create new code",
+  "rotateInviteCodeTitle": "Create a new code?",
+  "rotateInviteCodeContent": "The current code stops working immediately. Anyone you have already sent it to will not be able to use it.",
   "haveCodeSectionTitle": "I have a code",
   "inviteCodeLabel": "Invite code",
   "inviteCodeRequiredError": "Enter an invite code",
@@ -84,19 +89,53 @@
   "blockFriendContent": "Neither of you will see each other's posts. You'll still be connected.",
   "blockButton": "Block",
   "unblockButton": "Unblock",
+  "connectionRequestsTitle": "Connection requests",
+  "connectionRequestSubtitle": "Wants to add you as a connection",
+  "acceptRequestTooltip": "Accept",
+  "declineRequestTooltip": "Decline",
+  "failedToAnswerRequestError": "Failed to answer the request. Please try again.",
+  "askToConnectTooltip": "Ask to connect",
+  "connectionRequestPendingLabel": "Request sent",
+  "connectionRequestSentMessage": "Request sent to {name}",
+  "@connectionRequestSentMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "connectionRequestMutualMessage": "{name} had asked you too — you are connections now",
+  "@connectionRequestMutualMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "failedToRequestConnectionError": "Failed to send the request. Please try again.",
+
   "blockedUsersTooltip": "Blocked users",
   "blockedUsersTitle": "Blocked",
   "noBlockedUsersMessage": "You haven't blocked anyone",
 
   "publishButton": "Publish",
+  "editPostTitle": "Edit post",
+  "editButton": "Edit",
   "whatsNewHint": "What's new?",
-  "addPhotoButton": "Add photo",
-  "replacePhotoButton": "Replace photo",
-  "addTextOrPhotoError": "Add text or a photo",
+  "postVisibilityLabel": "Who can see this post",
+  "visibilityConnectionsLabel": "All connections",
+  "visibilityFavoritesLabel": "Favourites only",
+  "visibilityConnectionsDescription": "Everyone you are connected with will see this post.",
+  "visibilityFavoritesDescription": "Only the people you have added to favourites will see it. They are not told.",
+  "visibilityFavoritesBadge": "Favourites only",
+
+  "addMediaButton": "Add photo or video",
+  "removeMediaTooltip": "Remove",
+  "playVideoTooltip": "Play video",
+  "mediaLimitMessage": "You can add up to 20 photos or videos",
+  "videoTooLongError": "Video must be under 60 seconds",
+  "videoTooLargeError": "Video must be under 100 MB",
+  "failedToAddMediaError": "Some files couldn't be added",
+  "unsupportedImageFormatError": "Unsupported image format. Use JPEG, PNG, WebP or HEIC.",
+  "unsupportedVideoFormatError": "Unsupported video format. Use MP4, MOV, M4V, 3GP, WebM or MKV.",
+  "addTextOrPhotoError": "Add text, a photo, or a video",
   "failedToPublishError": "Failed to publish. Please try again.",
+  "failedToSaveChangesError": "Failed to save changes. Please try again.",
 
   "deletePostTitle": "Delete post?",
-  "deletePostContent": "The post, its photo, and comments will be deleted.",
+  "deletePostContent": "The post, its media, and comments will be deleted.",
   "failedToLoadFeedError": "Failed to load feed. Please try again.",
   "failedToDeletePostError": "Failed to delete post. Please try again.",
   "noPostsYetMessage": "No posts from connections yet. Add connections or write the first one.",
@@ -109,11 +148,22 @@
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
 
-  "signOutTooltip": "Sign out",
   "darkThemeToggleTooltip": "Toggle dark theme",
   "failedToLoadProfileError": "Failed to load profile. Please try again.",
   "failedToSaveNameError": "Failed to save name. Please try again.",
-  "failedToUploadAvatarError": "Failed to upload photo. Please try again.",
+
+  "addPhotoButton": "Add photo",
+  "reorderPhotosButton": "Reorder",
+  "deletePhotoButton": "Delete photo",
+  "reorderPhotosTitle": "Photo order",
+  "deletePhotosTitle": "Delete photos",
+  "photoLimitMessage": "You can add up to 80 photos",
+  "failedToLoadPhotosError": "Failed to load photos. Please try again.",
+  "failedToAddPhotosError": "Failed to add photos. Please try again.",
+  "failedToReorderPhotosError": "Failed to reorder photos. Please try again.",
+  "failedToDeletePhotosError": "Failed to delete photos. Please try again.",
+  "deletePhotosConfirmTitle": "Delete selected photos?",
+  "deletePhotosConfirmContent": "The selected photos will be permanently deleted.",
 
   "commentsTitle": "Comments",
   "deleteCommentTitle": "Delete comment?",
@@ -134,6 +184,10 @@
   "failedToLoadCommentsError": "Failed to load comments. Please try again.",
   "failedToDeleteCommentError": "Failed to delete comment. Please try again.",
   "failedToSendCommentError": "Failed to send. Please try again.",
+  "commentsTruncatedNotice": "Showing the first {count} comments. Newer ones are not shown.",
+  "@commentsTruncatedNotice": {
+    "placeholders": { "count": { "type": "int" } }
+  },
 
   "connectionKnownLessThanDay": "Known for less than a day",
   "connectionKnownDays": "Known for {days, plural, one{{days} day} other{{days} days}}",
@@ -159,7 +213,7 @@
   "settingsTooltip": "Settings",
   "settingsTitle": "Settings",
   "notificationsSectionTitle": "Notifications",
-  "notifyAmicusLabel": "Posts from Amicus",
+  "notifyAppUpdatesLabel": "App update announcements",
   "notifyFavoritesLabel": "Posts from favorite friends",
   "notifyCommentsLabel": "Comments on your posts and replies to you",
   "notifyDigestLabel": "Digest of posts from everyone else",
@@ -172,5 +226,114 @@
       "version": { "type": "String" },
       "build": { "type": "String" }
     }
-  }
+  },
+
+  "languageSectionTitle": "Language",
+  "languageSystemLabel": "System default",
+
+  "accountSectionTitle": "Account",
+  "signOutButton": "Sign out",
+  "signOutDialogTitle": "Sign out?",
+  "signOutDialogContent": "You'll need to sign in again to use the app.",
+  "failedToSignOutError": "Failed to sign out. Please try again.",
+  "deleteAccountLabel": "Delete account",
+  "deleteAccountDialogTitle": "Delete account?",
+  "deleteAccountDialogContent": "This is permanent: your profile, posts, comments, and connections will all be deleted. This can't be undone.",
+  "failedToDeleteAccountError": "Failed to delete account. Please try again.",
+
+  "roomsTitle": "Rooms",
+  "roomFallbackName": "Room",
+  "noRoomsYetMessage": "No rooms yet. A room is a separate chat for the people you invite into it.",
+  "newRoomTitle": "New room",
+  "createRoomButton": "Create room",
+  "failedToLoadRoomsError": "Failed to load rooms. Please try again.",
+
+  "selectRoomMembersMessage": "Pick who joins. One person makes a room just for the two of you, and it can never take a third.",
+  "pickAtLeastOneMemberError": "Pick at least one person.",
+  "roomNameLabel": "Room name",
+  "roomNameHint": "Leave it empty to use the members' names",
+  "failedToCreateRoomError": "Failed to create the room. Please try again.",
+  "notYourConnectionError": "You can only add your own connections to a room.",
+
+  "roomMembersTitle": "Members",
+  "roomMembersCount": "{count, plural, =1{1 member} other{{count} members}}",
+  "@roomMembersCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "roomOwnerLabel": "Owner",
+  "addMemberButton": "Add member",
+  "noConnectionsToAddMessage": "Everyone you know is already in this room.",
+  "removeMemberTooltip": "Remove from room",
+  "removeMemberDialogTitle": "Remove {name}?",
+  "@removeMemberDialogTitle": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "removeMemberDialogContent": "They lose access to this room's feed. You can add them again later.",
+  "failedToUpdateRoomMembersError": "Failed to change the room's members. Please try again.",
+
+  "renameRoomTitle": "Rename room",
+  "failedToRenameRoomError": "Failed to rename the room. Please try again.",
+  "leaveRoomButton": "Leave room",
+  "leaveRoomDialogTitle": "Leave room?",
+  "leaveRoomDialogContent": "The room disappears from your list and its conversation goes with it. Only the owner can bring you back.",
+  "leaveDirectRoomDialogContent": "This room is just the two of you, so it goes for both — along with everything said in it.",
+  "failedToLeaveRoomError": "Failed to leave the room. Please try again.",
+
+  "roomNotificationsLabel": "Notifications",
+  "roomNotificationsDescription": "Pushes about new messages in this room. Unread messages are counted either way.",
+  "roomMutedLabel": "Notifications off",
+  "failedToUpdateRoomNotificationsError": "Failed to change notifications. Please try again.",
+
+  "roomChatTitle": "Chat",
+  "mediaMessagePreview": "Photo",
+  "typingStatus": "typing…",
+  "someoneTypingStatus": "{name} is typing…",
+  "@someoneTypingStatus": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "severalTypingStatus": "{count} people typing…",
+  "@severalTypingStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "onlineStatus": "online",
+  "onlineCountStatus": "{count} online",
+  "@onlineCountStatus": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "messageHint": "Message",
+  "sendMessageTooltip": "Send",
+  "attachMediaTooltip": "Attach a photo or video",
+  "removeAttachmentTooltip": "Remove attachment",
+  "noMessagesYetMessage": "Quiet in here. Send the first message.",
+  "deletedMessageLabel": "Message deleted",
+  "deleteMessageDialogTitle": "Delete message?",
+  "deleteMessageDialogContent": "It disappears for everyone in the room, leaving only a note.",
+  "formerMemberLabel": "Former member",
+  "roomMessageStatusSentLabel": "Sent",
+  "roomMessageStatusDeliveredLabel": "Delivered",
+  "roomMessageStatusReadLabel": "Read",
+  "roomMessageReadCount": "Read {read}/{total}",
+  "@roomMessageReadCount": {
+    "placeholders": {
+      "read": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "roomMessageDeliveredCount": "Delivered {delivered}/{total}",
+  "@roomMessageDeliveredCount": {
+    "placeholders": {
+      "delivered": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "failedToLoadMessagesError": "Failed to load messages. Please try again.",
+  "failedToSendMessageError": "Failed to send. Please try again.",
+  "failedToDeleteMessageError": "Failed to delete the message. Please try again.",
+
+  "notifyRoomMessagesLabel": "Messages in rooms",
+
+  "roomAvatarLabel": "Room picture",
+  "changeRoomAvatarButton": "Change picture",
+  "removeRoomAvatarButton": "Remove picture",
+  "failedToUpdateRoomAvatarError": "Failed to change the room picture. Please try again."
 }

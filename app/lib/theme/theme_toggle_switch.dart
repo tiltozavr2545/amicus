@@ -1,12 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/connections/friend_profile_screen.dart';
+import '../features/profile/profile_repository.dart';
 import '../l10n/app_localizations.dart';
+import '../shared/system_accounts.dart';
+import '../shared/tap_streak.dart';
 import 'theme_mode_provider.dart';
+
+/// Counts flips of the switch below. A plain [Provider] rather than state on
+/// the widget: this sits in the top bar and is rebuilt on every frame that
+/// touches the theme, so a field would reset constantly.
+final _toggleStreakProvider = Provider<TapStreak>((ref) => TapStreak(6));
 
 /// Light/dark toggle shown in the top bar's actions, opposite the title.
 class ThemeToggleSwitch extends ConsumerWidget {
   const ThemeToggleSwitch({super.key});
+
+  Future<void> _openSystemAccountProfile(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    // Swallowed on purpose: this is a side path off a switch whose actual job
+    // (flipping the theme) has already succeeded, and it has no error surface
+    // of its own. Without the guard a flaky connection turned an unhandled
+    // `fetchProfile` throw loose from a top-bar widget.
+    //
+    // Which account to open is asked of the server via [SystemAccounts] rather
+    // than read off the compiled-in [systemAccountId]. Using the literal here
+    // made this a second copy of a rule the server owns — and the copy that
+    // fails silently: after a rotation `fetchProfile` would throw on `.single()`
+    // for a uuid that no longer exists, the catch below would swallow it, and
+    // six flips of the switch would simply do nothing, with no diagnostic
+    // anywhere. See migration 20260821160000.
+    final Profile profile;
+    try {
+      final ids = await ref.read(systemAccountsProvider).ids();
+      if (ids.isEmpty) return;
+      profile = await ref
+          .read(profileRepositoryProvider)
+          .fetchProfile(ids.first);
+    } catch (_) {
+      return;
+    }
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FriendProfileScreen(
+          friendId: profile.id,
+          friendName: profile.name,
+          avatarPath: profile.avatarPath,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,8 +68,12 @@ class ThemeToggleSwitch extends ConsumerWidget {
       message: l10n.darkThemeToggleTooltip,
       child: Switch(
         value: isDark,
-        onChanged: (_) =>
-            ref.read(themeModeProvider.notifier).toggle(systemIsDark),
+        onChanged: (_) async {
+          await ref.read(themeModeProvider.notifier).toggle(systemIsDark);
+          if (!ref.read(_toggleStreakProvider).record()) return;
+          if (!context.mounted) return;
+          await _openSystemAccountProfile(context, ref);
+        },
         thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
           (states) => Icon(
             states.contains(WidgetState.selected)
