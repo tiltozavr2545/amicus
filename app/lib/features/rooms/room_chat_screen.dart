@@ -66,6 +66,20 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   /// sending should cost the bucket nothing.
   final _attachments = <PickedMedia>[];
 
+  /// The `client_token` of the draft currently in the composer, minted lazily
+  /// on the first send attempt and kept until it either lands or the draft
+  /// changes.
+  ///
+  /// A retry has to reuse this rather than minting its own: `.timeout()`
+  /// stops [_send] waiting on a slow request without cancelling it, so on a
+  /// bad connection the abandoned insert can still land after the client has
+  /// already shown an error — and since the text field is deliberately left
+  /// as-is on failure (see [_send]'s catch branch), a user who simply taps
+  /// send again is retrying the same draft, not writing a new one. A fresh
+  /// token there would dodge `room_messages`' own `client_token` unique index
+  /// and post the same line twice.
+  String? _pendingSendToken;
+
   RoomPresenceHandle? _presence;
 
   /// Everyone in this chat right now and everyone typing in it, the viewer
@@ -166,6 +180,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   /// Announces "typing" while there is something to type, and takes it back
   /// [_typingIdleTimeout] after the last keystroke.
   void _onTyping() {
+    // The draft just changed (including being cleared after a send), so a
+    // token minted for whatever it said before no longer describes it.
+    _pendingSendToken = null;
     final typing = _textController.text.trim().isNotEmpty;
     _typingTimer?.cancel();
     if (typing) {
@@ -315,6 +332,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     setState(() {
       _attachments.addAll(result.items);
       _isPicking = false;
+      // Same reasoning as [_onTyping]: the draft this token described no
+      // longer matches what is about to be sent.
+      _pendingSendToken = null;
     });
     if (mediaPickProblemMessage(result.firstProblem, l10n)
         case final message?) {
@@ -334,6 +354,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       _isSending = true;
       _errorMessage = null;
     });
+    // Minted once per draft and reused across retries — see
+    // [_pendingSendToken]. Read before the request, not inside it: the field
+    // itself is cleared on success, and [_onTyping] would otherwise treat
+    // that as a new draft and null the token out from under this call.
+    final clientToken = _pendingSendToken ??= const Uuid().v4();
     try {
       final message = await ref
           .read(roomsRepositoryProvider)
@@ -341,16 +366,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
             roomId: widget.roomId,
             authorId: ref.read(currentUserIdProvider)!,
             text: text,
-            // One token per send, minted here: a retry after a timeout that
-            // committed anyway lands on the same unique index instead of
-            // saying the same thing twice. It also names the folder every
-            // attachment of this send goes into.
-            clientToken: const Uuid().v4(),
+            clientToken: clientToken,
             media: List.of(_attachments),
           );
       if (!mounted) return;
-      // Clearing the field fires [_onTyping] anyway; the timer is cancelled
-      // here so a pending one can't re-announce after the message is gone.
+      // Clearing the field fires [_onTyping] anyway, which also nulls
+      // [_pendingSendToken]; the timer is cancelled here so a pending one
+      // can't re-announce after the message is gone.
       _typingTimer?.cancel();
       _textController.clear();
       setState(() {
@@ -362,6 +384,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       ref.read(roomsRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!mounted) return;
+      // The draft (and [_pendingSendToken]) deliberately survive a failure:
+      // this is what lets a plain retap of send be answered by the unique
+      // index instead of posting a second row.
       setState(() => _errorMessage = l10n.failedToSendMessageError);
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -528,7 +553,10 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
               attachments: _attachments,
               onRemove: _isSending
                   ? null
-                  : (item) => setState(() => _attachments.remove(item)),
+                  : (item) => setState(() {
+                      _attachments.remove(item);
+                      _pendingSendToken = null;
+                    }),
             ),
           SafeArea(
             top: false,
