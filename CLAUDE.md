@@ -10,11 +10,11 @@
 | что за проект, что уже работает, стек | [README.md](README.md) |
 | история версий | [CHANGELOG.md](CHANGELOG.md) |
 | **почему** решение принято так | комментарий в baseline-миграции, затем архив истории (тег `pre-baseline-migrations`), затем `git log` |
-| исходный MVP-план | [docs/project-brief.md](docs/project-brief.md) |
-| отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
-| пошаговый план MVP, CI/деплой | [docs/implementation-plan.md](docs/implementation-plan.md) |
 | схема БД, правило видимости, storage-политики | [docs/data-model.md](docs/data-model.md) |
+| устройство клиента, решения по умолчанию | [docs/client-architecture.md](docs/client-architecture.md) |
 | расписания, секреты, релиз, рассылка «обновитесь» | [docs/operations.md](docs/operations.md) |
+| отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
+| историческое: замысел, как шёл MVP, старый список отложенного | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
 
 ## Проект
 

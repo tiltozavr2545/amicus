@@ -66,7 +66,11 @@ class _FakeFeedRepository implements FeedRepository {
   Future<void> deleteComment(String commentId) async {}
 
   @override
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async => [];
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    Set<String> mutedAuthorIds = const {},
+  }) async => [];
 
   @override
   Future<void> createPost({

@@ -69,6 +69,17 @@ class AccountRepository {
   /// bucket therefore remains writable for this user's own paths after the
   /// account row is gone.
   ///
+  /// That sentence was true of `posts/` and `avatars/` and quietly false of
+  /// `messages/`, whose DELETE policy also demanded room membership — which
+  /// `delete_own_account()` cascades away one statement earlier, so every
+  /// attachment this user had ever sent was refused and left to
+  /// `reap_orphaned_media()`: a hundred an hour, nothing younger than a day,
+  /// which for a chat that takes 100 MB clips is the same wrong instrument
+  /// the comment on `createPost` names. Migration 20260829120000 dropped that
+  /// clause — the author segment of the path is the right, membership never
+  /// added one — so attachments are enumerated below like everything else,
+  /// and cleaned on the same side of the RPC as everything else.
+  ///
   /// The gallery is enumerated from `profile_photos`, not from
   /// `users.avatar_path`: that column names only the *top* photo (position 0,
   /// kept in sync by a trigger), so reading it alone left the other up-to-79
@@ -117,6 +128,26 @@ class AccountRepository {
         for (final row in mediaRows) {
           paths.add(row['storage_path'] as String);
           final posterPath = row['poster_path'] as String?;
+          if (posterPath != null) paths.add(posterPath);
+        }
+      }
+
+      // Chat attachments. Not a table of their own: `room_messages.media` is
+      // a jsonb array on the message row (migration 20260828120000), so this
+      // reads the column and walks it rather than joining. Selected while the
+      // account still exists — `room_messages` is readable to room members,
+      // and after the RPC this user is a member of nothing.
+      final ownMessages = await _client
+          .from('room_messages')
+          .select('media')
+          .eq('author_id', userId)
+          .timeout(networkTimeout);
+      for (final row in ownMessages) {
+        for (final item in (row['media'] as List<dynamic>? ?? const [])) {
+          final media = item as Map<String, dynamic>;
+          final storagePath = media['storage_path'] as String?;
+          if (storagePath != null) paths.add(storagePath);
+          final posterPath = media['poster_path'] as String?;
           if (posterPath != null) paths.add(posterPath);
         }
       }

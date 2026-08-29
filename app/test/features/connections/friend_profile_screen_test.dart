@@ -27,8 +27,11 @@ class _FakeProfileRepository implements ProfileRepository {
 /// it out of the way.
 class _FakeFeedRepository implements FeedRepository {
   @override
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async =>
-      const [];
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    Set<String> mutedAuthorIds = const {},
+  }) async => const [];
 
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
+import 'package:amicus/features/connections/connections_repository.dart';
 import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/features/feed/post_list_view.dart';
 import 'package:amicus/l10n/app_localizations.dart';
@@ -29,10 +30,25 @@ class _FakeFeedRepository implements FeedRepository {
   final deletedPostIds = <String>[];
   List<Comment> commentsToReturn = const [];
 
+  /// What the last page load asked to leave out — the muted-author filter the
+  /// main feed applies and a profile list must not.
+  Set<String>? lastMutedAuthorIds;
+
+  /// What every page *after* the first returns. Empty by default, and that is
+  /// what stops the list asking for a third: answering each page with the
+  /// same full page would page forever, since `_hasMore` is
+  /// `page.length == pageSize`.
+  List<Post> nextPageToReturn = const [];
+
   @override
-  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    Set<String> mutedAuthorIds = const {},
+  }) async {
+    lastMutedAuthorIds = mutedAuthorIds;
     if (throwOnFetch) throw Exception('offline');
-    return pageToReturn;
+    return cursor == null ? pageToReturn : nextPageToReturn;
   }
 
   @override
@@ -121,13 +137,36 @@ Post _post(
   media: media,
 );
 
+/// The list reads its muted-author ids from here — mute is a feed filter now,
+/// not a server-side visibility rule, so the widget has to ask for it.
+class _FakeConnectionsRepository implements ConnectionsRepository {
+  Set<String> mutedIds = const {};
+  int mutedFetches = 0;
+
+  @override
+  Future<Set<String>> fetchMutedIds(String userId) async {
+    mutedFetches++;
+    return mutedIds;
+  }
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 /// [container], when given, lets a test poke providers from the outside —
 /// bumping [feedRefreshTickProvider] the way muting or saving an edit does.
-Widget _wrap(_FakeFeedRepository repo, {ProviderContainer? container}) {
-  const app = MaterialApp(
+/// [authorId] scopes the list to one author, which is what a profile page
+/// does — and what must not be filtered by mute.
+Widget _wrap(
+  _FakeFeedRepository repo, {
+  ProviderContainer? container,
+  _FakeConnectionsRepository? connections,
+  String? authorId,
+}) {
+  final app = MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: Scaffold(body: PostListView()),
+    home: Scaffold(body: PostListView(authorId: authorId)),
   );
   if (container != null) {
     return UncontrolledProviderScope(container: container, child: app);
@@ -136,15 +175,24 @@ Widget _wrap(_FakeFeedRepository repo, {ProviderContainer? container}) {
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
+      connectionsRepositoryProvider.overrideWithValue(
+        connections ?? _FakeConnectionsRepository(),
+      ),
     ],
     child: app,
   );
 }
 
-ProviderContainer _container(_FakeFeedRepository repo) => ProviderContainer(
+ProviderContainer _container(
+  _FakeFeedRepository repo, {
+  _FakeConnectionsRepository? connections,
+}) => ProviderContainer(
   overrides: [
     currentUserIdProvider.overrideWithValue('test-user'),
     feedRepositoryProvider.overrideWithValue(repo),
+    connectionsRepositoryProvider.overrideWithValue(
+      connections ?? _FakeConnectionsRepository(),
+    ),
   ],
 );
 
@@ -616,4 +664,113 @@ void main() {
       expect(find.text('Favourites only'), findsNothing);
     });
   });
+
+  group('mute is a feed filter, not a wall', () {
+    testWidgets('the main feed asks the server to leave muted authors out', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+      final connections = _FakeConnectionsRepository()
+        ..mutedIds = const {'noisy-1', 'noisy-2'};
+
+      await tester.pumpWidget(_wrap(repo, connections: connections));
+      await tester.pumpAndSettle();
+
+      expect(repo.lastMutedAuthorIds, {'noisy-1', 'noisy-2'});
+    });
+
+    testWidgets('a profile list is not filtered and does not even ask', (
+      tester,
+    ) async {
+      // The whole point of the change. Muting somebody used to empty their
+      // profile too, because mute was part of the server's visibility rule —
+      // so tapping their avatar showed a blank page that read as "no posts"
+      // or "they blocked you", over a setting they never made and cannot see.
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [_post('p1', authorId: 'noisy-1')];
+      final connections = _FakeConnectionsRepository()
+        ..mutedIds = const {'noisy-1'};
+
+      await tester.pumpWidget(
+        _wrap(repo, connections: connections, authorId: 'noisy-1'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repo.lastMutedAuthorIds, isEmpty);
+      // Not merely unfiltered: the query is never issued, because a profile
+      // has nothing to do with who the viewer muted.
+      expect(connections.mutedFetches, 0);
+      expect(find.text('text of p1'), findsOneWidget);
+    });
+
+    testWidgets('paging does not re-ask for the mute list', (tester) async {
+      // One read per load cycle: every page of a feed hides the same people,
+      // and the answer cannot change mid-scroll, so asking again per page
+      // would be a round trip bought for nothing.
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [for (var i = 0; i < pageSize; i++) _post('p$i')];
+      final connections = _FakeConnectionsRepository();
+
+      await tester.pumpWidget(_wrap(repo, connections: connections));
+      await tester.pumpAndSettle();
+      expect(connections.mutedFetches, 1);
+
+      // Far enough to reach the "near the bottom" threshold, which is what
+      // asks for the second page.
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -3000));
+      await tester.pumpAndSettle();
+
+      expect(repo.lastMutedAuthorIds, isNotNull);
+      expect(connections.mutedFetches, 1);
+    });
+
+    testWidgets('a refresh re-asks, because it is usually the mute itself', (
+      tester,
+    ) async {
+      // The other half of the same rule: muting or unmuting bumps
+      // `feedRefreshTickProvider`, and the answer that just changed is
+      // exactly this one.
+      final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+      final connections = _FakeConnectionsRepository();
+      final container = _container(repo, connections: connections);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(_wrap(repo, container: container));
+      await tester.pumpAndSettle();
+      expect(connections.mutedFetches, 1);
+
+      connections.mutedIds = const {'author-1'};
+      container.read(feedRefreshTickProvider.notifier).bump();
+      await tester.pumpAndSettle();
+
+      expect(connections.mutedFetches, 2);
+      expect(repo.lastMutedAuthorIds, {'author-1'});
+    });
+
+    testWidgets(
+      'an unreadable mute list fails the page rather than ignoring it',
+      (tester) async {
+        // Falling back to "nobody is muted" would quietly render a feed full of
+        // the people the viewer asked not to see. The ordinary failure path,
+        // which already falls back to the cached page, is the honest answer.
+        SharedPreferences.setMockInitialValues({});
+        final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+        final connections = _FakeThrowingConnectionsRepository();
+
+        await tester.pumpWidget(_wrap(repo, connections: connections));
+        await tester.pumpAndSettle();
+
+        expect(find.text(_failedToLoad), findsOneWidget);
+        expect(find.text('text of p1'), findsNothing);
+      },
+    );
+  });
+}
+
+/// Mute list unreadable — offline, or the request timed out.
+class _FakeThrowingConnectionsRepository extends _FakeConnectionsRepository {
+  @override
+  Future<Set<String>> fetchMutedIds(String userId) async {
+    throw Exception('offline');
+  }
 }

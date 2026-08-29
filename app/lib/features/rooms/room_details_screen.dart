@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -67,9 +68,15 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
   /// that (`request_connection()`), and the button exists here for the same
   /// reason — this is where two people who are not connections actually meet.
   ///
-  /// PT409 means they were already asked (or already answered), which is not
-  /// a failure worth a red message: the list refreshes and the button turns
-  /// into "asked".
+  /// PT409 means they were already asked (or are already connected), which is
+  /// not a failure worth a red message: both lists are refreshed and the
+  /// button turns into "asked" — or goes away, once the Connections list has
+  /// them. This used to be only a comment: every error took the same red
+  /// snackbar, and after a decline the button came back to a state the server
+  /// can never accept, so the message was permanent. The button no longer
+  /// comes back (see [_ConnectAction]), and this branch is the belt to that
+  /// pair of braces — a second device, or a request answered while this screen
+  /// sat open, can still race it.
   Future<void> _askToConnect(RoomMember member) async {
     final l10n = AppLocalizations.of(context)!;
     if (!_asking.add(member.userId)) return;
@@ -92,6 +99,11 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      if (e is PostgrestException && e.code == 'PT409') {
+        ref.read(connectionRequestsTickProvider.notifier).bump();
+        ref.invalidate(friendsProvider);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.failedToRequestConnectionError)),
       );
@@ -475,9 +487,18 @@ class _ConnectAction extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final pending = ref.watch(pendingConnectionRequestsProvider).value;
-    if (pending != null &&
-        pending.any((request) => request.otherId == member.userId)) {
+    // Anything this viewer sent (in ANY state — a declined request is one the
+    // server will never accept a second time), plus an incoming one still
+    // waiting for an answer. An incoming request this viewer already declined
+    // is deliberately not counted: they stay free to ask in their own
+    // direction, which is a new decision rather than a repeated plea.
+    final requests = ref.watch(connectionRequestsProvider).value;
+    if (requests != null &&
+        requests.any(
+          (request) =>
+              request.otherId == member.userId &&
+              (!request.isIncoming || request.isPending),
+        )) {
       return Text(
         l10n.connectionRequestPendingLabel,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(

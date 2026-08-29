@@ -8,12 +8,16 @@ import 'feed_repository.dart';
 const _keyPrefix = 'feed_cache_';
 
 /// Persists a snapshot of the most recently loaded first page of one feed
-/// scope (the main feed, one author's posts, or one room's feed — `scope`
-/// mirrors what `PostListView` is showing: null for the main feed, an
-/// author's id for their posts, `room_<id>` for a room) so the screen has
-/// something to show before the network round trip finishes, or at all if
-/// there's no connection. Deliberately only the first page: this is "don't be
-/// blank without a network", not offline pagination.
+/// scope — `scope` mirrors what `PostListView` is showing: null for the main
+/// feed, an author's id for their posts — so the screen has something to show
+/// before the network round trip finishes, or at all if there's no
+/// connection. Deliberately only the first page: this is "don't be blank
+/// without a network", not offline pagination.
+///
+/// There was briefly a third scope, `room_<id>`, for a room's own feed. Rooms
+/// stopped having feeds in 20260828100000 and no caller mints that key any
+/// more; [clear] still matches on the prefix alone, so any entry left on a
+/// device from back then is wiped along with the rest.
 ///
 /// Every entry is scoped to the *viewer* as well as the feed scope, and
 /// [clear] wipes the lot on sign-out. Both are load-bearing, for the same

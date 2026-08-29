@@ -59,7 +59,7 @@ class BlockedUser {
   final String? avatarPath;
 }
 
-/// A pending "let's be connections" ask, in whichever direction.
+/// A "let's be connections" ask, in whichever direction and whatever state.
 ///
 /// Only ever about someone the viewer shares a room with — that is the one
 /// door this feature opens, and the server holds it (`request_connection()`
@@ -70,6 +70,7 @@ class ConnectionRequest {
     required this.otherId,
     required this.otherName,
     required this.isIncoming,
+    required this.isPending,
     this.otherAvatarPath,
   });
 
@@ -86,6 +87,11 @@ class ConnectionRequest {
   /// their name, so nobody asks twice into a silence.
   final bool isIncoming;
 
+  /// Still waiting for an answer. Only an incoming *pending* request is worth
+  /// offering buttons for; an outgoing one is carried in every state on
+  /// purpose — see [ConnectionsRepository.fetchRequests].
+  final bool isPending;
+
   factory ConnectionRequest.fromRow(Map<String, dynamic> row, String viewerId) {
     final isIncoming = row['recipient_id'] == viewerId;
     final other =
@@ -98,6 +104,7 @@ class ConnectionRequest {
       otherName: other['name'] as String,
       otherAvatarPath: other['avatar_path'] as String?,
       isIncoming: isIncoming,
+      isPending: row['status'] == 'pending',
     );
   }
 }
@@ -207,21 +214,38 @@ class ConnectionsRepository {
     }).toList();
   }
 
-  /// Every request this viewer is a side of, still waiting for an answer.
+  /// Every request this viewer needs to know about: anything still waiting for
+  /// an answer, plus **every request they sent, in whatever state it ended
+  /// up**.
+  ///
+  /// That second half is the whole point and it used to be missing. The filter
+  /// was `status = 'pending'` alone, so a declined request simply vanished
+  /// from the client — and since a decline is deliberately silent, nothing
+  /// else told the sender either. The "ask" button then came back for someone
+  /// `connection_requests_pair_key` can never accept a second row for, and
+  /// every tap answered PT409 forever. Carrying the sender's own rows in every
+  /// state is what makes "the button does not come back" (data-model.md) true
+  /// rather than aspirational.
+  ///
+  /// An *incoming* row that is already answered is deliberately not fetched:
+  /// accepted means the two are connections now (the Connections list says
+  /// so), and declined means this viewer said no — which leaves them free to
+  /// send their own request in the other direction, exactly as the server
+  /// allows.
   ///
   /// A plain select: the RLS policy already scopes the table to the two
   /// people a row is about, so there is nothing an RPC would add — and the
   /// names come through the same embed the rest of the app uses, readable
   /// because sharing a room is enough to see someone's profile.
-  Future<List<ConnectionRequest>> fetchPendingRequests(String viewerId) async {
+  Future<List<ConnectionRequest>> fetchRequests(String viewerId) async {
     final rows = await _client
         .from('connection_requests')
         .select(
-          'id, requester_id, recipient_id, '
+          'id, requester_id, recipient_id, status, '
           'requester:users!connection_requests_requester_id_fkey(name, avatar_path), '
           'recipient:users!connection_requests_recipient_id_fkey(name, avatar_path)',
         )
-        .eq('status', 'pending')
+        .or('status.eq.pending,requester_id.eq.$viewerId')
         .order('created_at', ascending: false)
         .timeout(networkTimeout);
     return [for (final row in rows) ConnectionRequest.fromRow(row, viewerId)];
@@ -254,6 +278,28 @@ class ConnectionsRepository {
         )
         .timeout(networkTimeout);
   }
+
+  /// Who this viewer has muted — the ids the main feed leaves out.
+  ///
+  /// Since 20260829130000 mute is no longer part of the server's visibility
+  /// rule: a muted connection's posts come through RLS like anyone else's, so
+  /// that their profile is a profile rather than a blank page implying they
+  /// blocked you. What mute still means is "not in my feed and no pushes",
+  /// and the feed half is this list. It lives here rather than in
+  /// [FeedRepository] because `muted_users` is this repository's table — the
+  /// mute/unmute buttons on the Connections screen write it.
+  ///
+  /// Not a privacy boundary and must never be relied on as one: it is a
+  /// preference the client applies to its own query. Nothing of anyone else's
+  /// is gated on it — a muted person stays a Connection, whose profile row
+  /// and avatar were always visible anyway. The boundary is block, and block
+  /// is entirely server-side.
+  Future<Set<String>> fetchMutedIds(String userId) => _fetchIdSet(
+    table: 'muted_users',
+    ownerColumn: 'muter_id',
+    otherColumn: 'muted_id',
+    ownerId: userId,
+  );
 
   Future<Set<String>> _fetchIdSet({
     required String table,
@@ -368,22 +414,22 @@ final friendsProvider = FutureProvider.autoDispose<List<Friend>>((ref) {
   return ref.watch(connectionsRepositoryProvider).fetchFriends(userId!);
 });
 
-/// Pending connection requests in both directions, for the Connections screen
-/// (which answers them) and the room screen (which must not offer to ask
-/// twice).
+/// Connection requests in both directions, for the Connections screen (which
+/// answers the incoming ones) and the room screen (which must not offer to ask
+/// somebody who has already been asked).
 ///
 /// Not autoDispose: the room screen and the Connections tab both read it, and
-/// dropping it between them would refetch on every switch. [requestsRefreshTick]
-/// is what makes it reload once something has actually changed it.
-final pendingConnectionRequestsProvider =
-    FutureProvider<List<ConnectionRequest>>((ref) {
-      ref.watch(connectionRequestsTickProvider);
-      final userId = ref.watch(currentUserIdProvider);
-      if (userId == null) return Future.value(const []);
-      return ref
-          .watch(connectionsRepositoryProvider)
-          .fetchPendingRequests(userId);
-    });
+/// dropping it between them would refetch on every switch.
+/// [connectionRequestsTickProvider] is what makes it reload once something has
+/// actually changed it.
+final connectionRequestsProvider = FutureProvider<List<ConnectionRequest>>((
+  ref,
+) {
+  ref.watch(connectionRequestsTickProvider);
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) return Future.value(const []);
+  return ref.watch(connectionsRepositoryProvider).fetchRequests(userId);
+});
 
 /// Bumped whenever a request is sent or answered. Same shape and same reason
 /// as `roomsRefreshTickProvider`.
