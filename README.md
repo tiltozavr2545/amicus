@@ -81,7 +81,9 @@ flutter run --dart-define-from-file=.env
 - [Схема и правило видимости](docs/data-model.md) — таблицы, RLS, storage-политики; главный документ, если разбираешься в устройстве
 - [Устройство клиента](docs/client-architecture.md) — чем собрано приложение и что делает сам клиент поверх схемы
 - [Эксплуатация](docs/operations.md) — задания по расписанию, секреты, релиз, выкладка Edge Function, рассылка уведомления об обновлении
-- [Отложенные фичи](docs/future-development.md) — GPS-треки, iOS, веб-версия, открытые вопросы
+- [Деплой iOS](docs/ios-deployment-guide.md) — путь от симулятора до TestFlight: Xcode, иконки, экспорт-комплаенс, сборка IPA
+- [Push-уведомления iOS (APNs)](docs/ios-push-apns-setup.md) — ключ APNs, привязка к Firebase Cloud Messaging
+- [Отложенные фичи](docs/future-development.md) — GPS-треки, веб-версия, открытые вопросы
 - [Changelog](CHANGELOG.md) — что появилось в какой версии
 
 Историческое — как проект задумывался и как шёл, а не как устроен сейчас:
