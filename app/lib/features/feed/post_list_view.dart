@@ -515,6 +515,23 @@ class _PostCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
+                // Only on one's own posts, and only on the narrowed ones: it
+                // is a reminder of a choice the author made, not information
+                // about the post for its readers. Whoever sees the post can
+                // already see it — telling them it is "for favourites only"
+                // would say something about the author's list, which is
+                // private.
+                if (isOwnPost && post.visibility == PostVisibility.favorites)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Chip(
+                      avatar: const Icon(Icons.star_outline, size: 16),
+                      label: Text(l10n.visibilityFavoritesBadge),
+                      labelStyle: Theme.of(context).textTheme.labelSmall,
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
                 if (isOwnPost)
                   PopupMenuButton<void>(
                     icon: const Icon(Icons.more_vert),

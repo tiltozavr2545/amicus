@@ -283,6 +283,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get whatsNewHint => 'What\'s new?';
 
   @override
+  String get postVisibilityLabel => 'Who can see this post';
+
+  @override
+  String get visibilityConnectionsLabel => 'All connections';
+
+  @override
+  String get visibilityFavoritesLabel => 'Favourites only';
+
+  @override
+  String get visibilityConnectionsDescription =>
+      'Everyone you are connected with will see this post.';
+
+  @override
+  String get visibilityFavoritesDescription =>
+      'Only the people you have added to favourites will see it. They are not told.';
+
+  @override
+  String get visibilityFavoritesBadge => 'Favourites only';
+
+  @override
   String get addMediaButton => 'Add photo or video';
 
   @override
