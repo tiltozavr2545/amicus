@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Amicus — политика конфиденциальности</title>
+<title>Amicus — Privacy Policy</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -37,34 +37,41 @@
 </head>
 <body>
   <div class="card">
-    <h1>Amicus — политика конфиденциальности</h1>
-    <p>Amicus — приложение-соцсеть, в котором лента пользователя показывает посты только тех, с кем есть подтверждённое знакомство. Это пилотный проект, находящийся на стадии закрытого бета-тестирования.</p>
+    <h1>Amicus — Privacy Policy</h1>
+    <p>Amicus is a social app where your feed only shows posts from people you have a confirmed connection with — someone you met in person or who invited you. This is a pilot project, currently in closed testing on Android.</p>
 
-    <h2>Какие данные собираются</h2>
+    <h2>Data we collect</h2>
     <ul>
-      <li>Email и пароль — для регистрации и входа (пароль хранится в хешированном виде, приложение его не видит).</li>
-      <li>Имя — указывается при регистрации, видно другим пользователям приложения.</li>
-      <li>Фото профиля (аватар) — по желанию.</li>
-      <li>Текст и фото постов, комментариев — то, что вы сами публикуете.</li>
-      <li>Реакции — какую реакцию (👍/😐/👎) вы поставили на пост.</li>
+      <li><strong>Account:</strong> email and password, used to sign in (the app never sees your password — it is stored hashed by our authentication provider, Supabase).</li>
+      <li><strong>Profile:</strong> your name and up to 80 profile photos, visible to your connections.</li>
+      <li><strong>Content you post:</strong> post text, up to 20 photos or videos per post, comments and replies, and reactions (👍/😐/👎) — reaction counts are visible to others, but not who left which reaction.</li>
+      <li><strong>Your social graph:</strong> connections you make (via an invite link, or a connection request sent to someone you already share a chat room with), invite codes you generate, and your mute, block and favorites lists. Who you've muted, blocked or favorited is never shown to anyone else — including the person concerned.</li>
+      <li><strong>Chat:</strong> messages and attached media inside the rooms you're a member of, plus read/delivered markers for your own messages.</li>
+      <li><strong>Notification settings:</strong> your per-source preferences (comments, favorites, room messages, digests, and so on).</li>
+      <li><strong>Push notification token:</strong> a device token issued by Firebase Cloud Messaging (a Google service), together with your app version — used only to deliver push notifications and to know which installs need to be nudged to update.</li>
+      <li><strong>Last-active timestamp:</strong> when you last opened the app — used only to decide what counts as "new" in your digest, and whether to send an inactivity reminder.</li>
     </ul>
+    <p>"Typing…" and "online" indicators are not stored anywhere — they exist only in memory for as long as a chat screen is open, and disappear the moment it closes.</p>
 
-    <h2>Как данные используются</h2>
-    <p>Данные используются исключительно для работы приложения: показать вашу ленту, ваш профиль и профили знакомых, ваши посты — тем, с кем у вас подтверждено знакомство через invite-ссылку. Данные не передаются третьим лицам, не продаются, не используются для рекламы (рекламы в приложении нет).</p>
+    <h2>How your data is used</h2>
+    <p>Solely to run the app: to show your feed, your profile, and the profiles, posts and messages of your connections and room peers, and to deliver the push notifications you've opted into. Visibility rules (who can see what) are enforced directly in the database, not just in app code. We do not sell your data, share it with third parties for marketing, or run advertising or analytics/tracking inside the app.</p>
 
-    <h2>Где хранятся данные</h2>
-    <p>Данные хранятся у облачного провайдера <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> (PostgreSQL + Storage), с ограничением доступа на уровне базы данных (Row Level Security) — то есть пост виден в базе только тем, кто имеет право его увидеть, даже без участия кода приложения.</p>
+    <h2>Third-party processors</h2>
+    <p><a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> hosts our database, file storage and authentication. <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Firebase Cloud Messaging</a> (Google) delivers push notifications and receives only your device's push token — no message content is routed through it beyond what's needed to display a notification. Neither is used for advertising.</p>
 
-    <h2>Удаление данных</h2>
-    <p>Чтобы удалить свой аккаунт и все связанные данные, напишите на <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a>.</p>
+    <h2>Where data is stored</h2>
+    <p>Data lives with our cloud provider, <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> (PostgreSQL + Storage), protected by database-level access rules (Row Level Security) — a post, comment or photo is only readable by someone entitled to see it, enforced by the database itself, independent of the app.</p>
 
-    <h2>Дети</h2>
-    <p>Приложение не предназначено для детей младше 13 лет и не собирает данные целенаправленно у этой аудитории.</p>
+    <h2>Deleting your data</h2>
+    <p>You can delete your account at any time from Settings → Delete account, right inside the app. This is immediate and permanent: your profile, posts, comments, photos, messages and connections are all erased and cannot be recovered. If you'd rather we do it for you, or have any trouble, write to <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a>.</p>
 
-    <h2>Контакты</h2>
-    <p>По вопросам, связанным с этой политикой, пишите на <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a>.</p>
+    <h2>Children</h2>
+    <p>Amicus is not directed at children under 13 and we do not knowingly collect data from them.</p>
 
-    <p class="updated">Обновлено: 11 июля 2026</p>
+    <h2>Contact</h2>
+    <p>Questions about this policy: <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a>.</p>
+
+    <p class="updated">Last updated: August 29, 2026</p>
   </div>
 </body>
 </html>
