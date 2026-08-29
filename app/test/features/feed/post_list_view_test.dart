@@ -30,11 +30,7 @@ class _FakeFeedRepository implements FeedRepository {
   List<Comment> commentsToReturn = const [];
 
   @override
-  Future<List<Post>> fetchPage({
-    Post? cursor,
-    String? authorId,
-    String? roomId,
-  }) async {
+  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async {
     if (throwOnFetch) throw Exception('offline');
     return pageToReturn;
   }
@@ -109,12 +105,18 @@ List<PostMedia> _images(int count) => [
     ),
 ];
 
-Post _post(String id, {List<PostMedia> media = const []}) => Post(
+Post _post(
+  String id, {
+  List<PostMedia> media = const [],
+  String authorId = 'author-1',
+  PostVisibility visibility = PostVisibility.connections,
+}) => Post(
   id: id,
-  authorId: 'author-1',
+  authorId: authorId,
   authorName: 'Alice',
   createdAt: DateTime(2026, 1, 1, 12),
   clientToken: 'token-of-$id',
+  visibility: visibility,
   text: 'text of $id',
   media: media,
 );
@@ -576,5 +578,42 @@ void main() {
     await tester.pump();
 
     expect(find.text('1/1'), findsNothing);
+  });
+
+  group('visibility badge', () {
+    testWidgets('own favourites-only post is marked as one', (tester) async {
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [
+          _post(
+            'p1',
+            authorId: 'test-user',
+            visibility: PostVisibility.favorites,
+          ),
+        ];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Favourites only'), findsOneWidget);
+    });
+
+    testWidgets('somebody else\'s post never carries the mark', (tester) async {
+      // Whoever sees the post can already see it; saying "favourites only"
+      // would tell them something about the author's private list.
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [_post('p1', visibility: PostVisibility.favorites)];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Favourites only'), findsNothing);
+    });
+
+    testWidgets('an ordinary own post carries no mark either', (tester) async {
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [_post('p1', authorId: 'test-user')];
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Favourites only'), findsNothing);
+    });
   });
 }

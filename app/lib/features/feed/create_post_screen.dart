@@ -83,6 +83,11 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
   bool get _isEditing => widget.existingPost != null;
 
+  /// Who will see this post. An edit starts from what the post already says,
+  /// so saving an unrelated change cannot quietly widen its audience.
+  late PostVisibility _visibility =
+      widget.existingPost?.visibility ?? PostVisibility.connections;
+
   bool _isSubmitting = false;
   bool _isPicking = false;
   String? _errorMessage;
@@ -312,6 +317,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           // session's token stands in instead (see [Post.clientToken]).
           postClientToken: existingPost.clientToken ?? _submissionToken,
           text: text,
+          visibility: _visibility,
           finalMedia: [
             for (final slot in _slots)
               switch (slot) {
@@ -329,6 +335,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             for (final slot in _slots)
               if (slot is _PickedSlot) slot.pending,
           ],
+          visibility: _visibility,
         );
       }
       if (mounted) _close(true);
@@ -392,6 +399,44 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 onReorder: _reorder,
               ),
             ],
+            const SizedBox(height: 16),
+            Text(
+              l10n.postVisibilityLabel,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 8),
+            // A segmented button, not a checkbox: these are two audiences to
+            // choose between, not a flag to switch on — and both of them are
+            // always worth naming, so nobody has to remember what the
+            // unticked state meant.
+            SegmentedButton<PostVisibility>(
+              segments: [
+                ButtonSegment(
+                  value: PostVisibility.connections,
+                  icon: const Icon(Icons.people_outline),
+                  label: Text(l10n.visibilityConnectionsLabel),
+                ),
+                ButtonSegment(
+                  value: PostVisibility.favorites,
+                  icon: const Icon(Icons.star_outline),
+                  label: Text(l10n.visibilityFavoritesLabel),
+                ),
+              ],
+              selected: {_visibility},
+              onSelectionChanged: _isSubmitting
+                  ? null
+                  : (selection) =>
+                        setState(() => _visibility = selection.first),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _visibility == PostVisibility.favorites
+                  ? l10n.visibilityFavoritesDescription
+                  : l10n.visibilityConnectionsDescription,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(

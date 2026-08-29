@@ -37,6 +37,29 @@ enum MediaType {
   String get dbValue => name;
 }
 
+/// Who gets to see a post — chosen when it is published, and changeable
+/// afterwards from the same screen that edits its text.
+///
+/// [favorites] means the author's OWN favourites list (`favorite_users`),
+/// which until now was a purely private notification preference. It is still
+/// private — nobody can read whose favourite they are — but it is now also an
+/// audience, which is why the composer names it in plain words rather than
+/// as "favourites" alone.
+enum PostVisibility {
+  connections,
+  favorites;
+
+  static PostVisibility fromDb(String? value) => switch (value) {
+    'favorites' => PostVisibility.favorites,
+    // Anything else, including a value a newer server might add before this
+    // build knows it: the widest audience is the safe reading for display,
+    // and the row itself is unaffected — only the RPCs write this column.
+    _ => PostVisibility.connections,
+  };
+
+  String get dbValue => name;
+}
+
 /// Sentinel so [Post.copyWith] can tell "leave myReaction unchanged" apart
 /// from "clear it to null" — a plain nullable parameter can't express both.
 const Object _unchanged = Object();
@@ -133,6 +156,7 @@ class Post {
     required this.createdAt,
     this.clientToken,
     this.authorDislikesDisabled = false,
+    this.visibility = PostVisibility.connections,
     this.text,
     this.media = const [],
     this.likeCount = 0,
@@ -159,6 +183,12 @@ class Post {
   /// under their posts (and the database rejects a dislike on them). Sourced
   /// from the author's profile, so nothing in this code names a specific user.
   final bool authorDislikesDisabled;
+
+  /// Who can see this post. Everyone whose feed it reaches can read it — RLS
+  /// decides that, not this field; the client shows it only on the author's
+  /// own posts, as a reminder of what they chose.
+  final PostVisibility visibility;
+
   final String? text;
 
   /// Up to 20 photos/videos, ordered for the feed's swipe carousel. Empty for
@@ -189,6 +219,7 @@ class Post {
           (row['author'] as Map<String, dynamic>)['dislikes_disabled']
               as bool? ??
           false,
+      visibility: PostVisibility.fromDb(row['visibility'] as String?),
       text: row['text'] as String?,
       media: mediaRows,
     );
@@ -209,6 +240,7 @@ class Post {
       createdAt: createdAt,
       clientToken: clientToken,
       authorDislikesDisabled: authorDislikesDisabled,
+      visibility: visibility,
       text: text,
       media: media ?? this.media,
       likeCount: likeCount ?? this.likeCount,
@@ -231,6 +263,7 @@ class Post {
     'created_at': createdAt.toIso8601String(),
     'client_token': clientToken,
     'author_dislikes_disabled': authorDislikesDisabled,
+    'visibility': visibility.dbValue,
     'text': text,
     'media': media.map((m) => m.toCacheJson()).toList(),
     'like_count': likeCount,
@@ -247,6 +280,9 @@ class Post {
     createdAt: DateTime.parse(json['created_at'] as String),
     clientToken: json['client_token'] as String?,
     authorDislikesDisabled: json['author_dislikes_disabled'] as bool? ?? false,
+    // A page cached before this field existed reads as the widest audience,
+    // which is what those posts were.
+    visibility: PostVisibility.fromDb(json['visibility'] as String?),
     text: json['text'] as String?,
     // A cache written by an older app version has no `media` key (it had
     // `image_path`/`image_url` instead) — default to no photo rather than
@@ -752,11 +788,17 @@ class FeedRepository {
   /// when this never runs at all — it only collects objects older than 24 h,
   /// a hundred at a time, which is the wrong instrument for a 100 MB clip the
   /// author removed from the draft a second ago.
+  /// [visibility] travels with the same call that writes the post, so a post
+  /// is never briefly visible to the wrong audience — and a retry of the same
+  /// [clientToken] rewrites it along with the text and media, since the
+  /// server treats a repeat token as "the same submission, here is its
+  /// current state".
   Future<void> createPost({
     required String clientToken,
     required String authorId,
     String? text,
     List<PendingMedia> media = const [],
+    PostVisibility visibility = PostVisibility.connections,
   }) async {
     for (final item in media) {
       await _uploadMediaItem(
@@ -775,6 +817,7 @@ class FeedRepository {
               params: {
                 'p_client_token': clientToken,
                 'p_text': (text != null && text.isNotEmpty) ? text : null,
+                'p_visibility': visibility.dbValue,
                 'p_items': [
                   for (final item in media)
                     _pendingMediaItem(
@@ -839,6 +882,7 @@ class FeedRepository {
     required String postClientToken,
     String? text,
     required List<ComposerMediaItem> finalMedia,
+    PostVisibility? visibility,
   }) async {
     for (final item in finalMedia.whereType<NewMedia>()) {
       await _uploadMediaItem(
@@ -897,6 +941,9 @@ class FeedRepository {
               params: {
                 'p_post_id': postId,
                 'p_text': (text != null && text.isNotEmpty) ? text : null,
+                // Null means "leave the audience alone" server-side, which is
+                // what an edit that isn't about the audience should do.
+                'p_visibility': visibility?.dbValue,
                 'p_items': items,
               },
             )

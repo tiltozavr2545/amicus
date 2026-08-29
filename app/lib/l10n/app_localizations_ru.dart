@@ -280,6 +280,26 @@ class AppLocalizationsRu extends AppLocalizations {
   String get whatsNewHint => 'Что нового?';
 
   @override
+  String get postVisibilityLabel => 'Кому виден пост';
+
+  @override
+  String get visibilityConnectionsLabel => 'Всем знакомым';
+
+  @override
+  String get visibilityFavoritesLabel => 'Только избранным';
+
+  @override
+  String get visibilityConnectionsDescription =>
+      'Пост увидят все ваши знакомые.';
+
+  @override
+  String get visibilityFavoritesDescription =>
+      'Пост увидят только те, кого вы добавили в избранное. Они об этом не узнают.';
+
+  @override
+  String get visibilityFavoritesBadge => 'Только избранные';
+
+  @override
   String get addMediaButton => 'Добавить фото или видео';
 
   @override

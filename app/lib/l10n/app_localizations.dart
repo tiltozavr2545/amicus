@@ -584,6 +584,42 @@ abstract class AppLocalizations {
   /// **'What\'s new?'**
   String get whatsNewHint;
 
+  /// No description provided for @postVisibilityLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Who can see this post'**
+  String get postVisibilityLabel;
+
+  /// No description provided for @visibilityConnectionsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'All connections'**
+  String get visibilityConnectionsLabel;
+
+  /// No description provided for @visibilityFavoritesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourites only'**
+  String get visibilityFavoritesLabel;
+
+  /// No description provided for @visibilityConnectionsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you are connected with will see this post.'**
+  String get visibilityConnectionsDescription;
+
+  /// No description provided for @visibilityFavoritesDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the people you have added to favourites will see it. They are not told.'**
+  String get visibilityFavoritesDescription;
+
+  /// No description provided for @visibilityFavoritesBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourites only'**
+  String get visibilityFavoritesBadge;
+
   /// No description provided for @addMediaButton.
   ///
   /// In en, this message translates to:

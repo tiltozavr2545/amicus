@@ -99,6 +99,13 @@
   "editPostTitle": "Редактировать пост",
   "editButton": "Редактировать",
   "whatsNewHint": "Что нового?",
+  "postVisibilityLabel": "Кому виден пост",
+  "visibilityConnectionsLabel": "Всем знакомым",
+  "visibilityFavoritesLabel": "Только избранным",
+  "visibilityConnectionsDescription": "Пост увидят все ваши знакомые.",
+  "visibilityFavoritesDescription": "Пост увидят только те, кого вы добавили в избранное. Они об этом не узнают.",
+  "visibilityFavoritesBadge": "Только избранные",
+
   "addMediaButton": "Добавить фото или видео",
   "removeMediaTooltip": "Убрать",
   "playVideoTooltip": "Воспроизвести видео",

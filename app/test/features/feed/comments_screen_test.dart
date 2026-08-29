@@ -66,11 +66,7 @@ class _FakeFeedRepository implements FeedRepository {
   Future<void> deleteComment(String commentId) async {}
 
   @override
-  Future<List<Post>> fetchPage({
-    Post? cursor,
-    String? authorId,
-    String? roomId,
-  }) async => [];
+  Future<List<Post>> fetchPage({Post? cursor, String? authorId}) async => [];
 
   @override
   Future<void> createPost({
@@ -78,8 +74,7 @@ class _FakeFeedRepository implements FeedRepository {
     required String authorId,
     String? text,
     List<PendingMedia> media = const [],
-    List<String> roomIds = const [],
-    bool inGeneralFeed = true,
+    PostVisibility visibility = PostVisibility.connections,
   }) async {}
 
   @override

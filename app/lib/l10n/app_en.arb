@@ -114,6 +114,13 @@
   "editPostTitle": "Edit post",
   "editButton": "Edit",
   "whatsNewHint": "What's new?",
+  "postVisibilityLabel": "Who can see this post",
+  "visibilityConnectionsLabel": "All connections",
+  "visibilityFavoritesLabel": "Favourites only",
+  "visibilityConnectionsDescription": "Everyone you are connected with will see this post.",
+  "visibilityFavoritesDescription": "Only the people you have added to favourites will see it. They are not told.",
+  "visibilityFavoritesBadge": "Favourites only",
+
   "addMediaButton": "Add photo or video",
   "removeMediaTooltip": "Remove",
   "playVideoTooltip": "Play video",

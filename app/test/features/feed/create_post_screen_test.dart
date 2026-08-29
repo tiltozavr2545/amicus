@@ -38,15 +38,22 @@ class _FakeFeedRepository implements FeedRepository {
     return {for (final path in storagePaths) path: 'https://signed/$path'};
   }
 
+  /// The audience each call carried — the selector is only meaningful if
+  /// what it picks actually reaches the repository.
+  final List<PostVisibility> visibilities = [];
+  final List<PostVisibility?> updatedVisibilities = [];
+
   @override
   Future<void> createPost({
     required String clientToken,
     required String authorId,
     String? text,
     List<PendingMedia> media = const [],
+    PostVisibility visibility = PostVisibility.connections,
   }) async {
     tokens.add(clientToken);
     texts.add(text);
+    visibilities.add(visibility);
     if (createThrows) throw Exception('rejected');
   }
 
@@ -57,8 +64,10 @@ class _FakeFeedRepository implements FeedRepository {
     required String postClientToken,
     String? text,
     required List<ComposerMediaItem> finalMedia,
+    PostVisibility? visibility,
   }) async {
     updateCalls++;
+    updatedVisibilities.add(visibility);
     lastUpdatedText = text;
     lastFinalMedia = finalMedia;
     if (createThrows) throw Exception('rejected');
@@ -281,6 +290,90 @@ void main() {
         find.text('Failed to save changes. Please try again.'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('visibility', () {
+    testWidgets('a new post goes to all connections by default', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      await _tapPublish(tester);
+
+      expect(repo.visibilities.single, PostVisibility.connections);
+    });
+
+    testWidgets('picking favourites travels with the publish call', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.tap(find.text('Favourites only'));
+      await tester.pump();
+      await _tapPublish(tester);
+
+      expect(repo.visibilities.single, PostVisibility.favorites);
+    });
+
+    testWidgets('editing starts from what the post already says', (
+      tester,
+    ) async {
+      // Saving an unrelated change must not quietly widen the audience.
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(
+        _wrap(
+          repo,
+          existingPost: Post(
+            id: 'post-1',
+            authorId: 'test-user',
+            authorName: 'Me',
+            createdAt: DateTime.utc(2026, 8, 29),
+            clientToken: 'token-1',
+            visibility: PostVisibility.favorites,
+            text: 'old',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'new text');
+      await _tapSave(tester);
+
+      expect(repo.updatedVisibilities.single, PostVisibility.favorites);
+    });
+
+    testWidgets('an existing post can be reopened to all connections', (
+      tester,
+    ) async {
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(
+        _wrap(
+          repo,
+          existingPost: Post(
+            id: 'post-1',
+            authorId: 'test-user',
+            authorName: 'Me',
+            createdAt: DateTime.utc(2026, 8, 29),
+            clientToken: 'token-1',
+            visibility: PostVisibility.favorites,
+            text: 'old',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('All connections'));
+      await tester.pump();
+      await _tapSave(tester);
+
+      expect(repo.updatedVisibilities.single, PostVisibility.connections);
     });
   });
 }
