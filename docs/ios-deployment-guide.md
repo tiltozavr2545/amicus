@@ -115,10 +115,27 @@ manifest changes needed, just replace the PNG bytes. Verify with `sips -g
 hasAlpha -g pixelWidth -g pixelHeight <file>` (App Store icon must show
 `hasAlpha: no`, `1024x1024`).
 
-**Android is not a simple resize** — it uses an adaptive icon (foreground +
-background layers composited by the OS, not a single flat PNG) so OEM
-launchers don't apply their own extra shrink/pad on top of ours. Minimum
-supported Android version is 10 (API 29):
+**Android is not a simple resize** — different launchers apply their own
+mask shape (circle, squircle, teardrop) to a shared foreground/background
+layer pair, so a fixed inset that looks right on one launcher gets cropped
+differently on another:
+
+- **Apple (iOS)**: one flat 1024×1024 PNG, no transparency. iOS applies its
+  own consistent squircle mask at render time system-wide — the icon design
+  itself controls how much inset there is (this project uses 88% fill, no
+  masking surprises since there's only one mask shape to design for).
+- **Android — Samsung/stock launchers**: mask straight to the edge of a
+  108dp canvas, roughly circular.
+- **Android — Honor/MIUI-style launchers**: apply a tighter squircle mask
+  and crop deeper into the canvas than Samsung does.
+
+Because Android launchers disagree on how much they crop, Android defines
+a **safe zone**: only the center 66dp of the 108dp canvas (66/108 ≈ 61%) is
+guaranteed visible on every launcher. Content placed outside that zone gets
+cropped inconsistently — an 88%-fill foreground (right for iOS) rendered
+edge-to-edge with no margin on Honor's tighter squircle, because 88% is well
+outside the 61% safe zone. Android's foreground must be scaled to the 61%
+safe zone specifically, not to iOS's 88%:
 
 ```
 android/app/src/main/res/
@@ -126,20 +143,20 @@ android/app/src/main/res/
     ic_launcher.xml         # references the 3 layers below
     ic_launcher_round.xml   # same layers, round-icon variant
   mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/
-    ic_launcher_foreground.png   # graphic only, transparent bg, sized to
-                                  # exactly 88% fill within its own canvas
+    ic_launcher_foreground.png   # graphic only, transparent bg, scaled to
+                                  # the 66/108 (~61%) safe-zone ratio
     ic_launcher_background.png   # full gradient, no transparency
     ic_launcher_monochrome.png   # foreground silhouette, for Android 13+
                                   # themed icons
 ```
 
-The 88% fill ratio matches the iOS icon's own inset (Apple's masking also
-crops in from the full canvas) — keep both platforms' foreground fill ratio
-in sync if the master icon changes. Regenerate all three adaptive layers
-plus the legacy fallback together; a script that composites the master PNG
-against a transparent 88%-scaled foreground and a full-bleed background is
-the reliable way to do this (see git history around the `ic_launcher_*`
-files for a worked Python/Pillow example).
+Regenerate all three adaptive layers together whenever the master icon
+changes; a script that composites the master PNG against a transparent
+61%-scaled foreground and a full-bleed background is the reliable way to do
+this (see git history around the `ic_launcher_*` files for a worked
+Python/Pillow example). iOS's 88% and Android's 61% are two different,
+correct numbers for two different masking models — don't copy one to the
+other.
 
 Note: launch image (splash screen shown while the app loads) shows the app
 icon, not a design of its own — a proper branded splash is still pending.

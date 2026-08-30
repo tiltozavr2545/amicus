@@ -1513,6 +1513,8 @@ email-подтверждение, `additional_redirect_urls = []`. Ниже — 
 - Android-иконка переведена на adaptive icon (0.18.2) —
   `mipmap-anydpi-v26/ic_launcher.xml` composit-ит отдельные слои
   foreground/background/monochrome вместо одного плоского PNG на
-  каждую плотность; foreground залит на 88% канвы, как и на iOS.
+  каждую плотность; foreground залит на 61% канвы (66/108 safe zone) —
+  не 88%, как на iOS: разные лаунчеры Android по-разному кадрируют
+  выступающий за safe zone контент, что и подтвердилось на Honor.
   Минимальная поддерживаемая версия Android — 10 (`minSdk 29`).
   Версия `app/pubspec.yaml` — `0.18.2+53`.
