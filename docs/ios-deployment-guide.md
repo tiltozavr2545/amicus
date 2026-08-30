@@ -141,10 +141,8 @@ against a transparent 88%-scaled foreground and a full-bleed background is
 the reliable way to do this (see git history around the `ic_launcher_*`
 files for a worked Python/Pillow example).
 
-Note: launch image (splash screen shown while the app loads) is separate
-from the app icon and still uses the Flutter default placeholder — worth
-fixing before public App Store submission, not required for TestFlight
-(flagged as a `flutter build ipa` warning, non-blocking).
+Note: launch image (splash screen shown while the app loads) shows the app
+icon, not a design of its own — a proper branded splash is still pending.
 
 ## 6. Export compliance (one-time per Info.plist)
 
