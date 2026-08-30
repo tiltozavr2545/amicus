@@ -50,7 +50,8 @@ Garmin и большинство спортивных часов), с после
 [docs/ios-push-apns-setup.md](ios-push-apns-setup.md). Осталось до публикации
 в App Store:
 
-1. Заменить launch image (сейчас дефолтная заглушка Flutter) на брендированную.
+1. Спроектировать полноценный launch image (сейчас показывает просто иконку
+   приложения).
 2. Заполнить листинг в App Store Connect (описание, ключевые слова,
    скриншоты) — черновик в `docs/review/app-store-listing-draft.md`.
 3. Прогнать реальный `flutter build ios`/архив на устройстве, не только через

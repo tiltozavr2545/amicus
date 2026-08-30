@@ -7,7 +7,7 @@ FLUTTER ?= $(HOME)/development/flutter/bin/flutter
 DART ?= $(HOME)/development/flutter/bin/dart
 BASE_REF ?= origin/main
 
-.PHONY: help deps format-check analyze test verify verify-version build-android build-ios pre-commit pre-push install-hooks uninstall-hooks
+.PHONY: help deps format-check analyze test verify verify-version build-android build-ios release-ios pre-commit pre-push install-hooks uninstall-hooks
 
 help:
 	@printf '%s\n' \
@@ -15,6 +15,7 @@ help:
 		'make verify-version  Verify a version bump against BASE_REF (default: origin/main)' \
 		'make build-android   Build the release Android App Bundle' \
 		'make build-ios       Compile-check the iOS release build (unsigned)' \
+		'make release-ios     Build a signed IPA for TestFlight/App Store upload' \
 		'make pre-commit      Run fast checks used by the pre-commit hook' \
 		'make pre-push        Run checks plus the Android release build' \
 		'make install-hooks   Enable the repository-managed Git hooks' \
@@ -56,6 +57,15 @@ build-ios:
 	cd $(APP_DIR) && $(FLUTTER) build ios --release --no-codesign \
 		--dart-define=SUPABASE_URL=https://example.invalid \
 		--dart-define=SUPABASE_ANON_KEY=ci-placeholder
+
+# Unlike build-ios, this is a real shippable artifact: signed via Automatic
+# signing (ios/ExportOptions.plist) with the real app/.env, not placeholder
+# credentials. Needs an Admin/Account Holder Apple ID signed into Xcode.
+# Uploading the resulting IPA to App Store Connect is still a manual step
+# (Transporter.app) — see docs/ios-deployment-guide.md.
+release-ios:
+	cd $(APP_DIR) && $(FLUTTER) build ipa --dart-define-from-file=.env \
+		--export-options-plist=ios/ExportOptions.plist
 
 pre-commit: verify
 

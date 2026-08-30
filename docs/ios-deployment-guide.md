@@ -108,25 +108,41 @@ IOS_DEST="ios/Runner/Assets.xcassets/AppIcon.appiconset"
 sips -z 20 20 "$SRC" --out "$IOS_DEST/Icon-App-20x20@1x.png"
 # ...repeat for all sizes listed in Contents.json...
 sips -z 1024 1024 "$SRC" --out "$IOS_DEST/Icon-App-1024x1024@1x.png"
-
-# Android: 5 density buckets
-ANDROID_RES="android/app/src/main/res"
-sips -z 48 48 "$SRC" --out "$ANDROID_RES/mipmap-mdpi/ic_launcher.png"
-sips -z 72 72 "$SRC" --out "$ANDROID_RES/mipmap-hdpi/ic_launcher.png"
-sips -z 96 96 "$SRC" --out "$ANDROID_RES/mipmap-xhdpi/ic_launcher.png"
-sips -z 144 144 "$SRC" --out "$ANDROID_RES/mipmap-xxhdpi/ic_launcher.png"
-sips -z 192 192 "$SRC" --out "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher.png"
 ```
 
-Filenames/sizes above already match this project's `Contents.json` and
-`AndroidManifest.xml` references — no manifest changes needed, just replace
-the PNG bytes. Verify with `sips -g hasAlpha -g pixelWidth -g pixelHeight
-<file>` (App Store icon must show `hasAlpha: no`, `1024x1024`).
+Filenames/sizes above already match this project's `Contents.json` — no
+manifest changes needed, just replace the PNG bytes. Verify with `sips -g
+hasAlpha -g pixelWidth -g pixelHeight <file>` (App Store icon must show
+`hasAlpha: no`, `1024x1024`).
 
-Note: launch image (splash screen shown while the app loads) is separate
-from the app icon and still uses the Flutter default placeholder — worth
-fixing before public App Store submission, not required for TestFlight
-(flagged as a `flutter build ipa` warning, non-blocking).
+**Android is not a simple resize** — it uses an adaptive icon (foreground +
+background layers composited by the OS, not a single flat PNG) so OEM
+launchers don't apply their own extra shrink/pad on top of ours. Minimum
+supported Android version is 10 (API 29):
+
+```
+android/app/src/main/res/
+  mipmap-anydpi-v26/
+    ic_launcher.xml         # references the 3 layers below
+    ic_launcher_round.xml   # same layers, round-icon variant
+  mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/
+    ic_launcher_foreground.png   # graphic only, transparent bg, sized to
+                                  # exactly 88% fill within its own canvas
+    ic_launcher_background.png   # full gradient, no transparency
+    ic_launcher_monochrome.png   # foreground silhouette, for Android 13+
+                                  # themed icons
+```
+
+The 88% fill ratio matches the iOS icon's own inset (Apple's masking also
+crops in from the full canvas) — keep both platforms' foreground fill ratio
+in sync if the master icon changes. Regenerate all three adaptive layers
+plus the legacy fallback together; a script that composites the master PNG
+against a transparent 88%-scaled foreground and a full-bleed background is
+the reliable way to do this (see git history around the `ic_launcher_*`
+files for a worked Python/Pillow example).
+
+Note: launch image (splash screen shown while the app loads) shows the app
+icon, not a design of its own — a proper branded splash is still pending.
 
 ## 6. Export compliance (one-time per Info.plist)
 
@@ -188,13 +204,15 @@ Once the build shows **Ready to Submit** under App Store Connect → your app
 2. Add yourself/testers by Apple ID email under that group's **Testers**
    tab.
 3. Confirm the build is attached under the group's **Builds** tab.
-4. **Open the build's detail page** (click the build name/version under
-   Builds), go to **Test Information**, type anything into **"What to
-   Test"**, and click **Save** — even though the build already looked fully
-   attached and compliant, this save step is what actually triggered the
-   tester invitation to go out in practice. Without it, testers can be
-   stuck showing "No Builds Available" indefinitely despite everything else
-   looking correctly configured.
+4. If a tester isn't getting notified despite the build looking fully
+   attached and compliant: open the build's detail page (click the build
+   name/version under Builds), go to **Test Information**, type anything
+   into **"What to Test"**, and click **Save**. This fixed a stuck "No
+   Builds Available" state on the very first build to a group, but wasn't
+   needed on the next build to the same, already-established group —
+   testers got the update notification and could tap **Update** in
+   TestFlight with no manual step here at all. Treat it as a fallback, not
+   a required step per build.
 5. Install **TestFlight** (Apple's app) on the test device, sign in with the
    tester's Apple ID, accept the invite, install.
 
