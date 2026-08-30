@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,6 +13,13 @@ const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Android 15+ (targetSdk 36 here) enforces edge-to-edge display, and
+  // Flutter's default SystemUiMode in that case is version-dependent and
+  // undocumented-in-practice unless declared explicitly. Without this,
+  // MediaQuery.viewInsets.bottom (the keyboard-height signal every
+  // keyboard-avoidance widget relies on) can stay stuck at 0 on some
+  // devices/emulators regardless of actual keyboard state.
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   // Date formatting (month names etc.) is locale-specific and loaded
   // separately from AppLocalizations — prime data for every locale the app
   // supports so DateFormat never silently falls back to English.

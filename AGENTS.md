@@ -15,6 +15,7 @@
 | устройство клиента, решения по умолчанию | [docs/client-architecture.md](docs/client-architecture.md) |
 | расписания, секреты, релиз, рассылка «обновитесь» | [docs/operations.md](docs/operations.md) |
 | отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
+| сборка и деплой iOS, push через APNs (на английском — шаги идут по Xcode/App Store Connect, там всё на английском) | [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md), [docs/ios-push-apns-setup.md](docs/ios-push-apns-setup.md) |
 | историческое: замысел, как шёл MVP, старый список отложенного | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
 
 ## Проект
@@ -27,7 +28,8 @@ SQL/PostgreSQL и C#/.NET. Работать пошагово, не забега�
 
 - **macOS 12.7.6.** Flutter новее 3.32.8 не запускается (нужна macOS 14+), SDK
   закреплён на 3.32.8. Не предлагать обновление — это тупик.
-- **Только Android.** Xcode тоже требует более новую macOS.
+- **iOS.** Собирается и деплоится в TestFlight; актуальный процесс и
+  ограничения — `docs/ios-deployment-guide.md`.
 - `compileSdk`/`targetSdk` прибиты числом **36** в `android/app/build.gradle.kts`
   (требование Play), AGP **8.9.3** на Gradle **8.12** — более новый AGP потребует
   Gradle 8.13.
