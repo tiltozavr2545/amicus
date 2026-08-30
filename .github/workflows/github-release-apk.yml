@@ -1,0 +1,144 @@
+name: GitHub Release APK
+
+# Manually triggered: builds a signed, sideloadable universal APK for a
+# specific ref and attaches it to an existing GitHub release. Distinct from
+# deploy-closed-testing.yml, which builds a signed .aab and pushes it to
+# Google Play — the two channels are independent (see the github-release
+# skill in .agents/skills/), sharing only the version number and the same
+# signing secrets.
+#
+# This workflow does NOT create the release or write its notes — the
+# `github-release` skill does that (gh release create, with notes approved
+# by the user first) and passes the resulting tag in here. It only builds
+# the APK and uploads it as an asset to whatever release already exists at
+# that tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build from (commit SHA, branch, or tag) — must match an existing GitHub release's tag exactly if the tag is used"
+        required: true
+      tag:
+        description: "Release tag to attach the built APK to (must already exist, e.g. v0.18.3)"
+        required: true
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build-and-attach:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the requested ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.21.0
+        with:
+          flutter-version: "3.32.8"
+          channel: "stable"
+          cache: true
+          pub-cache: true
+
+      - name: Verify the release doesn't already have an APK asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          existing=$(gh release view "$TAG" --json assets --jq \
+            '.assets[] | select(.name | endswith(".apk")) | .name' || echo "")
+          if [ -n "$existing" ]; then
+            echo "::error title=APK already attached::Release $TAG already has an APK asset ($existing) — refusing to overwrite. Delete it first if this is intentional."
+            exit 1
+          fi
+
+      - run: flutter pub get --enforce-lockfile
+
+      - name: Validate signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -eu
+          for secret_name in \
+            ANDROID_KEYSTORE_BASE64 \
+            ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS \
+            ANDROID_KEY_PASSWORD \
+            SUPABASE_URL \
+            SUPABASE_ANON_KEY \
+            GOOGLE_SERVICES_JSON; do
+            eval "secret_value=\${$secret_name-}"
+            if [ -z "$secret_value" ]; then
+              echo "::error title=Missing signing secret::$secret_name is not configured"
+              exit 1
+            fi
+          done
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -eu
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -eu
+          umask 077
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+
+      - name: Build signed universal APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: >-
+          flutter build apk --release
+          --dart-define=SUPABASE_URL=$SUPABASE_URL
+          --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+
+      - name: Rename to this repo's release-asset convention
+        id: rename
+        run: |
+          set -eu
+          version=$(awk '/^version:[[:space:]]/ { print $2; exit }' pubspec.yaml | cut -d+ -f1)
+          out="build/app/outputs/flutter-apk/amicus-${version}.apk"
+          mv build/app/outputs/flutter-apk/app-release.apk "$out"
+          echo "asset_path=app/$out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" "${{ steps.rename.outputs.asset_path }}"
+
+      - name: Remove signing files
+        if: always()
+        run: |
+          rm -f android/key.properties android/app/upload-keystore.jks
+          rm -f android/app/google-services.json
