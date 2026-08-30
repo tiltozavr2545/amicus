@@ -129,7 +129,7 @@ jobs:
           version=$(awk '/^version:[[:space:]]/ { print $2; exit }' pubspec.yaml | cut -d+ -f1)
           out="build/app/outputs/flutter-apk/amicus-${version}.apk"
           mv build/app/outputs/flutter-apk/app-release.apk "$out"
-          echo "asset_path=app/$out" >> "$GITHUB_OUTPUT"
+          echo "asset_path=$out" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK to the existing release
         env:
