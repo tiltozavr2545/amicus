@@ -7,13 +7,14 @@ FLUTTER ?= $(HOME)/development/flutter/bin/flutter
 DART ?= $(HOME)/development/flutter/bin/dart
 BASE_REF ?= origin/main
 
-.PHONY: help deps format-check analyze test verify verify-version build-android pre-commit pre-push install-hooks uninstall-hooks
+.PHONY: help deps format-check analyze test verify verify-version build-android build-ios pre-commit pre-push install-hooks uninstall-hooks
 
 help:
 	@printf '%s\n' \
 		'make verify          Run dependency, format, analysis, and test checks' \
 		'make verify-version  Verify a version bump against BASE_REF (default: origin/main)' \
 		'make build-android   Build the release Android App Bundle' \
+		'make build-ios       Compile-check the iOS release build (unsigned)' \
 		'make pre-commit      Run fast checks used by the pre-commit hook' \
 		'make pre-push        Run checks plus the Android release build' \
 		'make install-hooks   Enable the repository-managed Git hooks' \
@@ -43,6 +44,16 @@ verify-version:
 build-android:
 	cd $(APP_DIR) && $(FLUTTER) build appbundle --release \
 		-PallowDebugSigning=true \
+		--dart-define=SUPABASE_URL=https://example.invalid \
+		--dart-define=SUPABASE_ANON_KEY=ci-placeholder
+
+# --no-codesign: this target is a compile check, not a shippable build, so it
+# skips signing/provisioning-profile requirements entirely (mirrors
+# build-android's debug-signing fallback, but iOS has no such fallback for
+# release builds). Never use this output for TestFlight/App Store — those
+# still go through Xcode's Automatic signing, per docs/ios-deployment-guide.md.
+build-ios:
+	cd $(APP_DIR) && $(FLUTTER) build ios --release --no-codesign \
 		--dart-define=SUPABASE_URL=https://example.invalid \
 		--dart-define=SUPABASE_ANON_KEY=ci-placeholder
 
