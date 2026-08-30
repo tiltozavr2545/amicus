@@ -95,6 +95,22 @@ github-release [--version X.Y.Z]
    summarize their combined user-visible impact from `CHANGELOG.md` and PR
    history between the two points, not just the single latest PR's diff.
 
+   **Scope filter - only changes that ship inside the APK.** Before
+   drafting bullets, drop any PR or `CHANGELOG.md` entry confined entirely
+   to non-shipping paths - `.agents/`, `.claude/`, skill definitions
+   anywhere in the repo, `docs/`, `AGENTS.md`/`CLAUDE.md`, or CI/workflow
+   files that aren't themselves compiled into the app. A sideloaded APK
+   release describes what changed in the thing being installed, not in the
+   repo's own tooling - a skill addition or a translation of a skill's
+   instructions has zero effect on the built binary and does not belong in
+   these notes. In this repo, tooling-only PRs are already conventionally
+   titled `(tooling only, ...)` - treat that as a strong hint, but confirm
+   by checking whether the PR's diff actually touches `app/`, `android/`,
+   or an app-facing `supabase/` migration; if none of those are touched,
+   the PR contributes nothing to this changelog and should not appear as a
+   bullet, even indirectly (e.g. do not fold it into an adjacent bullet's
+   wording either).
+
    **Correctness warning - a bullet can be true of the current version and
    still mislead relative to the previous RELEASED version.** Do not phrase
    a bullet purely from the latest PR's diff without checking whether the
