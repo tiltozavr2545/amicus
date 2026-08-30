@@ -1500,3 +1500,12 @@ email-подтверждение, `additional_redirect_urls = []`. Ниже — 
   (`AppIcon.appiconset`, все 15 размеров без альфа-канала — иначе App Store
   отклоняет 1024×1024 маркетинговый значок), и для Android (`mipmap-*`).
   Версия `app/pubspec.yaml` — `0.18.0+51`.
+
+- Заголовки секций на экране «Настройки» (0.18.1) — «Notifications» и
+  «Account» отделены от строк приглушённым caption-стилем
+  (`titleSmall`, `onSurfaceVariant`, `letterSpacing: 0.1`, заглавными буквами)
+  вместо визуального слияния с обычными пунктами списка. Заодно
+  `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` в
+  `main.dart` — Android 15+/`targetSdk 36` требует edge-to-edge явно,
+  иначе `MediaQuery.viewInsets.bottom` может не приходить на части
+  устройств. Версия `app/pubspec.yaml` — `0.18.1+52`.
