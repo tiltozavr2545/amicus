@@ -188,13 +188,15 @@ Once the build shows **Ready to Submit** under App Store Connect → your app
 2. Add yourself/testers by Apple ID email under that group's **Testers**
    tab.
 3. Confirm the build is attached under the group's **Builds** tab.
-4. **Open the build's detail page** (click the build name/version under
-   Builds), go to **Test Information**, type anything into **"What to
-   Test"**, and click **Save** — even though the build already looked fully
-   attached and compliant, this save step is what actually triggered the
-   tester invitation to go out in practice. Without it, testers can be
-   stuck showing "No Builds Available" indefinitely despite everything else
-   looking correctly configured.
+4. If a tester isn't getting notified despite the build looking fully
+   attached and compliant: open the build's detail page (click the build
+   name/version under Builds), go to **Test Information**, type anything
+   into **"What to Test"**, and click **Save**. This fixed a stuck "No
+   Builds Available" state on the very first build to a group, but wasn't
+   needed on the next build to the same, already-established group —
+   testers got the update notification and could tap **Update** in
+   TestFlight with no manual step here at all. Treat it as a fallback, not
+   a required step per build.
 5. Install **TestFlight** (Apple's app) on the test device, sign in with the
    tester's Apple ID, accept the invite, install.
 
