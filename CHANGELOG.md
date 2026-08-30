@@ -1509,3 +1509,10 @@ email-подтверждение, `additional_redirect_urls = []`. Ниже — 
   `main.dart` — Android 15+/`targetSdk 36` требует edge-to-edge явно,
   иначе `MediaQuery.viewInsets.bottom` может не приходить на части
   устройств. Версия `app/pubspec.yaml` — `0.18.1+52`.
+
+- Android-иконка переведена на adaptive icon (0.18.2) —
+  `mipmap-anydpi-v26/ic_launcher.xml` composit-ит отдельные слои
+  foreground/background/monochrome вместо одного плоского PNG на
+  каждую плотность; foreground залит на 88% канвы, как и на iOS.
+  Минимальная поддерживаемая версия Android — 10 (`minSdk 29`).
+  Версия `app/pubspec.yaml` — `0.18.2+53`.

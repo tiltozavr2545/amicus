@@ -117,7 +117,8 @@ hasAlpha -g pixelWidth -g pixelHeight <file>` (App Store icon must show
 
 **Android is not a simple resize** — it uses an adaptive icon (foreground +
 background layers composited by the OS, not a single flat PNG) so OEM
-launchers don't apply their own extra shrink/pad on top of ours:
+launchers don't apply their own extra shrink/pad on top of ours. Minimum
+supported Android version is 10 (API 29):
 
 ```
 android/app/src/main/res/
@@ -130,10 +131,6 @@ android/app/src/main/res/
     ic_launcher_background.png   # full gradient, no transparency
     ic_launcher_monochrome.png   # foreground silhouette, for Android 13+
                                   # themed icons
-    ic_launcher.png              # legacy fallback (pre-API-26 devices,
-                                  # minSdk 23 here) — same 88%-fill
-                                  # composite as the adaptive layers, so
-                                  # older devices match visually
 ```
 
 The 88% fill ratio matches the iOS icon's own inset (Apple's masking also

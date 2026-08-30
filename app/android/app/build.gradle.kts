@@ -39,10 +39,7 @@ android {
 
     defaultConfig {
         applicationId = "com.github.tiltozavr2545.amicus"
-        // Pinned above flutter.minSdkVersion (21): firebase_messaging's
-        // manifest declares minSdk 23 (Android 6.0, 2015) and the merge fails
-        // below that — confirmed by trying flutter.minSdkVersion first.
-        minSdk = 23
+        minSdk = 29 // Android 10
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
