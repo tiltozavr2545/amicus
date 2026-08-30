@@ -3,75 +3,75 @@ name: audit-task
 description: 'Independently verify everything since the last audit (or chat start) matches what was asked - no gaps, no scope creep, nothing changed silently, and docs updated where applicable. Not a code review (use review-pr for quality/security/tests). Triggers on: "audit that", "audit task", "audit this".'
 ---
 
-# Audit Task Skill
+# Audit Task Skill (Скилл аудита задачи)
 
-Checks goal-alignment and documentation only: did everything in scope (see Step 0) do exactly what was asked - the whole thing, nothing extra, nothing silent - and were the docs describing changed behavior updated where applicable. It does not review code quality, run tests, or run builds. Those are `review-pr` / `rework-pr`'s job.
+Проверяет только соответствие цели и документацию: сделало ли всё, что входит в область проверки (см. Шаг 0), ровно то, что просили - целиком, без лишнего, без тихих изменений - и обновлена ли документация там, где это применимо. Это не ревью качества кода, не запуск тестов и не сборка. Это задача `review-pr` / `rework-pr`.
 
-## Why isolation matters
+## Почему важна изоляция
 
-The implementer's own "I'm finished" summary is not evidence - it is a claim under pressure to look complete. This skill never reads it. The judging agent sees only the original instruction and the actual resulting state, the same review-isolation principle `rework-pr` uses for its judging phases: the agent that did the work is never the agent that verifies it.
+Собственный отчёт исполнителя "готово" - это не доказательство, а утверждение под давлением выглядеть завершённым. Этот скилл никогда его не читает. Проверяющий агент видит только исходную инструкцию и фактическое итоговое состояние - тот же принцип изоляции ревью, что использует `rework-pr` на этапах проверки: агент, который выполнял работу, никогда не является агентом, который её проверяет.
 
-## Requirements
+## Требования
 
-This skill's isolation step (Step 3) needs a host with a real isolated-subagent-dispatch mechanism. Without one, Step 3 has no way to isolate the judge from the implementer's own summary, which defeats the point of the skill - confirm your host has this before relying on this skill.
+Шаг изоляции (Шаг 3) требует хост с реальным механизмом изолированного запуска подагента. Без него Шаг 3 не сможет изолировать судью от собственного отчёта исполнителя, что сводит на нет весь смысл скилла - убедитесь, что у вашего хоста есть такой механизм, прежде чем полагаться на этот скилл.
 
-## Steps
+## Шаги
 
-0. **Determine audit scope.** Do not rely on scanning the visible in-context conversation alone - context compaction may have dropped earlier messages from view while they still exist in the persisted session log. Use `session_search` (or the equivalent session/history search tool) against the current session to reliably find the most recent prior invocation of this skill (its trigger message + verdict), regardless of whether it's still in-context:
-   - Found → scope = every in-scope instruction from immediately after that prior audit up to now.
-   - Not found → scope = every in-scope instruction since the start of the conversation (search back to the session's start, not just to the compaction boundary).
+0. **Определить область проверки.** Не полагайтесь только на просмотр видимой в контексте переписки - сжатие контекста могло убрать более ранние сообщения из видимости, хотя они всё ещё существуют в сохранённом логе сессии. Используйте `session_search` (или эквивалентный инструмент поиска по истории сессии) по текущей сессии, чтобы надёжно найти самый последний предыдущий запуск этого скилла (его сообщение-триггер + вердикт), независимо от того, виден ли он сейчас в контексте:
+   - Найден → область проверки = каждая относящаяся к делу инструкция сразу после того аудита и до текущего момента.
+   - Не найден → область проверки = каждая относящаяся к делу инструкция с начала переписки (искать до начала сессии, а не только до границы сжатия контекста).
 
-   This makes the skill self-bookmarking: each audit becomes the boundary marker for the next one, no external state file needed - the conversation itself is the ledger.
+   Это делает скилл самоотмечающимся: каждый аудит становится границей для следующего, без внешнего файла состояния - сама переписка служит журналом.
 
-   An "in-scope instruction" is any user message that led to a change (code edit, config/doc edit, file written, message sent, agreement reached) or a resulting artifact. A pure question-and-answer exchange only counts if it produced a new agreement and/or an edit - discussion that resolved into "no action taken" is not in scope. When in doubt whether a turn produced a qualifying agreement or edit, err on the side of including it.
+   "Относящаяся к делу инструкция" - это любое сообщение пользователя, которое привело к изменению (правка кода, конфига, документации, записанный файл, отправленное сообщение, достигнутая договорённость) или к результирующему артефакту. Чисто вопрос-ответ засчитывается, только если породил новую договорённость и/или правку - обсуждение, завершившееся "действий не предпринято", в область не входит. В случае сомнений, породил ли ход переписки подходящую договорённость или правку, лучше включить его.
 
-1. **Recover every in-scope instruction verbatim, in order.** For each one, copy the user's message as written - do not paraphrase or summarize. If the scope's start point cannot be found unambiguously, stop and ask the user to clarify or paste it.
+1. **Восстановить каждую относящуюся к делу инструкцию дословно, по порядку.** Для каждой скопируйте сообщение пользователя как есть - не пересказывайте и не резюмируйте. Если начальную точку области проверки нельзя определить однозначно, остановитесь и попросите пользователя уточнить или прислать её текстом.
 
-2. **Capture the actual resulting state across the whole scope**, not anyone's description of it - one cumulative capture spanning from before the first in-scope instruction to now:
+2. **Зафиксировать фактическое итоговое состояние по всей области проверки**, а не чьё-либо описание его - один совокупный снимок, охватывающий период от момента перед первой относящейся к делу инструкцией и до сейчас:
 
    ```bash
-   git diff                              # uncommitted changes
-   git diff <commit-before-scope>..HEAD  # committed changes since the scope started
+   git diff                              # незакоммиченные изменения
+   git diff <commit-before-scope>..HEAD  # закоммиченные изменения с начала области проверки
    ```
 
-   For a non-code task (a doc, a config, a message sent), capture the concrete artifact itself the same way - the actual current content, not a summary of it.
+   Для задачи, не связанной с кодом (документ, конфиг, отправленное сообщение), зафиксируйте сам конкретный артефакт тем же способом - его фактическое текущее содержимое, а не пересказ.
 
-   Also identify any docs the changes could plausibly touch - README, user/admin guides, skill descriptions, architecture docs, CLI help - and capture their current relevant sections too (even if untouched by the diff; an untouched doc that should have changed is itself a finding). If the diff clearly has no user/operator-visible behavior (pure refactor, formatting, internal-only fix), a quick note that no docs apply is enough - do not go hunting for documentation that has no bearing on the change.
+   Также определите, каких документов правки могли бы правдоподобно коснуться - README, руководства пользователя/администратора, описания скиллов, архитектурная документация, справка CLI - и зафиксируйте их актуальные релевантные разделы тоже (даже если diff их не затронул; нетронутый документ, который должен был измениться, - это сам по себе находка). Если по diff очевидно, что нет пользовательского/операторского видимого поведения (чистый рефакторинг, форматирование, внутренний фикс), достаточно короткой пометки, что документация неприменима - не нужно искать документацию, которая не имеет отношения к изменению.
 
-3. **Dispatch to a fresh, isolated subagent** using your host's isolated-subagent-dispatch mechanism (e.g. a Task-tool-style subagent). Give it exactly these things and nothing else - as the dispatch prompt:
-   - the ordered list of every verbatim in-scope instruction from step 1
-   - the cumulative raw diff / artifact from step 2
-   - the relevant doc excerpts gathered in step 2, or a note that none applied
+3. **Отправить свежему изолированному подагенту** через механизм изолированного запуска подагента вашего хоста (например, механизм в духе инструмента Task). Дать ему ровно следующее и ничего больше - в качестве промпта для запуска:
+   - упорядоченный список каждой дословной относящейся к делу инструкции из шага 1
+   - совокупный необработанный diff / артефакт из шага 2
+   - релевантные выдержки из документации, собранные на шаге 2, либо пометку, что таковых не нашлось
 
-   Do not pass the implementer's summary, reasoning, or "done" claim into this subagent's context. Do not pass unrelated conversation history outside the determined scope.
+   Не передавайте в контекст этого подагента отчёт исполнителя, его рассуждения или утверждение "готово". Не передавайте не относящуюся к делу историю переписки за пределами определённой области проверки.
 
-4. **The subagent's mandate is alignment and documentation only, judged per instruction against the shared cumulative diff.** Check, attributing each finding to the specific in-scope instruction(s) it relates to when more than one instruction is in scope:
-   - **Completeness** - every requirement in every in-scope instruction was addressed
-   - **No omission** - nothing was left half-done, skipped, or silently deferred
-   - **No scope creep** - no changes beyond what was asked or explicitly discussed across the in-scope instructions
-   - **No silent side effects** - any change not traceable to an in-scope instruction gets named, even a small one
-   - **Documentation** - if the changes alter how something works, is configured, is run, or is used - user-facing or operator-facing behavior, not internal implementation detail - check whether the docs that describe that behavior were updated in the same change: READMEs, user guides, admin guides, skill descriptions/frontmatter, architecture docs, CLI help text, inline usage docs. Not every change needs this (pure refactors, internal bug fixes with no externally visible behavior change, formatting) - judge whether documentation was *applicable*, then whether it was *done*. This mirrors the "Documentation Co-Maintenance" rule in `~/.agents/AGENTS.md`: docs describing changed behavior must be updated in the same change, not left for later.
+4. **Мандат подагента - только соответствие цели и документация, оцениваемые по каждой инструкции относительно общего совокупного diff.** Проверить, привязывая каждую находку к конкретной относящейся к делу инструкции (или инструкциям), если в область проверки входит больше одной:
+   - **Полнота** - каждое требование в каждой относящейся к делу инструкции выполнено
+   - **Отсутствие пропусков** - ничего не осталось наполовину сделанным, пропущенным или тихо отложенным
+   - **Отсутствие расширения объёма** - никаких изменений сверх того, что просили или явно обсуждали в рамках относящихся к делу инструкций
+   - **Отсутствие тихих побочных эффектов** - любое изменение, не прослеживаемое до относящейся к делу инструкции, называется явно, даже небольшое
+   - **Документация** - если изменения меняют то, как что-то работает, настраивается, запускается или используется - видимое пользователю или оператору поведение, а не внутренняя реализация, - проверить, были ли обновлены в том же изменении документы, описывающие это поведение: README, руководства пользователя/администратора, описания/frontmatter скиллов, архитектурная документация, справка CLI, встроенная документация по использованию. Не каждое изменение этого требует (чистый рефакторинг, внутренний баг-фикс без видимого извне изменения поведения, форматирование) - оценить, была ли документация *применима*, затем была ли она *сделана*. Это отражает правило "Совместное сопровождение документации" из `~/.agents/AGENTS.md`: документы, описывающие изменённое поведение, должны обновляться в том же изменении, а не откладываться на потом.
 
-   Explicitly out of scope for this subagent: code style, security review, test coverage, whether the build passes. Do not let it run tests or builds - if it tries, redirect it back to alignment and documentation only.
+   Явно вне мандата этого подагента: стиль кода, ревью безопасности, покрытие тестами, проходит ли сборка. Не давайте ему запускать тесты или сборки - если попытается, верните его к проверке только соответствия цели и документации.
 
-5. **Report the verdict in chat only.** No file, no PR comment, no artifact - this is a fast conversational check, not a review pipeline.
+5. **Сообщить вердикт только в чате.** Без файла, без комментария в PR, без артефакта - это быстрая проверка в разговоре, а не пайплайн ревью.
 
-   - **PASS** - state briefly what was verified.
-   - **DRIFT DETECTED** - for every finding, phrase it as a corrective instruction ready to hand straight back to the implementing agent, not just a description of the problem. Example:
+   - **PASS** - кратко указать, что было проверено.
+   - **ОБНАРУЖЕНО РАСХОЖДЕНИЕ** - каждую находку сформулировать как корректирующую инструкцию, готовую сразу передать исполняющему агенту, а не просто описание проблемы. Пример:
 
      ```text
-     DRIFT DETECTED
+     ОБНАРУЖЕНО РАСХОЖДЕНИЕ
 
-     - Omitted: the instruction asked to update both the header and footer nav links; only the header was changed. Update footer/Nav.tsx to match.
-     - Scope creep: components/Button.tsx was reformatted (quote style, prop order) with no request to touch it. Revert the unrelated formatting changes there.
-     - Silent change: package.json bumped a dependency version that was never discussed. Confirm this was intentional or revert it.
-     - Documentation gap: the CLI's --verbose flag was added but README.md's "Options" table still doesn't list it. Add a row for --verbose to README.md's Options table.
+     - Пропущено: инструкция просила обновить и хедер, и футер навигации; изменён только хедер. Обновить footer/Nav.tsx, чтобы соответствовало.
+     - Расширение объёма: components/Button.tsx переформатирован (стиль кавычек, порядок пропсов) без запроса на это. Откатить не относящиеся к делу изменения форматирования там.
+     - Тихое изменение: package.json поднял версию зависимости, которая нигде не обсуждалась. Подтвердить, что это было намеренно, либо откатить.
+     - Пробел в документации: добавлен флаг --verbose у CLI, но в README.md таблица "Options" его всё ещё не перечисляет. Добавить строку про --verbose в таблицу Options в README.md.
      ```
 
-## Out of scope
+## Вне области применения
 
-- Code quality, security, performance -> `review-pr`
-- Tests, builds, verify commands -> do not run them here
-- Multi-round PR rework -> `rework-pr`
+- Качество кода, безопасность, производительность -> `review-pr`
+- Тесты, сборки, команды verify -> не запускать здесь
+- Многораундовая доработка PR -> `rework-pr`
 
-This skill covers everything since the last audit in this chat (or since chat start, if never run before): one or many small tasks marked "done", and you want a second, unbiased pair of eyes before you accept that.
+Этот скилл покрывает всё, что произошло с последнего аудита в этом чате (или с начала чата, если ещё не запускался): одна или много мелких задач, помеченных как "готово", и вы хотите второй непредвзятый взгляд, прежде чем это принять.
