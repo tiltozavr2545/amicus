@@ -153,3 +153,9 @@ SQL/PostgreSQL и C#/.NET. Работать пошагово, не забега�
 - **Проверка на устройстве**: английскую локаль включать пер-приложенчески
   (`adb shell cmd locale set-app-locales <pkg> --locales en-US`), а не системной
   настройкой — не трогает телефон пользователя и откатывается пустым значением.
+- **`flutter build appbundle`/`make build-android` берёт JDK от Android Studio,
+  не `JAVA_HOME`.** На новых версиях Studio встроенный JBR отдаёт версию вида
+  `25.0.2`, которую не парсит Kotlin-компилятор Gradle — сборка падает с голым
+  `25.0.2` вместо внятной ошибки. Чинится не в `gradle.properties` (это
+  закоммиченный файл, путь к JDK у каждого свой), а per-machine:
+  `flutter config --jdk-dir="$(/usr/libexec/java_home -v 21)"`.
