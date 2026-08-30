@@ -8,8 +8,8 @@
 
 ## Статус
 
-Задеплоено на Android (Google Play, Closed testing — трек `alpha`). Сейчас —
-тестирование и донастройка фич на Android; следующая веха — релиз под iOS (см.
+Задеплоено на Android (Google Play, Closed testing — трек `alpha`) и на iOS
+(TestFlight). Сейчас — тестирование и донастройка фич на обеих платформах (см.
 [docs/future-development.md](docs/future-development.md)).
 
 ## Что умеет
@@ -40,7 +40,7 @@
 
 ## Стек
 
-- **Frontend:** Flutter / Dart (Android; iOS — следующая веха, см. [docs/future-development.md](docs/future-development.md))
+- **Frontend:** Flutter / Dart (Android и iOS, см. [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md))
 - **Backend:** [Supabase](https://supabase.com) — PostgreSQL, Auth, Storage, Realtime, Row Level Security
 - **State management:** Riverpod
 - **Навигация:** go_router

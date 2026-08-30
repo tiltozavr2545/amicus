@@ -1482,3 +1482,30 @@ email-подтверждение, `additional_redirect_urls = []`. Ниже — 
   того же черновика либо создаёт сообщение один раз, либо — если предыдущая
   попытка уже долетела — получает обратно ту же строку через уже
   существующую обработку `23505` в `RoomsRepository.sendMessage`.
+
+- Первая сборка под iOS и собственная иконка вместо стандартной Flutter
+  (0.18.0) — приложение впервые собрано и загружено в TestFlight.
+  `app/ios/Podfile` закрепляет `platform :ios, '15.0'` (требование
+  `firebase_core`), `IPHONEOS_DEPLOYMENT_TARGET` в `Runner.xcodeproj` поднят с
+  12.0 до 15.0 во всех конфигурациях сборки. `ExportOptions.plist` и
+  `DEVELOPMENT_TEAM` в `project.pbxproj` используют один и тот же Apple Team
+  ID; `Runner.entitlements` объявляет `aps-environment: development` — Xcode
+  сам переписывает его на `production` при архивации под App Store (см.
+  `docs/ios-deployment-guide.md`). `Info.plist` дополнен
+  `NSPhotoLibraryUsageDescription`, `UIBackgroundModes: remote-notification` и
+  `ITSAppUsesNonExemptEncryption: false` под push-уведомления через APNs (см.
+  `docs/ios-push-apns-setup.md`). Новый `make build-ios` — compile-check без
+  подписи (`--no-codesign`), не для реального релиза. Собственная иконка
+  (вместо стандартной Flutter) заведена и для iOS
+  (`AppIcon.appiconset`, все 15 размеров без альфа-канала — иначе App Store
+  отклоняет 1024×1024 маркетинговый значок), и для Android (`mipmap-*`).
+  Версия `app/pubspec.yaml` — `0.18.0+51`.
+
+- Заголовки секций на экране «Настройки» (0.18.1) — «Notifications» и
+  «Account» отделены от строк приглушённым caption-стилем
+  (`titleSmall`, `onSurfaceVariant`, `letterSpacing: 0.1`, заглавными буквами)
+  вместо визуального слияния с обычными пунктами списка. Заодно
+  `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` в
+  `main.dart` — Android 15+/`targetSdk 36` требует edge-to-edge явно,
+  иначе `MediaQuery.viewInsets.bottom` может не приходить на части
+  устройств. Версия `app/pubspec.yaml` — `0.18.1+52`.

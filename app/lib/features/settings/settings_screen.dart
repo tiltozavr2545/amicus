@@ -162,6 +162,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Muted, uppercase caption style that visually distinguishes a section
+  /// title (e.g. "Notifications") from the settings rows beneath it, which
+  /// otherwise share the same title-sized text and read as just another row.
+  TextStyle? _sectionHeaderStyle(BuildContext context) {
+    return Theme.of(context).textTheme.titleSmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.1,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -180,10 +191,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           return ListView(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: Text(
-                  l10n.notificationsSectionTitle,
-                  style: Theme.of(context).textTheme.titleMedium,
+                  l10n.notificationsSectionTitle.toUpperCase(),
+                  style: _sectionHeaderStyle(context),
                 ),
               ),
               SwitchListTile(
@@ -224,13 +235,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const Divider(height: 32),
               ListTile(
-                title: Text(
-                  l10n.languageSectionTitle,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                title: Text(l10n.languageSectionTitle),
                 trailing: DropdownButton<Locale?>(
                   value: ref.watch(localeProvider),
                   underline: const SizedBox.shrink(),
+                  // DropdownButton defaults to textTheme.titleMedium when no
+                  // style is given, which reads bolder than every other row's
+                  // plain (unstyled) label text — match those instead.
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   onChanged: (value) =>
                       ref.read(localeProvider.notifier).setLocale(value),
                   items: [
@@ -251,10 +265,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const Divider(height: 32),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Text(
-                  l10n.accountSectionTitle,
-                  style: Theme.of(context).textTheme.titleMedium,
+                  l10n.accountSectionTitle.toUpperCase(),
+                  style: _sectionHeaderStyle(context),
                 ),
               ),
               ListTile(
