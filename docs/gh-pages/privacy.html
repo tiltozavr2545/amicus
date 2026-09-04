@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amicus — Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f2fa;
+    color: #1c1b1f;
+    line-height: 1.6;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1c1b1f; color: #eee0ff; }
+    .card { background: #2a2735 !important; }
+  }
+  .card {
+    max-width: 680px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  }
+  h1 { font-size: 24px; margin-top: 0; }
+  h2 { font-size: 18px; margin-top: 32px; }
+  p, li { font-size: 15px; opacity: 0.9; }
+  a { color: #623aa2; }
+  ul { padding-left: 20px; }
+  .updated { font-size: 13px; opacity: 0.6; margin-top: 40px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Amicus — Privacy Policy</h1>
+    <p>Amicus is a social app where your feed only shows posts from people you have a confirmed connection with — someone you met in person or who invited you. This is a pilot project, currently being tested on Android and iOS.</p>
+
+    <h2>Data we collect</h2>
+    <ul>
+      <li><strong>Account:</strong> email and password, used to sign in (the app never sees your password — it is stored hashed by our authentication provider, Supabase).</li>
+      <li><strong>Profile:</strong> your name and up to 80 profile photos, visible to your connections.</li>
+      <li><strong>Content you post:</strong> post text, up to 20 photos or videos per post, comments and replies, and reactions (👍/😐/👎) — reaction counts are visible to others, but not who left which reaction.</li>
+      <li><strong>Your social graph:</strong> connections you make (via an invite link, or a connection request sent to someone you already share a chat room with), invite codes you generate, and your mute, block and favorites lists. Who you've muted, blocked or favorited is never shown to anyone else — including the person concerned.</li>
+      <li><strong>Chat:</strong> messages and attached media inside the rooms you're a member of, plus read/delivered markers for your own messages.</li>
+      <li><strong>Notification settings:</strong> your per-source preferences (comments, favorites, room messages, digests, and so on).</li>
+      <li><strong>Push notification token:</strong> a device token issued by Firebase Cloud Messaging (a Google service), together with your app version — used only to deliver push notifications and to know which installs need to be nudged to update.</li>
+      <li><strong>Last-active timestamp:</strong> when you last opened the app — used only to decide what counts as "new" in your digest, and whether to send an inactivity reminder.</li>
+    </ul>
+    <p>"Typing…" and "online" indicators are not stored anywhere — they exist only in memory for as long as a chat screen is open, and disappear the moment it closes.</p>
+
+    <h2>How your data is used</h2>
+    <p>Solely to run the app: to show your feed, your profile, and the profiles, posts and messages of your connections and room peers, and to deliver the push notifications you've opted into. Visibility rules (who can see what) are enforced directly in the database, not just in app code. We do not sell your data, share it with third parties for marketing, or run advertising or analytics/tracking inside the app.</p>
+
+    <h2>Third-party processors</h2>
+    <p><a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> hosts our database, file storage and authentication. <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Firebase Cloud Messaging</a> (Google) delivers push notifications and receives only your device's push token — no message content is routed through it beyond what's needed to display a notification. Neither is used for advertising.</p>
+
+    <h2>Where data is stored</h2>
+    <p>Data lives with our cloud provider, <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> (PostgreSQL + Storage), protected by database-level access rules (Row Level Security) — a post, comment or photo is only readable by someone entitled to see it, enforced by the database itself, independent of the app.</p>
+
+    <h2 id="deleting-your-data">Deleting your data</h2>
+    <p>You can delete your account at any time from Settings → Delete account, right inside the app. This is immediate and permanent: your profile, posts, comments, photos, messages and connections are all erased and cannot be recovered.</p>
+    <p>If you no longer have the app installed, or would rather we do it for you, write to <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a> from the email address on your account and ask for it to be deleted — this works whether or not you still have Amicus installed. Deletion is carried out promptly, normally within a few days; a small number of backend backups may take up to 30 days to fully expire, after which no copy of your data remains.</p>
+
+    <h2>Your rights</h2>
+    <p>Wherever you are, you can ask us at any time to: access the data we hold about you, correct it if it's wrong, delete it, receive a copy in a portable format, or object to how it's used. Write to <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a> for any of these. If you're in the EU/EEA and believe we haven't handled your request properly, you also have the right to lodge a complaint with your local data protection authority.</p>
+
+    <h2>Children</h2>
+    <p>Amicus is not directed at children under 13 and we do not knowingly collect data from them. If you believe a child under 13 is using Amicus, please write to <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a> and we will investigate and remove the account if confirmed.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If we make a material change to how we collect or use data, we'll update the "Last updated" date below and, where the change is significant, notify you in-app.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy, or about our <a href="terms.html">Terms of Use</a>: <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a>.</p>
+
+    <p class="updated">© 2026 Timofei Rusakov</p>
+    <p class="updated">Last updated: September 4, 2026</p>
+  </div>
+</body>
+</html>

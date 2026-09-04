@@ -1,0 +1,58 @@
+name: Sync GitHub Pages
+
+# `docs/gh-pages/**` holds the source for the gh-pages branch (privacy
+# policy, terms of use, auth-flow landing pages). gh-pages itself is an
+# orphan branch with no shared history with main/develop, so this job
+# copies the current files over and commits only when something actually
+# changed — an unchanged source produces an empty diff, so most runs are
+# a no-op push.
+on:
+  push:
+    branches: [main]
+    paths: ["docs/gh-pages/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: source
+          sparse-checkout: docs/gh-pages
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Copy pages
+        run: |
+          set -eu
+          cp source/docs/gh-pages/privacy.html gh-pages/privacy.html
+          cp source/docs/gh-pages/terms.html gh-pages/terms.html
+          cp source/docs/gh-pages/email-confirmed.html gh-pages/index.html
+          cp source/docs/gh-pages/reset-password.html gh-pages/reset-password.html
+
+      - name: Commit and push if changed
+        working-directory: gh-pages
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No changes to deploy."
+            exit 0
+          fi
+          git add privacy.html terms.html index.html reset-password.html
+          git commit -m "Sync from docs/gh-pages/ (${{ github.sha }})"
+          git push origin gh-pages
