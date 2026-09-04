@@ -53,6 +53,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Without this, FCM's auto-display of background/terminated
+             notifications falls back to the app's launcher icon — which is a
+             full-color adaptive icon, not the alpha-only silhouette the status
+             bar needs, so Android renders it as a plain filled circle. This
+             points it at a real silhouette instead (ic_stat_notify, derived
+             from the launcher's monochrome layer). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
