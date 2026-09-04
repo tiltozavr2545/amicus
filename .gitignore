@@ -8,3 +8,6 @@
 
 # Various
 *.pdf
+
+# Local scratch/backup files, not part of the repo
+archive/
