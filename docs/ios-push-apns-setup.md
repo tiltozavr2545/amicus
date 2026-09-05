@@ -1,5 +1,14 @@
 # iOS Push Notifications — APNs Key Setup (Firebase Cloud Messaging)
 
+The one step that connects Amicus's existing push code to Apple: handing
+Firebase an APNs Authentication Key. Everything else — the entitlement, the
+Firebase registration, the outbox and the Edge Function — is already in place
+and is not described here; see [operations.md](operations.md) for the sending
+side and [ios-deployment-guide.md](ios-deployment-guide.md) for the build.
+
+Written as a runbook for whoever performs the upload, so it names people and
+credentials rather than explaining the design.
+
 ## Context
 
 Amicus already has iOS push notifications wired on the app side:

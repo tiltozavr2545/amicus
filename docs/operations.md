@@ -49,7 +49,7 @@ select * from public.orphaned_media_paths();
 
 Ни один из перечисленных не лежит в репозитории. Три разных хранилища, и
 путать их дорого — см. грабли про `SUPABASE_SERVICE_ROLE_KEY` в
-[../CLAUDE.md](../CLAUDE.md).
+[../AGENTS.md](../AGENTS.md).
 
 **Vault базы** (`select name from vault.secrets`) — их читает cron-задание
 `drain-notification-outbox`:
@@ -148,7 +148,7 @@ select coalesce(app_version, 'unknown') as version, count(*)
 Накатываются вручную через Supabase Management API, CI этого не делает.
 Порядок, требование дописать строку в `supabase_migrations.schema_migrations` и
 правило «RLS проверять симуляцией, а не на глаз» — в разделе «Конвенции работы»
-[../CLAUDE.md](../CLAUDE.md); здесь они не повторяются, чтобы не разъехались.
+[../AGENTS.md](../AGENTS.md); здесь они не повторяются, чтобы не разъехались.
 
 История свёрнута в baseline `20260826000000_baseline_schema.sql`; всё, что до
 него, лежит в теге `pre-baseline-migrations`. Baseline описывает конечное
