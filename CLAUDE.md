@@ -2,8 +2,8 @@
 
 Контекст для Claude Code при работе в этом репозитории.
 
-Весь контент — в [AGENTS.md](AGENTS.md), общем для любого агента (Codex,
-Claude Code и т.д.). Читать оттуда; отличий для Claude Code сейчас нет.
+Весь контент — в @AGENTS.md, общем для любого агента (Codex, Claude Code и
+т.д.). Отличий для Claude Code сейчас нет.
 
 Комментарии в `supabase/migrations/` ссылаются на «Грабли в CLAUDE.md» и на
 «Конвенции работы в CLAUDE.md» — имеется в виду AGENTS.md. Так сложилось
