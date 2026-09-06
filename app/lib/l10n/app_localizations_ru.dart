@@ -229,6 +229,10 @@ class AppLocalizationsRu extends AppLocalizations {
   String get connectionRequestSubtitle => 'Хочет добавить вас в знакомые';
 
   @override
+  String get connectionRequestUnknownName =>
+      'Кто-то, с кем у вас больше нет общей комнаты';
+
+  @override
   String get acceptRequestTooltip => 'Принять';
 
   @override

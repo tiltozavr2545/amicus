@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/refresh_after_await.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/feed_repository.dart';
@@ -55,15 +56,17 @@ class _FriendListItem extends ConsumerWidget {
   /// pointless reload.
   Future<void> _run(
     BuildContext context,
-    WidgetRef ref,
     Future<void> Function() action, {
     bool refreshFeed = true,
   }) async {
     final l10n = AppLocalizations.of(context)!;
+    // Captured before the await — see [refreshAfterAwait]. The feed tab this
+    // bumps is a different screen from the one that may be gone by now.
+    final refresh = refreshAfterAwait(context);
     try {
       await action();
-      ref.invalidate(friendsProvider);
-      if (refreshFeed) ref.read(feedRefreshTickProvider.notifier).bump();
+      refresh.invalidate(friendsProvider);
+      if (refreshFeed) refresh.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -73,8 +76,7 @@ class _FriendListItem extends ConsumerWidget {
   }
 
   Future<void> _confirmAndRun(
-    BuildContext context,
-    WidgetRef ref, {
+    BuildContext context, {
     required String title,
     required String content,
     required String confirmLabel,
@@ -100,7 +102,7 @@ class _FriendListItem extends ConsumerWidget {
     );
     if (confirmed != true) return;
     if (!context.mounted) return;
-    await _run(context, ref, action);
+    await _run(context, action);
   }
 
   @override
@@ -137,7 +139,6 @@ class _FriendListItem extends ConsumerWidget {
                 : l10n.favoriteFriendTooltip,
             onPressed: () => _run(
               context,
-              ref,
               () =>
                   (friend.isFavorite ? repo.unfavoriteUser : repo.favoriteUser)(
                     userId: currentUserId,
@@ -155,7 +156,6 @@ class _FriendListItem extends ConsumerWidget {
               if (friend.isMuted) {
                 _run(
                   context,
-                  ref,
                   () => repo.unmuteUser(
                     muterId: currentUserId,
                     mutedId: friend.userId,
@@ -164,7 +164,6 @@ class _FriendListItem extends ConsumerWidget {
               } else {
                 _confirmAndRun(
                   context,
-                  ref,
                   title: l10n.muteFriendTitle(friend.name),
                   content: l10n.muteFriendContent,
                   confirmLabel: l10n.muteButton,
@@ -188,7 +187,6 @@ class _FriendListItem extends ConsumerWidget {
               if (friend.isBlocked) {
                 _run(
                   context,
-                  ref,
                   () => repo.unblockUser(
                     blockerId: currentUserId,
                     blockedId: friend.userId,
@@ -197,7 +195,6 @@ class _FriendListItem extends ConsumerWidget {
               } else {
                 _confirmAndRun(
                   context,
-                  ref,
                   title: l10n.blockFriendTitle(friend.name),
                   content: l10n.blockFriendContent,
                   confirmLabel: l10n.blockButton,
@@ -512,14 +509,16 @@ class _IncomingRequestsState extends ConsumerState<_IncomingRequests> {
     final l10n = AppLocalizations.of(context)!;
     if (!_busy.add(request.id)) return;
     setState(() {});
+    // Captured before the await — see [refreshAfterAwait].
+    final refresh = refreshAfterAwait(context);
     try {
       await ref
           .read(connectionsRepositoryProvider)
           .respondToRequest(requestId: request.id, accept: accept);
-      ref.read(connectionRequestsTickProvider.notifier).bump();
+      refresh.read(connectionRequestsTickProvider.notifier).bump();
       // Accepting adds a Connection, and the list right below this one is
       // where it lands.
-      if (accept) ref.invalidate(friendsProvider);
+      if (accept) refresh.invalidate(friendsProvider);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -559,7 +558,11 @@ class _IncomingRequestsState extends ConsumerState<_IncomingRequests> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: FriendAvatar(avatarPath: request.otherAvatarPath),
-            title: Text(request.otherName),
+            // Their profile is readable because of the room the two share, so
+            // a name can go missing while the request stays answerable — see
+            // [ConnectionRequest.otherName]. Naming them generically keeps the
+            // buttons reachable; dropping the row would hide the request.
+            title: Text(request.otherName ?? l10n.connectionRequestUnknownName),
             subtitle: Text(l10n.connectionRequestSubtitle),
             trailing: _busy.contains(request.id)
                 ? const SizedBox(

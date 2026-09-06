@@ -494,6 +494,12 @@ abstract class AppLocalizations {
   /// **'Wants to add you as a connection'**
   String get connectionRequestSubtitle;
 
+  /// No description provided for @connectionRequestUnknownName.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone you no longer share a room with'**
+  String get connectionRequestUnknownName;
+
   /// No description provided for @acceptRequestTooltip.
   ///
   /// In en, this message translates to:

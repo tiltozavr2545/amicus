@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
+import '../../shared/refresh_after_await.dart';
 import '../auth/auth_providers.dart';
 import '../connections/connections_repository.dart';
 import '../connections/connections_screen.dart';
@@ -46,9 +47,13 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
   ) async {
     if (_isBusy) return false;
     setState(() => _isBusy = true);
+    // Captured before the await — see [refreshAfterAwait]. Leaving a room pops
+    // this screen, so by the time the RPC lands `ref` is regularly dead, and
+    // the rooms tab that has to reload is a different screen entirely.
+    final refresh = refreshAfterAwait(context);
     try {
       await action();
-      ref.read(roomsRefreshTickProvider.notifier).bump();
+      refresh.read(roomsRefreshTickProvider.notifier).bump();
       return true;
     } catch (e) {
       if (mounted) {
@@ -81,12 +86,17 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
     final l10n = AppLocalizations.of(context)!;
     if (!_asking.add(member.userId)) return;
     setState(() {});
+    // Captured before the await — see [refreshAfterAwait]. Without it, backing
+    // out of this screen while the ask is in flight threw out of `ref`, the
+    // throw was swallowed by the catch below, and the Connections tab kept
+    // offering "ask" for a request the server had already accepted.
+    final refresh = refreshAfterAwait(context);
     try {
       final connected = await ref
           .read(connectionsRepositoryProvider)
           .requestConnection(member.userId);
-      ref.read(connectionRequestsTickProvider.notifier).bump();
-      if (connected) ref.invalidate(friendsProvider);
+      refresh.read(connectionRequestsTickProvider.notifier).bump();
+      if (connected) refresh.invalidate(friendsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -100,8 +110,8 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
     } catch (e) {
       if (!mounted) return;
       if (e is PostgrestException && e.code == 'PT409') {
-        ref.read(connectionRequestsTickProvider.notifier).bump();
-        ref.invalidate(friendsProvider);
+        refresh.read(connectionRequestsTickProvider.notifier).bump();
+        refresh.invalidate(friendsProvider);
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(

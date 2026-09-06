@@ -80,7 +80,32 @@ class ConnectionRequest {
   /// shows one person either way, and [isIncoming] is what changes what it
   /// offers to do about them.
   final String otherId;
-  final String otherName;
+
+  /// Their display name, or null when their `users` row is no longer visible
+  /// to this viewer.
+  ///
+  /// Nullable because the row and the name have different lifetimes. A request
+  /// is only ever sent between people who share a room, and it is that shared
+  /// room — not the request — that makes the other side's profile readable
+  /// (`shares_room_with_caller()` in the `users` SELECT policy). Leave the
+  /// room, or be removed from it, and the request row lives on while the embed
+  /// beside it comes back `null`.
+  ///
+  /// This used to be a plain `String` read through `as Map<String, dynamic>`,
+  /// so that `null` threw a `_TypeError` out of [ConnectionsRepository
+  /// .fetchRequests] and put the whole provider into an error state — and
+  /// since the screens read it as `.value ?? const []`, the result was silent:
+  /// every incoming request vanished from the Connections tab, permanently,
+  /// because the row that caused it never goes away on its own.
+  ///
+  /// Dropping such a row instead would have been worse than showing it
+  /// nameless: the sender's own copy is what keeps the "ask" button from
+  /// coming back for a request `connection_requests_pair_key` can never accept
+  /// twice, and the recipient can still answer one — `respond_to_connection
+  /// _request()` asks for the recipient and a pending status, never for a
+  /// shared room. So the row stays and the screen names them
+  /// `connectionRequestUnknownName`.
+  final String? otherName;
   final String? otherAvatarPath;
 
   /// They asked us. The other direction is shown too, as "asked" next to
@@ -94,15 +119,18 @@ class ConnectionRequest {
 
   factory ConnectionRequest.fromRow(Map<String, dynamic> row, String viewerId) {
     final isIncoming = row['recipient_id'] == viewerId;
+    // Nullable, and not by accident — see [otherName]. PostgREST hands back
+    // `null` for an embedded row RLS filtered out, which is what happens the
+    // moment the two stop sharing a room.
     final other =
         (isIncoming ? row['requester'] : row['recipient'])
-            as Map<String, dynamic>;
+            as Map<String, dynamic>?;
     return ConnectionRequest(
       id: row['id'] as String,
       otherId:
           (isIncoming ? row['requester_id'] : row['recipient_id']) as String,
-      otherName: other['name'] as String,
-      otherAvatarPath: other['avatar_path'] as String?,
+      otherName: other?['name'] as String?,
+      otherAvatarPath: other?['avatar_path'] as String?,
       isIncoming: isIncoming,
       isPending: row['status'] == 'pending',
     );
