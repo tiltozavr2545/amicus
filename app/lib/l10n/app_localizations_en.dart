@@ -232,6 +232,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionRequestSubtitle => 'Wants to add you as a connection';
 
   @override
+  String get connectionRequestUnknownName =>
+      'Someone you no longer share a room with';
+
+  @override
   String get acceptRequestTooltip => 'Accept';
 
   @override

@@ -76,6 +76,7 @@
   "unblockButton": "Разблокировать",
   "connectionRequestsTitle": "Заявки в знакомые",
   "connectionRequestSubtitle": "Хочет добавить вас в знакомые",
+  "connectionRequestUnknownName": "Кто-то, с кем у вас больше нет общей комнаты",
   "acceptRequestTooltip": "Принять",
   "declineRequestTooltip": "Отклонить",
   "failedToAnswerRequestError": "Не удалось ответить на заявку. Попробуйте ещё раз.",

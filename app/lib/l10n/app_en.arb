@@ -91,6 +91,7 @@
   "unblockButton": "Unblock",
   "connectionRequestsTitle": "Connection requests",
   "connectionRequestSubtitle": "Wants to add you as a connection",
+  "connectionRequestUnknownName": "Someone you no longer share a room with",
   "acceptRequestTooltip": "Accept",
   "declineRequestTooltip": "Decline",
   "failedToAnswerRequestError": "Failed to answer the request. Please try again.",

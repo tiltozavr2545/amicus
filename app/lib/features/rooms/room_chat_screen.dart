@@ -10,6 +10,7 @@ import '../../l10n/app_localizations.dart';
 import '../../shared/media_gallery.dart';
 import '../../shared/media_pick_message.dart';
 import '../../shared/media_picking.dart';
+import '../../shared/refresh_after_await.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
 import 'room_details_screen.dart';
@@ -229,10 +230,14 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   }
 
   Future<void> _markRead() async {
+    // Captured before the await — see [refreshAfterAwait]. This runs on every
+    // arriving message, so leaving the chat mid-flight is the ordinary case,
+    // and the badge it clears belongs to the rooms tab, not to this screen.
+    final refresh = refreshAfterAwait(context);
     try {
       await ref.read(roomsRepositoryProvider).markRoomRead(widget.roomId);
       // The unread badge in the room list is now wrong by exactly this room.
-      ref.read(roomsRefreshTickProvider.notifier).bump();
+      refresh.read(roomsRefreshTickProvider.notifier).bump();
     } catch (_) {
       // Best effort by design: failing to move a read mark is not worth a
       // message on screen, and the next open tries again.

@@ -8,14 +8,14 @@ submitted; "Add for Review" has not been touched.
 ```
 A feed of only the people you actually know. No algorithm, no endless scroll — just real connections and real moments, shared in a circle you trust.
 ```
-(158 chars)
+(148 chars)
 
 ## Description (4000 char max)
 
 ```
 Amicus is a social feed for the people you've actually met — not the ones an algorithm thinks you should follow.
 
-Your feed shows posts only from Connections: people you've added through a personal invite link or a QR code at an in-person meeting. No public discovery, no strangers, no random recommendations.
+Your feed shows posts only from Connections: people you've added through a personal invite link you hand over in person. No public discovery, no strangers, no random recommendations.
 
 WHY AMICUS
 
@@ -23,29 +23,30 @@ Most social apps optimize for endless scrolling. Amicus does the opposite — a 
 
 WHAT YOU CAN DO
 
-• Connect through invite links or QR codes — no public friend requests, no strangers
+• Connect through personal invite links — no public friend requests, no strangers
+• Ask to connect inside a shared room, when you've met there rather than in person
 • Share text posts with up to 20 photos or videos
 • Choose who sees each post: all your Connections, or just your favorites
 • React and comment, with one level of threaded replies
-• Rooms: private group or 1:1 chats with the people you're connected to — real-time messages, read receipts, and push notifications
+• Rooms: private group or 1:1 chats with the people you're connected to — real-time messages with photos and videos, read receipts, typing indicators, and push notifications you can silence per room
 • Mute, block, or favorite people — with fine-grained control per person
 • Light and dark themes
 • Available in English and Russian
 
 YOUR PRIVACY, BUILT IN
 
-Visibility rules are enforced at the database level, not just in the app — so there's no client-side shortcut that leaks a post, comment, or profile to someone outside your Connections. Reactions show aggregate counts only; who reacted with what stays private. Blocking or muting someone hides their posts and comments everywhere, immediately, regardless of app version.
+Visibility rules are enforced at the database level, not just in the app — so there's no client-side shortcut that leaks a post, comment, or profile to someone outside your Connections. Reactions show aggregate counts only; who reacted with what stays private. Blocking someone hides their posts and comments everywhere, immediately, regardless of app version. Muting is a quieter, personal setting: it takes someone out of your feed and stops their notifications, without hiding them from you or telling them anything.
 
 Amicus is about staying close to the people you actually know — without the noise.
 ```
-(1,542 chars)
+(1,917 chars)
 
 ## Keywords (100 char max, comma-separated, no spaces after commas)
 
 ```
 social,friends,private,circle,connections,close friends,chat,messaging,invite,trust,detox
 ```
-(90 chars)
+(89 chars)
 
 ## Support URL
 
@@ -61,10 +62,11 @@ one.)*
 ## Copyright
 
 ```
-© 2026 Andre Roussakoff
+© 2026 Timofei Rusakov
 ```
-*(confirm the name/entity you want here — this is usually the developer
-account holder's legal name or company name)*
+*(the same line the published [privacy policy](../gh-pages/privacy.html) and
+[terms of use](../gh-pages/terms.html) carry — keep the three in step if it
+ever changes)*
 
 ## Notes
 
@@ -75,3 +77,9 @@ account holder's legal name or company name)*
   the "Sign-In Information" section so reviewers can actually get past the
   login screen.
 - Screenshots (iPhone 6.5", up to 10) are still needed — not yet captured.
+- Copy was last checked against the app on 2026-09-05. Two claims had drifted
+  and were corrected: QR-code connecting (never shipped — `qr_code` exists in
+  `connections.method` only as a placeholder, see `docs/data-model.md`) and
+  "muting hides their posts everywhere regardless of app version" (since
+  migration 20260829130000 mute is a feed filter applied by the client, not a
+  database rule; blocking still is one). Re-check both before submitting.

@@ -7,6 +7,7 @@ import '../../l10n/app_localizations.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
+import '../../shared/refresh_after_await.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
@@ -74,11 +75,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
     setState(() => _isSaving = true);
+    // Captured before the await — see [refreshAfterAwait]. The name also
+    // paints the shell's profile tab, which outlives this screen.
+    final refresh = refreshAfterAwait(context);
     try {
       await ref
           .read(profileRepositoryProvider)
           .updateName(userId: userId, name: name);
-      ref.invalidate(myProfileProvider);
+      refresh.invalidate(myProfileProvider);
     } catch (e) {
       // _showError checks context.mounted itself before touching context —
       // the analyzer can't see across that call, only into this function.
