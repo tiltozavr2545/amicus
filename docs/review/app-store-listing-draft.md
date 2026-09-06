@@ -62,10 +62,11 @@ one.)*
 ## Copyright
 
 ```
-© 2026 Andre Roussakoff
+© 2026 Timofei Rusakov
 ```
-*(confirm the name/entity you want here — this is usually the developer
-account holder's legal name or company name)*
+*(the same line the published [privacy policy](../gh-pages/privacy.html) and
+[terms of use](../gh-pages/terms.html) carry — keep the three in step if it
+ever changes)*
 
 ## Notes
 

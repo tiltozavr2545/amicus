@@ -1,15 +1,17 @@
 # iOS Push Notifications — APNs Key Setup (Firebase Cloud Messaging)
 
-The one step that connects Amicus's existing push code to Apple: handing
-Firebase an APNs Authentication Key. Everything else — the entitlement, the
-Firebase registration, the outbox and the Edge Function — is already in place
-and is not described here; see [operations.md](operations.md) for the sending
-side and [ios-deployment-guide.md](ios-deployment-guide.md) for the build.
+**This is done.** The APNs Authentication Key is uploaded into Firebase and
+iOS push delivery works; the document is kept for two things — checking that
+the key is still in place, and repeating the upload if it ever has to be done
+again (the key is revoked, someone deletes it from Firebase, or a new Firebase
+project appears).
 
-Written as a runbook rather than as design notes, so it names people and
-credentials. Start with "Is the key already uploaded?" — the upload is a
-one-time step for the whole Apple Developer team and may already be behind
-you.
+What it covers is the one step that connects Amicus's existing push code to
+Apple. Everything else — the entitlement, the Firebase registration, the
+outbox and the Edge Function — is described elsewhere: see
+[operations.md](operations.md) for the sending side and
+[ios-deployment-guide.md](ios-deployment-guide.md) for the build. Written as a
+runbook rather than as design notes, so it names people and credentials.
 
 ## Context
 
@@ -25,14 +27,15 @@ just adding the iOS side of Cloud Messaging to it — no new project needed.
 The piece this document is about: Firebase needs an **APNs Authentication
 Key** before it can actually deliver anything to iOS devices. Without one,
 `Firebase.initializeApp()` succeeds and the app still *registers* for push —
-a token appears in `device_tokens` like on Android — but no notification ever
-arrives, not in TestFlight and not on a real device. That is what makes the
-gap quiet, and why it is worth checking rather than assuming either way.
+a token appears in `device_tokens` exactly as on Android — but no notification
+ever arrives, not in TestFlight and not on a real device. Nothing fails
+loudly, which is why the section below exists: a working registration is not
+evidence of a working key, and the two are easy to confuse.
 
-## Is the key already uploaded?
+## Checking that the key is in place
 
-Check before doing anything — the upload is a one-time step for the whole
-Apple Developer team, and it may already have been done.
+Two ways to confirm it, useful when push stops arriving on iOS and you need to
+rule this out — or before repeating the upload for a rotated key.
 
 **The authoritative check, in Firebase.** [Firebase
 Console](https://console.firebase.google.com/) → project **`amicus-a60c1`** →
@@ -89,14 +92,18 @@ accepted it (see the comment on `doneIds` in `index.ts`). And the iOS Simulator
 cannot receive real pushes under any configuration, so a silent simulator says
 nothing either.
 
-## If it is not uploaded — what you need to do
+## Doing the upload again
+
+The steps as they were performed the first time. Needed only if the key is
+gone or replaced — nothing here has to be repeated for an ordinary release.
 
 ### 1. Get the APNs key details from Madrus
 
 The APNs Auth Key has already been generated (Apple only allows downloading
 the `.p8` file once, so Madrus did this himself). Ask him for the `.p8` file
 directly (AirDrop, secure file share, etc. — never over chat/email in plain
-text), plus these two IDs:
+text), plus the details below — Firebase asks for the Key ID and the Team ID,
+the rest is context:
 
 - **Key Name**: `Amicus APNs Key`
 - **Key ID**: `UUXUV8VJX6`
@@ -124,7 +131,7 @@ text), plus these two IDs:
 
 ### 3. Verify
 
-Both checks from "Is the key already uploaded?" above, in that order: the
+Both checks from "Checking that the key is in place" above, in that order: the
 Cloud Messaging tab should stop offering an **Upload** button and start
 listing the Key ID, and the queued-notification check should come back
 `"sent":1` with the push actually arriving on a **physical iOS device** or
