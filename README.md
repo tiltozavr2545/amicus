@@ -63,6 +63,9 @@ supabase/functions/      — Edge Function send-push (рассылка увед�
 docs/                    — схема БД, устройство клиента, эксплуатация,
                            отложенное и исторические планы
 docs/review/             — черновики текстов для сторов, ждущие вычитки
+docs/gh-pages/           — исходники страниц на GitHub Pages (privacy policy,
+                           terms of use, подтверждение email, сброс пароля);
+                           выкладываются CI при пуше в main
 ```
 
 ## Запуск локально
@@ -86,6 +89,7 @@ flutter run --dart-define-from-file=.env
 - [Push-уведомления iOS (APNs)](docs/ios-push-apns-setup.md) — ключ APNs, привязка к Firebase Cloud Messaging
 - [Отложенные фичи](docs/future-development.md) — GPS-треки, веб-версия, открытые вопросы
 - [Черновик листинга App Store](docs/review/app-store-listing-draft.md) — тексты для App Store Connect, ещё не поданные и ждущие вычитки
+- [Страницы GitHub Pages](docs/gh-pages/) — опубликованные privacy policy и terms of use, страницы подтверждения email и сброса пароля
 - [Changelog](CHANGELOG.md) — что появилось в какой версии
 
 Историческое — как проект задумывался и как шёл, а не как устроен сейчас:

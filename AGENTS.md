@@ -16,6 +16,7 @@
 | расписания, секреты, релиз, рассылка «обновитесь» | [docs/operations.md](docs/operations.md) |
 | отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
 | сборка и деплой iOS, push через APNs (на английском — шаги идут по Xcode/App Store Connect, там всё на английском) | [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md), [docs/ios-push-apns-setup.md](docs/ios-push-apns-setup.md) |
+| опубликованные privacy policy и terms of use, страницы подтверждения email и сброса пароля | [docs/gh-pages/](docs/gh-pages/) — правится здесь, а не в ветке `gh-pages`: её переписывает CI при пуше в `main` |
 | черновик листинга App Store (на английском, по той же причине) | [docs/review/app-store-listing-draft.md](docs/review/app-store-listing-draft.md) |
 | историческое: замысел, как шёл MVP, старый список отложенного | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
 

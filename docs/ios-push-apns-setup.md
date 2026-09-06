@@ -6,8 +6,10 @@ Firebase registration, the outbox and the Edge Function — is already in place
 and is not described here; see [operations.md](operations.md) for the sending
 side and [ios-deployment-guide.md](ios-deployment-guide.md) for the build.
 
-Written as a runbook for whoever performs the upload, so it names people and
-credentials rather than explaining the design.
+Written as a runbook rather than as design notes, so it names people and
+credentials. Start with "Is the key already uploaded?" — the upload is a
+one-time step for the whole Apple Developer team and may already be behind
+you.
 
 ## Context
 
@@ -20,13 +22,74 @@ Amicus already has iOS push notifications wired on the app side:
 This is the **same Firebase project already used for Android push**. We are
 just adding the iOS side of Cloud Messaging to it — no new project needed.
 
-What's still missing: Firebase needs an **APNs Authentication Key** to be
-able to actually deliver push notifications to iOS devices. Without it,
-`Firebase.initializeApp()` succeeds and the app can *register* for push, but
-no notification will ever arrive — not even in TestFlight or on a real
-device.
+The piece this document is about: Firebase needs an **APNs Authentication
+Key** before it can actually deliver anything to iOS devices. Without one,
+`Firebase.initializeApp()` succeeds and the app still *registers* for push —
+a token appears in `device_tokens` like on Android — but no notification ever
+arrives, not in TestFlight and not on a real device. That is what makes the
+gap quiet, and why it is worth checking rather than assuming either way.
 
-## What you need to do
+## Is the key already uploaded?
+
+Check before doing anything — the upload is a one-time step for the whole
+Apple Developer team, and it may already have been done.
+
+**The authoritative check, in Firebase.** [Firebase
+Console](https://console.firebase.google.com/) → project **`amicus-a60c1`** →
+gear icon → **Project settings** → **Cloud Messaging** tab → **Apple app
+configuration**. Under the iOS app `com.github.tiltozavr2545.amicus`:
+
+- a key is in place if the **APNs Authentication Key** row lists a Key ID
+  (`UUXUV8VJX6`, if it is the one below) with a delete/replace control next
+  to it;
+- it is missing if that row shows an **Upload** button and nothing else.
+
+**The functional check, from the database.** Useful when you cannot get into
+the Firebase console, or want to confirm that delivery actually works rather
+than that a key merely exists. Queue one notification to yourself through the
+Management API (`POST /v1/projects/<ref>/database/query`, see «Конвенции
+работы» in [../AGENTS.md](../AGENTS.md)):
+
+```sql
+-- Any kind works; `app_update` is the one whose text needs no payload fields.
+-- This does send a real "update the app" push to your own devices.
+insert into public.notification_outbox (user_id, kind, payload)
+select u.id, 'app_update', '{"build": 1, "version": "apns-check"}'::jsonb
+  from auth.users u
+ where u.email = 'your@email.here';
+```
+
+The `drain-notification-outbox` cron picks it up within a minute and calls the
+Edge Function through `pg_net`, which keeps the response. Read it:
+
+```sql
+select status_code, content::text, created
+  from net._http_response
+ order by created desc
+ limit 3;
+```
+
+- `{"processed":1,"sent":1}` — FCM accepted the send. If the only device
+  registered on that account is the iPhone and the notification arrived, APNs
+  is wired up.
+- `{"processed":1,"sent":0}` — FCM refused every delivery. With an iOS-only
+  account that is the signature of a missing or wrong APNs key
+  (`THIRD_PARTY_AUTH_ERROR` on Google's side).
+
+Two caveats. `sent` counts all of that user's devices, so run this on an
+account whose only registered device is the iPhone — otherwise an Android
+phone in the same account makes `sent` non-zero regardless. And
+`net._http_response` is pruned after a few hours, so read it soon after.
+
+**What does NOT prove anything.** A row in `device_tokens` for the iPhone only
+means the app registered for push — registration succeeds with no APNs key at
+all, which is exactly what makes this failure quiet. Neither does `sent_at` on
+the outbox row: `send-push` stamps every row it claimed, whether or not FCM
+accepted it (see the comment on `doneIds` in `index.ts`). And the iOS Simulator
+cannot receive real pushes under any configuration, so a silent simulator says
+nothing either.
+
+## If it is not uploaded — what you need to do
 
 ### 1. Get the APNs key details from Madrus
 
@@ -61,11 +124,12 @@ text), plus these two IDs:
 
 ### 3. Verify
 
-- The Cloud Messaging tab should now show the key as configured (no more
-  "upload a key" prompt for the iOS app).
-- Real push delivery can only be verified on a **physical iOS device** (or
-  via TestFlight) — the iOS Simulator cannot receive real push notifications
-  at all, regardless of this setup. That's expected and not a bug.
+Both checks from "Is the key already uploaded?" above, in that order: the
+Cloud Messaging tab should stop offering an **Upload** button and start
+listing the Key ID, and the queued-notification check should come back
+`"sent":1` with the push actually arriving on a **physical iOS device** or
+through TestFlight. The Simulator cannot receive real pushes under any
+configuration, so it is not a valid test here.
 
 ## Notes
 
