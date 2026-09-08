@@ -1,5 +1,5 @@
 #!/bin/sh
-set -e
+set -eu
 
 # Xcode Cloud clones the repo and then runs `xcodebuild archive` on
 # Runner.xcworkspace directly — it has no idea this is a Flutter project.
@@ -17,7 +17,7 @@ if [ ! -d "$FLUTTER_HOME" ]; then
 fi
 export PATH="$PATH:$FLUTTER_HOME/bin"
 
-cd "$CI_WORKSPACE/app"
+cd "$CI_PRIMARY_REPOSITORY_PATH/app"
 
 # GoogleService-Info.plist is gitignored too (see docs/ios-deployment-guide.md
 # prerequisites) — Xcode's project.pbxproj still expects it as a bundled
