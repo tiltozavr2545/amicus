@@ -43,10 +43,19 @@ ENVFILE
 flutter precache --ios
 flutter pub get
 
+# Xcode Cloud silently overrides CFBundleVersion with its own internal
+# counter ($CI_BUILD_NUMBER) regardless of what pubspec.yaml/Generated.xcconfig
+# say - confirmed by testing (a pubspec bump to +58 still produced build "5",
+# matching $CI_BUILD_NUMBER exactly). Rather than fight that, derive the
+# actual build number from it, offset well clear of every build number ever
+# uploaded locally (up to 57 as of this writing) so it can never collide.
+# Bump the offset upward, never down, if history grows past it.
+IOS_BUILD_NUMBER=$((CI_BUILD_NUMBER + 52))
+
 # Same command as `make build-ios`, minus --no-codesign's placeholder
 # --dart-define pair: this bakes the real DART_DEFINES into
 # ios/Flutter/Generated.xcconfig and builds Flutter.framework/App.framework,
 # which Xcode Cloud's own xcodebuild archive step then picks up through the
 # project's existing xcconfig include chain. --no-codesign because signing
 # and archiving are Xcode Cloud's job, not this script's.
-flutter build ios --release --no-codesign --dart-define-from-file=.env
+flutter build ios --release --no-codesign --build-number="$IOS_BUILD_NUMBER" --dart-define-from-file=.env
