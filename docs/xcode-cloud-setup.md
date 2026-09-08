@@ -105,30 +105,24 @@ was made on Apple's own stable image — no `BuildMachineOSBuild` beta stamp,
 so it should clear the `ITMS-90111` check that rejected locally-built
 binaries.
 
-## Known quirk: the build number won't match pubspec.yaml
+## Build number override
 
-Xcode Cloud's archive/upload pipeline silently rewrites `CFBundleVersion`
-with its own internal `$CI_BUILD_NUMBER` counter, regardless of what
-`pubspec.yaml`/`Generated.xcconfig` say. Confirmed by testing two different
-ways to force it (letting pubspec drive it, and passing `--build-number`
-explicitly with a safe offset) — both were overridden anyway. There's no UI
-toggle for this in either App Store Connect's web workflow editor or
-Xcode's target Identity tab (both checked, neither has one).
+Xcode's `VERSIONING_SYSTEM` build setting, when set to `apple-generic`,
+stamps the built app's `CFBundleVersion` from `CURRENT_PROJECT_VERSION` at
+build time — overriding whatever `Info.plist` actually specifies
+(`$(FLUTTER_BUILD_NUMBER)`, driven by `pubspec.yaml`), regardless of what
+any pre-build script computes. Xcode Cloud's own "automatic build
+numbering" relies on this being enabled, and it was silently replacing
+`pubspec.yaml`'s build number with its own internal counter (App Store
+Connect showed build `4`/`5`/`6` instead of the `57`/`58` actually in
+`pubspec.yaml`).
 
-This only affects the **iOS binary Xcode Cloud produces** — `pubspec.yaml`'s
-build number is still the real source of truth for Android releases and any
-local iOS fallback build (`make release-ios`), and the marketing version
-(`0.18.6`) still flows through correctly; only the build-number component
-diverges. Keep bumping it in `pubspec.yaml` as usual for Android's sake.
-
-Practical risk: `$CI_BUILD_NUMBER` starts low and only grows as fast as this
-workflow gets triggered — it would need dozens more runs to reach the range
-of pre-Xcode-Cloud local build numbers (up to 57 as of this writing) and
-risk a collision (App Store Connect build numbers must be unique and
-increasing across the app's entire history, forever — "Expired" status
-doesn't free a number back up). If that becomes an actual concern, look for
-a real Xcode Cloud setting to disable automatic versioning rather than
-trying to out-compute it from `ci_post_clone.sh` again.
+Fixed by turning it off for the `Runner` target, across all three build
+configurations (Debug/Profile/Release): Xcode → select the `Runner`
+project → `Runner` target → **Build Settings** → **Versioning** →
+**Versioning System** → **None**. With it off, `pubspec.yaml`'s build
+number is the real source of truth again on both local and Xcode Cloud
+builds — no workarounds needed in `ci_post_clone.sh`.
 
 ## 6. Submit it
 
