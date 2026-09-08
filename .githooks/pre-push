@@ -2,4 +2,7 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
+# See .githooks/pre-commit: GIT_DIR/GIT_WORK_TREE leak into `flutter`'s
+# internal git calls against its own unrelated SDK checkout otherwise.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 exec make -C "$repo_root" pre-push
