@@ -43,19 +43,20 @@ ENVFILE
 flutter precache --ios
 flutter pub get
 
-# Xcode Cloud silently overrides CFBundleVersion with its own internal
-# counter ($CI_BUILD_NUMBER) regardless of what pubspec.yaml/Generated.xcconfig
-# say - confirmed by testing (a pubspec bump to +58 still produced build "5",
-# matching $CI_BUILD_NUMBER exactly). Rather than fight that, derive the
-# actual build number from it, offset well clear of every build number ever
-# uploaded locally (up to 57 as of this writing) so it can never collide.
-# Bump the offset upward, never down, if history grows past it.
-IOS_BUILD_NUMBER=$((CI_BUILD_NUMBER + 52))
-
-# Same command as `make build-ios`, minus --no-codesign's placeholder
-# --dart-define pair: this bakes the real DART_DEFINES into
-# ios/Flutter/Generated.xcconfig and builds Flutter.framework/App.framework,
-# which Xcode Cloud's own xcodebuild archive step then picks up through the
-# project's existing xcconfig include chain. --no-codesign because signing
-# and archiving are Xcode Cloud's job, not this script's.
-flutter build ios --release --no-codesign --build-number="$IOS_BUILD_NUMBER" --dart-define-from-file=.env
+# Xcode Cloud's own archive/upload pipeline unconditionally rewrites
+# CFBundleVersion with its internal $CI_BUILD_NUMBER counter, regardless of
+# whatever this script computes here - confirmed by testing two different
+# ways (letting pubspec.yaml drive it, and passing --build-number explicitly
+# with a safe offset); both were silently overridden to Xcode Cloud's raw
+# counter anyway (see IMM-172). Nothing in ci_post_clone.sh can influence the
+# final iOS build number, so it isn't worth trying to compute one here -
+# --build-number is intentionally omitted; use whatever pubspec.yaml already
+# has, same as `make build-ios` does locally.
+#
+# Practical risk: $CI_BUILD_NUMBER starts low (currently in the single
+# digits) and grows only as fast as this workflow triggers builds - it would
+# need dozens more runs before reaching the range of pre-Xcode-Cloud local
+# build numbers (up to 57 as of this writing) and risking a collision. If
+# that becomes a real concern, look for an actual Xcode Cloud setting to
+# disable automatic versioning rather than trying to out-compute it again.
+flutter build ios --release --no-codesign --dart-define-from-file=.env
