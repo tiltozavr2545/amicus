@@ -16,6 +16,7 @@
 | расписания, секреты, релиз, рассылка «обновитесь» | [docs/operations.md](docs/operations.md) |
 | отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
 | сборка и деплой iOS, push через APNs (на английском — шаги идут по Xcode/App Store Connect, там всё на английском) | [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md), [docs/ios-push-apns-setup.md](docs/ios-push-apns-setup.md) |
+| сборка iOS через Xcode Cloud вместо локальной машины (на английском, по той же причине) | [docs/xcode-cloud-setup.md](docs/xcode-cloud-setup.md) |
 | опубликованные privacy policy и terms of use, страницы подтверждения email и сброса пароля | [docs/gh-pages/](docs/gh-pages/) — правится здесь, а не в ветке `gh-pages`: её переписывает CI при пуше в `main` |
 | черновик листинга App Store (на английском, по той же причине) | [docs/review/app-store-listing-draft.md](docs/review/app-store-listing-draft.md) |
 | историческое: замысел, как шёл MVP, старый список отложенного | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
@@ -28,10 +29,19 @@ SQL/PostgreSQL и C#/.NET. Работать пошагово, не забега�
 
 ## Ограничения среды
 
-- **macOS 12.7.6.** Flutter новее 3.32.8 не запускается (нужна macOS 14+), SDK
-  закреплён на 3.32.8. Не предлагать обновление — это тупик.
+- **Два разработчика, две машины.** Android — на старом Intel MacBook Pro (с
+  Touch Bar), macOS 12.7.6. Flutter новее 3.32.8 на нём не запускается (нужна
+  macOS 14+), SDK закреплён на 3.32.8. Не предлагать обновление — машина
+  физически не тянет более новую macOS, это тупик. iOS — на M4 MacBook Pro
+  (Apple Silicon), этого ограничения там нет.
 - **iOS.** Собирается и деплоится в TestFlight; актуальный процесс и
-  ограничения — `docs/ios-deployment-guide.md`.
+  ограничения — `docs/ios-deployment-guide.md`. Если машина для iOS-сборки
+  стоит на бета-версии macOS, локальный `flutter build ipa`/`make release-ios`
+  всё равно проходит, но App Store Connect отклоняет бинарник (`ITMS-90111:
+  Unsupported SDK or Xcode version`) — в бинарник зашивается версия хостовой
+  ОС сборочной машины (`BuildMachineOSBuild` в `Info.plist`), а не только
+  версия Xcode.app. Xcode Cloud обходит это, собирая на стабильном образе
+  Apple независимо от локальной macOS — см. `docs/xcode-cloud-setup.md`.
 - `compileSdk`/`targetSdk` прибиты числом **36** в `android/app/build.gradle.kts`
   (требование Play), AGP **8.9.3** на Gradle **8.12** — более новый AGP потребует
   Gradle 8.13.
