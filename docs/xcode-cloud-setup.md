@@ -130,3 +130,19 @@ From here, follow [ios-deployment-guide.md](ios-deployment-guide.md#9-get-it-int
 steps 8–9 as usual (attach to a test group, or select the build on the App
 Store version page and resubmit for review) — Xcode Cloud only replaces how
 the binary gets built, not anything downstream of that.
+
+### If a previous submission was rejected
+
+If the app version already has an earlier **rejected** submission attached
+(e.g. the original `ITMS-90111` rejection this whole setup exists to fix),
+the generic **Submit for Review** button on the main version page can
+silently do nothing — it appears to work (button disappears) but the status
+stays on "Ready for Review" forever, with no new entry in the Submissions
+list, no matter how many times you refresh or re-log in.
+
+The actual fix: go to **App Review** in the sidebar → **Submissions** →
+click the **date link** on the rejected submission (the one showing
+"Unresolved Issues") → that opens the specific submission's own page, which
+has its own **Resubmit for Review** button. Clicking that (not the generic
+one on the main version page) is what actually re-queues it — status then
+correctly moves to "Waiting for Review".
