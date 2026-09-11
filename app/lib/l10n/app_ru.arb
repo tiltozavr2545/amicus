@@ -251,6 +251,9 @@
 
   "roomChatTitle": "Чат",
   "mediaMessagePreview": "Фото",
+  "chatDateSeparatorToday": "Сегодня",
+  "chatDateSeparatorYesterday": "Вчера",
+  "chatOriginalMessageUnavailableLabel": "Оригинал сообщения недоступен",
   "typingStatus": "печатает…",
   "someoneTypingStatus": "{name} печатает…",
   "@someoneTypingStatus": {

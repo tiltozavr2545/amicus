@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/rooms/room_chat_screen.dart';
@@ -38,6 +39,10 @@ class _FakeRoomsRepository implements RoomsRepository {
   /// what it collects reaches the repository.
   final List<List<PickedMedia>> sentMedia = [];
 
+  /// `replyToId` each send carried, in order — null entries are plain
+  /// messages, so a test can tell a reply's send apart from an ordinary one.
+  final List<String?> sentReplyToIds = [];
+
   @override
   Future<RoomMessage> sendMessage({
     required String roomId,
@@ -45,9 +50,11 @@ class _FakeRoomsRepository implements RoomsRepository {
     required String text,
     required String clientToken,
     List<PickedMedia> media = const [],
+    String? replyToId,
   }) async {
     sentTexts.add(text);
     sentMedia.add(media);
+    sentReplyToIds.add(replyToId);
     if (sendThrows) throw Exception('rejected');
     return RoomMessage(
       id: 'sent-${sentTexts.length}',
@@ -55,6 +62,10 @@ class _FakeRoomsRepository implements RoomsRepository {
       authorId: authorId,
       text: text,
       createdAt: DateTime.utc(2026, 8, 26, 19),
+      replyToId: replyToId,
+      replyToPreview: replyToId == null
+          ? null
+          : replyPreviewFor(messages, replyToId),
     );
   }
 
@@ -122,6 +133,8 @@ RoomMessage _message({
   DateTime? createdAt,
   DateTime? deletedAt,
   List<RoomMessageMedia> media = const [],
+  String? replyToId,
+  RoomMessageReplyPreview? replyToPreview,
 }) => RoomMessage(
   id: id,
   roomId: 'room-1',
@@ -130,7 +143,29 @@ RoomMessage _message({
   createdAt: createdAt ?? DateTime.utc(2026, 8, 26, 18),
   deletedAt: deletedAt,
   media: media,
+  replyToId: replyToId,
+  replyToPreview: replyToPreview,
 );
+
+/// What a real send's `reply_to` embed would resolve to, built from whatever
+/// the fake repository already has loaded — the fake's stand-in for the
+/// server-side join `RoomsRepository.sendMessage` relies on.
+RoomMessageReplyPreview? replyPreviewFor(
+  List<RoomMessage> messages,
+  String id,
+) {
+  for (final m in messages) {
+    if (m.id != id) continue;
+    return RoomMessageReplyPreview(
+      id: m.id,
+      text: m.text,
+      hasMedia: m.media.isNotEmpty,
+      authorName: m.authorName,
+      isDeleted: m.isDeleted,
+    );
+  }
+  return null;
+}
 
 final _room = Room(
   id: 'room-1',
@@ -369,6 +404,178 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('одно сообщение'), findsOneWidget);
+  });
+
+  testWidgets('day separators use relative labels for recent days', (
+    tester,
+  ) async {
+    // Anchored to `now` rather than fixed dates: the boundary check is
+    // "same calendar day as today/yesterday", which a hardcoded date would
+    // only happen to satisfy on the day this test was written.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 10);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final lastWeek = today.subtract(const Duration(days: 8));
+
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(id: 'm3', authorId: 'me', text: 'сегодня', createdAt: today),
+        _message(
+          id: 'm2',
+          authorId: 'anya',
+          text: 'вчера',
+          createdAt: yesterday,
+        ),
+        _message(
+          id: 'm1',
+          authorId: 'anya',
+          text: 'на прошлой неделе',
+          createdAt: lastWeek,
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(
+      find.text(DateFormat('d MMM y', 'en').format(lastWeek)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('messages from the same day share one separator', (tester) async {
+    final now = DateTime.now();
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'm2',
+          authorId: 'me',
+          text: 'второе',
+          createdAt: DateTime(now.year, now.month, now.day, 18),
+        ),
+        _message(
+          id: 'm1',
+          authorId: 'anya',
+          text: 'первое',
+          createdAt: DateTime(now.year, now.month, now.day, 9),
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today'), findsOneWidget);
+  });
+
+  testWidgets('long-pressing a message offers to reply to it', (tester) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'оригинал')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('оригинал'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reply'), findsOneWidget);
+    // Not the viewer's own message, so no delete option.
+    expect(find.text('Delete'), findsNothing);
+
+    await tester.tap(find.text('Reply'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Replying to: Аня'), findsOneWidget);
+  });
+
+  testWidgets('the close button on the reply preview cancels it', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'оригинал')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('оригинал'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reply'));
+    await tester.pumpAndSettle();
+    expect(find.text('Replying to: Аня'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Replying to: Аня'), findsNothing);
+  });
+
+  testWidgets('a deleted message offers no long-press actions', (tester) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'm1',
+          authorId: 'anya',
+          text: '',
+          deletedAt: DateTime.utc(2026, 8, 26, 18, 5),
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('Message deleted'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reply'), findsNothing);
+    expect(find.text('Delete'), findsNothing);
+  });
+
+  testWidgets('sending a reply carries its target and quotes it', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'оригинал')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('оригинал'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reply'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'ответ');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+
+    expect(repo.sentReplyToIds, ['m1']);
+    // Sending clears reply mode, same as it clears the text field.
+    expect(find.text('Replying to: Аня'), findsNothing);
+    expect(find.text('ответ'), findsOneWidget);
+    // The quote appears twice: the original message's own bubble, and the
+    // snippet quoted inside the new reply's bubble.
+    expect(find.text('оригинал'), findsNWidgets(2));
+  });
+
+  testWidgets('a reply whose target has not been loaded shows "unavailable"', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    repo.onInsert!(
+      _message(
+        id: 'live-1',
+        authorId: 'anya',
+        text: 'ответ на что-то старое',
+        replyToId: 'missing-id',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Original message unavailable'), findsOneWidget);
   });
 
   testWidgets('leaving the screen unsubscribes', (tester) async {

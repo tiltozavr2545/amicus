@@ -204,6 +204,41 @@ class RoomMessageMedia implements GalleryMedia {
   };
 }
 
+/// What a reply quotes of the message it answers: just enough to show a
+/// compact preview, not the whole row.
+///
+/// Only ever set on a message read through [RoomsRepository.fetchMessages] or
+/// returned by [RoomsRepository.sendMessage], both of which embed it via the
+/// `reply_to_id` foreign key. A message arriving over realtime carries the
+/// raw `reply_to_id` column and no join — Postgres Changes payloads never
+/// embed relations — so the screen falls back to whatever it already has
+/// loaded locally for that id, the same way it resolves [RoomMessage.authorName].
+class RoomMessageReplyPreview {
+  const RoomMessageReplyPreview({
+    required this.id,
+    required this.text,
+    required this.hasMedia,
+    required this.authorName,
+    required this.isDeleted,
+  });
+
+  final String id;
+  final String text;
+  final bool hasMedia;
+  final String? authorName;
+  final bool isDeleted;
+
+  factory RoomMessageReplyPreview.fromRow(Map<String, dynamic> row) =>
+      RoomMessageReplyPreview(
+        id: row['id'] as String,
+        text: row['text'] as String? ?? '',
+        hasMedia: (row['media'] as List<dynamic>? ?? const []).isNotEmpty,
+        authorName:
+            (row['author'] as Map<String, dynamic>?)?['name'] as String?,
+        isDeleted: row['deleted_at'] != null,
+      );
+}
+
 /// One chat message.
 ///
 /// A deleted message keeps its row: [deletedAt] is set and [text] is emptied
@@ -221,6 +256,8 @@ class RoomMessage {
     this.media = const [],
     this.authorName,
     this.deletedAt,
+    this.replyToId,
+    this.replyToPreview,
   });
 
   final String id;
@@ -241,6 +278,15 @@ class RoomMessage {
 
   final DateTime? deletedAt;
 
+  /// The message this one answers, or null when it isn't a reply. Always
+  /// present when set — it is a plain column, unlike [replyToPreview].
+  final String? replyToId;
+
+  /// The quote of [replyToId], present only when the row came with the join
+  /// (see [RoomMessageReplyPreview]). Null on a realtime insert even when
+  /// [replyToId] is set.
+  final RoomMessageReplyPreview? replyToPreview;
+
   bool get isDeleted => deletedAt != null;
 
   factory RoomMessage.fromRow(Map<String, dynamic> row) => RoomMessage(
@@ -257,7 +303,26 @@ class RoomMessage {
     deletedAt: row['deleted_at'] == null
         ? null
         : parseTimestamp(row['deleted_at'] as String),
+    replyToId: row['reply_to_id'] as String?,
+    replyToPreview: _parseReplyToPreview(row['reply_to']),
   );
+}
+
+/// Reads [RoomMessage.replyToPreview] out of a fetched row's `reply_to` key.
+///
+/// A to-one PostgREST embed is an object, but self-referencing relationships
+/// are exactly the case where "which end is `!hint` naming" can be read
+/// either way (see [_replyToColumns]) — a list here would mean that reading
+/// slipped again, and this falls back to its first element rather than
+/// crashing the whole page over it.
+RoomMessageReplyPreview? _parseReplyToPreview(dynamic value) {
+  if (value == null) return null;
+  if (value is List) {
+    return value.isEmpty
+        ? null
+        : RoomMessageReplyPreview.fromRow(value.first as Map<String, dynamic>);
+  }
+  return RoomMessageReplyPreview.fromRow(value as Map<String, dynamic>);
 }
 
 /// What to call [room] on [viewerId]'s screen.
@@ -365,6 +430,27 @@ String roomMessagePosterPath({
   required String clientToken,
   required String mediaToken,
 }) => 'messages/$roomId/$authorId/$clientToken/${mediaToken}_poster.jpg';
+
+/// The embed that turns a bare `reply_to_id` into a [RoomMessageReplyPreview]:
+/// PostgREST follows the FK to fetch just enough of the quoted row for a
+/// preview. `media` rides along so [RoomMessageReplyPreview] can say "Photo"
+/// without a second round trip, the same bit [Room] carries for a room's own
+/// last-message preview.
+///
+/// `reply_to:reply_to_id(...)` — the FK COLUMN itself as the embed target,
+/// not `room_messages!reply_to_id` or `room_messages!room_messages_reply_to_id_fkey`.
+/// Both of those were tried first and broke every fetch, not just replies —
+/// naming `room_messages` as its OWN embedded table apparently isn't how
+/// PostgREST resolves a self-reference: the constraint-name hint came back
+/// `PGRST200 "Could not find a relationship"` outright, and the column-name
+/// hint resolved to something, but the wrong something — every row's
+/// `reply_to` was `[]`, shaped like the REVERSE relationship (messages
+/// replying to this one) rather than the one this message answers. PostgREST's
+/// own docs cover self-references (e.g. an employee's manager) with exactly
+/// the bare-column form used here, and it's the one that actually resolves
+/// to-one.
+const _replyToColumns =
+    'reply_to:reply_to_id(id, text, deleted_at, media, author:users(name))';
 
 class RoomsRepository {
   RoomsRepository(this._client);
@@ -522,7 +608,7 @@ class RoomsRepository {
   }) async {
     var query = _client
         .from('room_messages')
-        .select('*, author:users(name)')
+        .select('*, author:users(name), $_replyToColumns')
         .eq('room_id', roomId);
     if (before != null) {
       // Keyset, not offset: a message arriving while the user scrolls would
@@ -573,8 +659,9 @@ class RoomsRepository {
     required String text,
     required String clientToken,
     List<PickedMedia> media = const [],
+    String? replyToId,
   }) async {
-    const columns = '*, author:users(name)';
+    const columns = '*, author:users(name), $_replyToColumns';
     // Files first, row second, exactly as the composer publishes a post: the
     // row is what everyone else's screen reacts to, so it must not name bytes
     // that are not there yet. A send that dies in between leaves objects
@@ -600,6 +687,7 @@ class RoomsRepository {
             'text': text,
             'client_token': clientToken,
             'media': [for (final item in items) item.toJson()],
+            if (replyToId != null) 'reply_to_id': replyToId,
           })
           .select(columns)
           .single()
