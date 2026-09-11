@@ -2,4 +2,9 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
+# GIT_DIR/GIT_WORK_TREE are set correctly for this hook's own repo, but they
+# leak into `flutter`'s internal git calls against its own unrelated SDK
+# checkout (make pre-commit -> flutter pub get), making Flutter misreport its
+# own version as 0.0.0-unknown and break dependency resolution.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 exec make -C "$repo_root" pre-commit

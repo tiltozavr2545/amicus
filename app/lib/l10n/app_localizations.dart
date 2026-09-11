@@ -1316,6 +1316,24 @@ abstract class AppLocalizations {
   /// **'Photo'**
   String get mediaMessagePreview;
 
+  /// No description provided for @chatDateSeparatorToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get chatDateSeparatorToday;
+
+  /// No description provided for @chatDateSeparatorYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get chatDateSeparatorYesterday;
+
+  /// No description provided for @chatOriginalMessageUnavailableLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Original message unavailable'**
+  String get chatOriginalMessageUnavailableLabel;
+
   /// No description provided for @typingStatus.
   ///
   /// In en, this message translates to:

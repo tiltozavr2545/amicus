@@ -738,6 +738,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String get mediaMessagePreview => 'Фото';
 
   @override
+  String get chatDateSeparatorToday => 'Сегодня';
+
+  @override
+  String get chatDateSeparatorYesterday => 'Вчера';
+
+  @override
+  String get chatOriginalMessageUnavailableLabel =>
+      'Оригинал сообщения недоступен';
+
+  @override
   String get typingStatus => 'печатает…';
 
   @override

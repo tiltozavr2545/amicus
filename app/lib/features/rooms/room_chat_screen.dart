@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -29,6 +30,28 @@ const _typingIdleTimeout = Duration(seconds: 4);
 /// and being told so after the upload would be a wasted upload.
 const _maxAttachments = 10;
 
+/// Whether [a] and [b] fall on the same calendar day in the viewer's local
+/// zone. `createdAt` on both messages and receipts is already local —
+/// converted once at [parseTimestamp]'s boundary — so this compares the
+/// fields directly rather than converting again.
+bool _isSameLocalDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// The line a reply's quote shows for the message it answers: the text if
+/// there is any, "Photo" if it's media with no caption, or the tombstone
+/// label if the original was deleted — same fallback order as a room's own
+/// last-message preview in the rooms list.
+String _replyPreviewSnippet(
+  AppLocalizations l10n, {
+  required bool isDeleted,
+  required String text,
+  required bool hasMedia,
+}) {
+  if (isDeleted) return l10n.deletedMessageLabel;
+  if (text.isNotEmpty) return text;
+  return hasMedia ? l10n.mediaMessagePreview : '';
+}
+
 /// A room's chat: everyone in the room reads and writes, nobody else can do
 /// either — the RLS policy on `room_messages` decides that, and the same
 /// policy is applied to the realtime subscription per subscriber.
@@ -46,7 +69,13 @@ class RoomChatScreen extends ConsumerStatefulWidget {
 }
 
 class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
-  final _scrollController = ScrollController();
+  /// Index-addressable, unlike a plain `ScrollController` — [_scrollToMessage]
+  /// needs to land on an arbitrary loaded message, most of which are never
+  /// built (`ListView.builder` only builds what's near the viewport), and a
+  /// pixel offset has no honest answer for "where is item N" once bubbles
+  /// vary in height (text vs. media).
+  final _itemScrollController = ItemScrollController();
+  final _itemPositionsListener = ItemPositionsListener.create();
   final _textController = TextEditingController();
 
   /// Newest first — the list is `reverse: true`, so index 0 sits at the
@@ -100,6 +129,17 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   /// status yet rather than guessing.
   Map<String, RoomMemberReceipt> _receipts = {};
 
+  /// The message being answered, or null when the composer is writing a
+  /// plain message. Cleared on send, on cancel, and whenever the draft it
+  /// described stops matching what's about to go out — same rule as
+  /// [_pendingSendToken], which this also resets for.
+  RoomMessage? _replyTarget;
+
+  /// The message [_scrollToMessage] most recently landed on, briefly tinted
+  /// so the jump has something to land ON rather than just moving the list.
+  String? _highlightedMessageId;
+  Timer? _highlightTimer;
+
   @override
   void initState() {
     super.initState();
@@ -113,12 +153,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     _markRead();
     _subscribePresence();
     _textController.addListener(_onTyping);
-    _scrollController.addListener(() {
-      final nearEnd =
-          _scrollController.position.pixels >
-          _scrollController.position.maxScrollExtent - 200;
-      if (nearEnd) _loadMore();
-    });
+    _itemPositionsListener.itemPositions.addListener(_maybeLoadMoreOnScroll);
   }
 
   @override
@@ -131,10 +166,25 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     // "present" in a room nobody has open, and "typing" can outlive the
     // draft that caused it.
     _typingTimer?.cancel();
+    _highlightTimer?.cancel();
     _presence?.unsubscribe();
-    _scrollController.dispose();
+    _itemPositionsListener.itemPositions.removeListener(_maybeLoadMoreOnScroll);
     _textController.dispose();
     super.dispose();
+  }
+
+  /// Pages in older history once the loaded list's oldest end comes into
+  /// view — the same "near the end of the scroll" trigger the feed uses,
+  /// expressed in item indices instead of pixels since [_itemScrollController]
+  /// replaced the plain `ScrollController` this used to read.
+  void _maybeLoadMoreOnScroll() {
+    final positions = _itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) return;
+    var maxIndex = 0;
+    for (final position in positions) {
+      if (position.index > maxIndex) maxIndex = position.index;
+    }
+    if (maxIndex >= _buildChatItems().length - 3) _loadMore();
   }
 
   void _subscribe() {
@@ -364,6 +414,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     // itself is cleared on success, and [_onTyping] would otherwise treat
     // that as a new draft and null the token out from under this call.
     final clientToken = _pendingSendToken ??= const Uuid().v4();
+    final replyToId = _replyTarget?.id;
     try {
       final message = await ref
           .read(roomsRepositoryProvider)
@@ -373,6 +424,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
             text: text,
             clientToken: clientToken,
             media: List.of(_attachments),
+            replyToId: replyToId,
           );
       if (!mounted) return;
       // Clearing the field fires [_onTyping] anyway, which also nulls
@@ -382,6 +434,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       _textController.clear();
       setState(() {
         _attachments.clear();
+        _replyTarget = null;
         if (!_messages.any((m) => m.id == message.id)) {
           _messages.insert(0, message);
         }
@@ -446,6 +499,121 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     }
   }
 
+  /// Picks [message] as what the next send answers. Replying to a tombstone
+  /// is refused a level up (see [_MessageBubble]'s `onReply`) — there is
+  /// nothing left to quote.
+  void _startReply(RoomMessage message) {
+    setState(() {
+      _replyTarget = message;
+      // Same reasoning as [_onTyping]: the draft this token described no
+      // longer matches what is about to be sent.
+      _pendingSendToken = null;
+    });
+  }
+
+  void _cancelReply() {
+    setState(() {
+      _replyTarget = null;
+      _pendingSendToken = null;
+    });
+  }
+
+  /// What a reply's quote should show for the message it answers, or null
+  /// when nothing usable is known about it.
+  ///
+  /// [RoomMessage.replyToPreview] answers this outright for anything read
+  /// through `fetchMessages`/`sendMessage`, which embed it. A message that
+  /// arrived over realtime carries only the raw `reply_to_id` column — no
+  /// join, because Postgres Changes payloads never embed relations — so this
+  /// falls back to whatever [_messages] already holds for that id, the same
+  /// way the bubble resolves [RoomMessage.authorName]. If that comes up empty
+  /// too (the original is older than anything paged in yet), the quote shows
+  /// "unavailable" rather than a blank — [_scrollToMessage] still knows how
+  /// to look further before giving up.
+  RoomMessageReplyPreview? _resolveReplyPreview(
+    RoomMessage message,
+    Room? room,
+  ) {
+    final replyToId = message.replyToId;
+    if (replyToId == null) return null;
+    if (message.replyToPreview != null) return message.replyToPreview;
+    for (final candidate in _messages) {
+      if (candidate.id != replyToId) continue;
+      return RoomMessageReplyPreview(
+        id: candidate.id,
+        text: candidate.text,
+        hasMedia: candidate.media.isNotEmpty,
+        authorName:
+            room?.memberById(candidate.authorId)?.name ?? candidate.authorName,
+        isDeleted: candidate.isDeleted,
+      );
+    }
+    return null;
+  }
+
+  /// Scrolls to and briefly highlights the message a reply's quote points at.
+  /// Pages in older history first when it isn't loaded yet — a reply can
+  /// answer a message from well before the first page fetched.
+  Future<void> _scrollToMessage(String messageId) async {
+    var index = _buildChatItems().indexWhere(
+      (item) => item.message?.id == messageId,
+    );
+    while (index == -1 && _hasMore) {
+      await _loadMore();
+      if (!mounted) return;
+      index = _buildChatItems().indexWhere(
+        (item) => item.message?.id == messageId,
+      );
+    }
+    if (!mounted) return;
+    if (index == -1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.chatOriginalMessageUnavailableLabel,
+          ),
+        ),
+      );
+      return;
+    }
+    await _itemScrollController.scrollTo(
+      index: index,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+    if (!mounted) return;
+    setState(() => _highlightedMessageId = messageId);
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _highlightedMessageId = null);
+    });
+  }
+
+  /// [_messages] (newest first) with a day-label row spliced in wherever two
+  /// consecutive messages fall on different calendar days.
+  ///
+  /// Rebuilt from [_messages] on every call rather than kept as state of its
+  /// own: a live insert at index 0, an edit in place, and "load more"
+  /// appending at the end all change day boundaries in different spots, and
+  /// a derived list can't drift out of sync with its source the way a
+  /// maintained one could.
+  List<_ChatListItem> _buildChatItems() {
+    final items = <_ChatListItem>[];
+    for (var i = 0; i < _messages.length; i++) {
+      final message = _messages[i];
+      items.add(_ChatListItem.message(message));
+      final next = i + 1 < _messages.length ? _messages[i + 1] : null;
+      // The list is newest-first with `reverse: true`, so a day's separator
+      // belongs right after its oldest message in list order — which is
+      // above that message on screen, where the day's block starts.
+      if (next == null || !_isSameLocalDay(message.createdAt, next.createdAt)) {
+        items.add(_ChatListItem.daySeparator(message.createdAt));
+      }
+    }
+    return items;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -453,6 +621,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     final viewerId = ref.watch(currentUserIdProvider);
 
     final status = _presenceLine(l10n, room, viewerId);
+    final chatItems = _buildChatItems();
 
     return Scaffold(
       appBar: AppBar(
@@ -512,22 +681,27 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
                       ),
                     ),
                   )
-                : ListView.builder(
-                    controller: _scrollController,
+                : ScrollablePositionedList.builder(
+                    itemScrollController: _itemScrollController,
+                    itemPositionsListener: _itemPositionsListener,
                     reverse: true,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
                     ),
-                    itemCount: _messages.length + (_isLoading ? 1 : 0),
+                    itemCount: chatItems.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index >= _messages.length) {
+                      if (index >= chatItems.length) {
                         return const Padding(
                           padding: EdgeInsets.all(16),
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
-                      final message = _messages[index];
+                      final item = chatItems[index];
+                      if (item.day case final day?) {
+                        return _DateSeparator(day: day);
+                      }
+                      final message = item.message!;
                       return _MessageBubble(
                         message: message,
                         isMine: message.authorId == viewerId,
@@ -537,10 +711,18 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
                             l10n.formerMemberLabel,
                         room: room,
                         receipts: _receipts,
+                        replyPreview: _resolveReplyPreview(message, room),
+                        isHighlighted: message.id == _highlightedMessageId,
                         onDelete:
                             message.authorId == viewerId && !message.isDeleted
                             ? () => _delete(message)
                             : null,
+                        onReply: message.isDeleted
+                            ? null
+                            : () => _startReply(message),
+                        onTapReply: message.replyToId == null
+                            ? null
+                            : () => _scrollToMessage(message.replyToId!),
                       );
                     },
                   ),
@@ -562,6 +744,20 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
                       _attachments.remove(item);
                       _pendingSendToken = null;
                     }),
+            ),
+          if (_replyTarget != null)
+            _ReplyComposerPreview(
+              authorName:
+                  room?.memberById(_replyTarget!.authorId)?.name ??
+                  _replyTarget!.authorName ??
+                  l10n.formerMemberLabel,
+              snippet: _replyPreviewSnippet(
+                l10n,
+                isDeleted: _replyTarget!.isDeleted,
+                text: _replyTarget!.text,
+                hasMedia: _replyTarget!.media.isNotEmpty,
+              ),
+              onCancel: _isSending ? null : _cancelReply,
             ),
           SafeArea(
             top: false,
@@ -615,6 +811,194 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   }
 }
 
+/// One row of [RoomChatScreen]'s list: a message or, exclusively, the day
+/// label above the block it heads. See [_RoomChatScreenState._buildChatItems].
+class _ChatListItem {
+  const _ChatListItem.message(this.message) : day = null;
+  const _ChatListItem.daySeparator(this.day) : message = null;
+
+  final RoomMessage? message;
+  final DateTime? day;
+}
+
+/// The day label between two calendar days' worth of messages — "Today",
+/// "Yesterday", or a full date further back.
+class _DateSeparator extends StatelessWidget {
+  const _DateSeparator({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final label = _isSameLocalDay(day, now)
+        ? l10n.chatDateSeparatorToday
+        : _isSameLocalDay(day, now.subtract(const Duration(days: 1)))
+        ? l10n.chatDateSeparatorYesterday
+        : DateFormat('d MMM y', l10n.localeName).format(day);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The reply banner above the composer: who is being answered, a one-line
+/// quote of what they said, and a way out of reply mode. Same slot and same
+/// shape as [_AttachmentStrip] — both are "what this draft carries besides
+/// its text", shown above the input row only while there is one.
+class _ReplyComposerPreview extends StatelessWidget {
+  const _ReplyComposerPreview({
+    required this.authorName,
+    required this.snippet,
+    required this.onCancel,
+  });
+
+  final String authorName;
+  final String snippet;
+
+  /// Null while a send is in flight — same reasoning as
+  /// [_AttachmentStrip.onRemove]: the reply is already part of the request
+  /// that's going out.
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(color: theme.colorScheme.primary, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.replyingToLabel(authorName),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                Text(
+                  snippet,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            iconSize: 18,
+            tooltip: l10n.cancelReplyTooltip,
+            onPressed: onCancel,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The quote inside a sent reply: who it answers and a snippet of what they
+/// said, or "unavailable" when [preview] couldn't be resolved (see
+/// [_RoomChatScreenState._resolveReplyPreview]). Tapping it hands off to
+/// [onTap] — [_RoomChatScreenState._scrollToMessage] — regardless of whether
+/// [preview] is null, since a miss here only means the original hasn't been
+/// paged in yet, not that it doesn't exist.
+class _ReplyQuote extends StatelessWidget {
+  const _ReplyQuote({required this.preview, this.onTap});
+
+  final RoomMessageReplyPreview? preview;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final current = preview;
+    // Null means "not a person we know" only in the sense that nothing is
+    // known yet — showing nothing here beats guessing a name.
+    final authorLabel = current == null
+        ? null
+        : (current.authorName ?? l10n.formerMemberLabel);
+    final snippet = current == null
+        ? l10n.chatOriginalMessageUnavailableLabel
+        : _replyPreviewSnippet(
+            l10n,
+            isDeleted: current.isDeleted,
+            text: current.text,
+            hasMedia: current.hasMedia,
+          );
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(6),
+          border: Border(
+            left: BorderSide(color: theme.colorScheme.primary, width: 3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (authorLabel != null)
+              Text(
+                authorLabel,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            Text(
+              snippet,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontStyle: current == null || current.isDeleted
+                    ? FontStyle.italic
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
@@ -622,7 +1006,11 @@ class _MessageBubble extends StatelessWidget {
     required this.authorName,
     required this.room,
     required this.receipts,
+    required this.replyPreview,
+    this.isHighlighted = false,
     this.onDelete,
+    this.onReply,
+    this.onTapReply,
   });
 
   final RoomMessage message;
@@ -638,7 +1026,25 @@ class _MessageBubble extends StatelessWidget {
   /// message received from someone else.
   final Map<String, RoomMemberReceipt> receipts;
 
+  /// The quote [message] carries when it's a reply, resolved by the screen —
+  /// see [_RoomChatScreenState._resolveReplyPreview]. Rendered only when
+  /// [RoomMessage.replyToId] is set; null here then means "unavailable", not
+  /// "not a reply".
+  final RoomMessageReplyPreview? replyPreview;
+
+  /// Briefly true right after [onTapReply] on some other bubble scrolls the
+  /// list back to this one — see [_RoomChatScreenState._scrollToMessage].
+  final bool isHighlighted;
+
   final VoidCallback? onDelete;
+
+  /// Starts a reply addressed to this message. Null on a tombstone — see
+  /// [_RoomChatScreenState._startReply].
+  final VoidCallback? onReply;
+
+  /// Scrolls to and highlights the message this one quotes. Null when
+  /// [message] isn't a reply.
+  final VoidCallback? onTapReply;
 
   /// Ticks for [message], drawn only on the viewer's own, non-tombstoned
   /// messages — a direct room gets an icon (sent/delivered/read, the
@@ -699,26 +1105,65 @@ class _MessageBubble extends StatelessWidget {
     return null;
   }
 
+  /// Long-press menu: reply (any live message) and delete (own, live
+  /// messages only) — the same two actions the old bare `onLongPress: onDelete`
+  /// offered, minus the ambiguity of overloading one gesture for both once
+  /// there were two things to do with a bubble.
+  void _showActions(BuildContext context, AppLocalizations l10n) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onReply != null)
+              ListTile(
+                leading: const Icon(Icons.reply),
+                title: Text(l10n.replyButton),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onReply!();
+                },
+              ),
+            if (onDelete != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text(l10n.deleteButton),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onDelete!();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final hasActions = onReply != null || onDelete != null;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: onDelete,
-        child: Container(
+        onLongPress: hasActions ? () => _showActions(context, l10n) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.78,
           ),
           decoration: BoxDecoration(
-            color: isMine
-                ? scheme.primaryContainer
-                : scheme.surfaceContainerHighest,
+            color: isHighlighted
+                ? scheme.primary.withValues(alpha: 0.25)
+                : (isMine
+                      ? scheme.primaryContainer
+                      : scheme.surfaceContainerHighest),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -733,6 +1178,8 @@ class _MessageBubble extends StatelessWidget {
                     color: scheme.primary,
                   ),
                 ),
+              if (message.replyToId != null)
+                _ReplyQuote(preview: replyPreview, onTap: onTapReply),
               if (message.media.isNotEmpty)
                 _MessageMedia(
                   // Per message, so a test can point at one bubble's

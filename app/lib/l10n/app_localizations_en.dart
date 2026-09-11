@@ -728,6 +728,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mediaMessagePreview => 'Photo';
 
   @override
+  String get chatDateSeparatorToday => 'Today';
+
+  @override
+  String get chatDateSeparatorYesterday => 'Yesterday';
+
+  @override
+  String get chatOriginalMessageUnavailableLabel =>
+      'Original message unavailable';
+
+  @override
   String get typingStatus => 'typing…';
 
   @override

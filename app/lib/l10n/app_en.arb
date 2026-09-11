@@ -287,6 +287,9 @@
 
   "roomChatTitle": "Chat",
   "mediaMessagePreview": "Photo",
+  "chatDateSeparatorToday": "Today",
+  "chatDateSeparatorYesterday": "Yesterday",
+  "chatOriginalMessageUnavailableLabel": "Original message unavailable",
   "typingStatus": "typing…",
   "someoneTypingStatus": "{name} is typing…",
   "@someoneTypingStatus": {
