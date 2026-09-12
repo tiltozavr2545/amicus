@@ -8,6 +8,9 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import '../../shared/media_gallery.dart';
 import '../../shared/media_pick_message.dart';
 import '../../shared/media_picking.dart';
@@ -445,7 +448,12 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       // The draft (and [_pendingSendToken]) deliberately survive a failure:
       // this is what lets a plain retap of send be answered by the unique
       // index instead of posting a second row.
-      setState(() => _errorMessage = l10n.failedToSendMessageError);
+      final bannedUntil = writeBanUntil(e);
+      setState(
+        () => _errorMessage = bannedUntil != null
+            ? l10n.writeRestrictedError(bannedUntil)
+            : l10n.failedToSendMessageError,
+      );
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -1132,6 +1140,21 @@ class _MessageBubble extends StatelessWidget {
                 onTap: () {
                   Navigator.of(sheetContext).pop();
                   onDelete!();
+                },
+              ),
+            // Чужое живое сообщение. На заглушку удалённого жаловаться не на
+            // что, на своё — некому: сервер отбивает жалобу на себя (AMR02).
+            if (!isMine && !message.isDeleted)
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: Text(l10n.reportButton),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  showReportSheet(
+                    context,
+                    kind: ReportTargetKind.roomMessage,
+                    targetId: message.id,
+                  );
                 },
               ),
           ],

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
@@ -173,8 +174,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _showError(context, (l10n) => l10n.unsupportedImageFormatError);
       }
     } catch (e) {
+      // Отказ по запрету писать называет себя и дату: «попробуйте ещё раз»
+      // здесь было бы приглашением повторить то, что заведомо не выйдет.
+      // Верхний catch этой правки не получает намеренно — там падает выбор
+      // файлов, до сервера дело ещё не дошло.
+      final bannedUntil = writeBanUntil(e);
+      // Текст выбирается до вызова, чтобы сам вызов остался однострочным:
+      // `// ignore` действует на следующую строку, а у многострочного вызова
+      // анализатор указывает на аргумент, и подавление до него не достаёт.
+      String message(AppLocalizations l10n) => bannedUntil != null
+          ? l10n.writeRestrictedError(bannedUntil)
+          : l10n.failedToAddPhotosError;
       // ignore: use_build_context_synchronously
-      _showError(context, (l10n) => l10n.failedToAddPhotosError);
+      _showError(context, message);
     } finally {
       // Перечитывается и на ошибке тоже, а не только на успехе. `.timeout()`
       // перестаёт ждать, не отменяя запрос, поэтому вставка в

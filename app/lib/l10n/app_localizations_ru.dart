@@ -843,4 +843,59 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToUpdateRoomAvatarError =>
       'Не удалось изменить аватарку комнаты. Попробуйте ещё раз.';
+
+  @override
+  String get reportButton => 'Пожаловаться';
+
+  @override
+  String get reportSheetTitle => 'Пожаловаться';
+
+  @override
+  String get reportSheetSubtitle =>
+      'Мы посмотрим и решим, что с этим делать. Автор не узнает, кто пожаловался.';
+
+  @override
+  String get reportReasonSpam => 'Спам или реклама';
+
+  @override
+  String get reportReasonHarassment => 'Травля или оскорбления';
+
+  @override
+  String get reportReasonHate => 'Ненависть и вражда';
+
+  @override
+  String get reportReasonViolence => 'Насилие или угрозы';
+
+  @override
+  String get reportReasonSexual => 'Откровенный контент';
+
+  @override
+  String get reportReasonIllegal => 'Противозаконное';
+
+  @override
+  String get reportReasonOther => 'Другое';
+
+  @override
+  String get reportNoteLabel => 'Что случилось (необязательно)';
+
+  @override
+  String get reportSubmitButton => 'Отправить жалобу';
+
+  @override
+  String get reportSentMessage => 'Жалоба отправлена. Спасибо.';
+
+  @override
+  String get reportAlreadySentMessage => 'Вы уже жаловались на это.';
+
+  @override
+  String get failedToReportError =>
+      'Не удалось отправить жалобу. Попробуйте ещё раз.';
+
+  @override
+  String writeRestrictedError(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Публиковать пока нельзя — ограничение действует до $dateString.';
+  }
 }

@@ -339,5 +339,27 @@
   "roomAvatarLabel": "Room picture",
   "changeRoomAvatarButton": "Change picture",
   "removeRoomAvatarButton": "Remove picture",
-  "failedToUpdateRoomAvatarError": "Failed to change the room picture. Please try again."
+  "failedToUpdateRoomAvatarError": "Failed to change the room picture. Please try again.",
+  "reportButton": "Report",
+  "reportSheetTitle": "Report",
+  "reportSheetSubtitle": "We will take a look and decide what to do. The author will not learn who reported it.",
+  "reportReasonSpam": "Spam or advertising",
+  "reportReasonHarassment": "Harassment or abuse",
+  "reportReasonHate": "Hate speech",
+  "reportReasonViolence": "Violence or threats",
+  "reportReasonSexual": "Explicit content",
+  "reportReasonIllegal": "Something illegal",
+  "reportReasonOther": "Something else",
+  "reportNoteLabel": "What happened (optional)",
+  "reportSubmitButton": "Send report",
+  "reportSentMessage": "Report sent. Thank you.",
+  "reportAlreadySentMessage": "You have already reported this.",
+  "failedToReportError": "Could not send the report. Please try again.",
+
+  "writeRestrictedError": "You cannot post right now — the restriction lasts until {date}.",
+  "@writeRestrictedError": {
+    "placeholders": {
+      "date": { "type": "DateTime", "format": "yMMMd" }
+    }
+  }
 }

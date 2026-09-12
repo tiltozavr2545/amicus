@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/refresh_after_await.dart';
 import '../auth/auth_providers.dart';
@@ -114,8 +115,15 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
         refresh.invalidate(friendsProvider);
         return;
       }
+      final bannedUntil = writeBanUntil(e);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.failedToRequestConnectionError)),
+        SnackBar(
+          content: Text(
+            bannedUntil != null
+                ? l10n.writeRestrictedError(bannedUntil)
+                : l10n.failedToRequestConnectionError,
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _asking.remove(member.userId));

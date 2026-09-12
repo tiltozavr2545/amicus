@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
 import '../../shared/refresh_after_await.dart';
 import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
@@ -283,8 +284,12 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
       setState(() => _myInviteCode = code);
     } catch (e) {
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
+      final bannedUntil = writeBanUntil(e);
       setState(
-        () => _createLinkError = AppLocalizations.of(context)!.unexpectedError,
+        () => _createLinkError = bannedUntil != null
+            ? l10n.writeRestrictedError(bannedUntil)
+            : l10n.unexpectedError,
       );
     } finally {
       if (mounted) setState(() => _isCreatingLink = false);
