@@ -303,5 +303,28 @@
   "roomAvatarLabel": "Аватарка комнаты",
   "changeRoomAvatarButton": "Сменить аватарку",
   "removeRoomAvatarButton": "Убрать аватарку",
-  "failedToUpdateRoomAvatarError": "Не удалось изменить аватарку комнаты. Попробуйте ещё раз."
+  "failedToUpdateRoomAvatarError": "Не удалось изменить аватарку комнаты. Попробуйте ещё раз.",
+
+  "reportButton": "Пожаловаться",
+  "reportSheetTitle": "Пожаловаться",
+  "reportSheetSubtitle": "Мы посмотрим и решим, что с этим делать. Автор не узнает, кто пожаловался.",
+  "reportReasonSpam": "Спам или реклама",
+  "reportReasonHarassment": "Травля или оскорбления",
+  "reportReasonHate": "Ненависть и вражда",
+  "reportReasonViolence": "Насилие или угрозы",
+  "reportReasonSexual": "Откровенный контент",
+  "reportReasonIllegal": "Противозаконное",
+  "reportReasonOther": "Другое",
+  "reportNoteLabel": "Что случилось (необязательно)",
+  "reportSubmitButton": "Отправить жалобу",
+  "reportSentMessage": "Жалоба отправлена. Спасибо.",
+  "reportAlreadySentMessage": "Вы уже жаловались на это.",
+  "failedToReportError": "Не удалось отправить жалобу. Попробуйте ещё раз.",
+
+  "writeRestrictedError": "Публиковать пока нельзя — ограничение действует до {date}.",
+  "@writeRestrictedError": {
+    "placeholders": {
+      "date": { "type": "DateTime", "format": "yMMMd" }
+    }
+  }
 }

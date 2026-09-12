@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/locale_provider.dart';
 import '../../shared/app_version.dart';
+import '../../shared/device_os.dart';
 import '../../shared/network_timeout.dart';
 import '../auth/auth_providers.dart';
 
@@ -36,20 +37,44 @@ class PushNotificationsRepository {
     required String userId,
     required String locale,
     required AppVersion version,
+    required DeviceOs os,
   }) async {
     final settings = await FirebaseMessaging.instance.requestPermission();
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      await _recordStatus(userId, 'denied', version: version, os: os);
       return null;
     }
 
     final token = await FirebaseMessaging.instance.getToken();
-    if (token != null) {
+    if (token == null) {
+      await _recordStatus(userId, 'no_token', version: version, os: os);
+      return null;
+    }
+
+    try {
       await _upsertToken(
         userId: userId,
         token: token,
         locale: locale,
         version: version,
+        os: os,
       );
+      await _recordStatus(userId, 'granted', version: version, os: os);
+    } catch (error) {
+      // Единственная ветка, которая раньше исчезала бесследно: исключение
+      // уходило в `pushRegistrationProvider`, чьё состояние никто не читает,
+      // — и наш собственный сбой записи был снаружи неотличим от честного
+      // отказа пользователя в разрешении. Теперь он называет себя.
+      await _recordStatus(
+        userId,
+        'error',
+        version: version,
+        os: os,
+        detail: error is PostgrestException
+            ? '${error.code ?? '?'}: ${error.message}'
+            : error.toString(),
+      );
+      rethrow;
     }
 
     // Token rotation (app reinstall, Play Services data reset, etc.) — the
@@ -71,12 +96,48 @@ class PushNotificationsRepository {
           token: newToken,
           locale: locale,
           version: version,
+          os: os,
         );
       } catch (_) {
         // Offline, or the write timed out. Nothing to say and nowhere to say
         // it — see above.
       }
     });
+  }
+
+  /// Чем закончилась попытка зарегистрировать токен (миграция 20260913120000).
+  ///
+  /// Диагностика, а не функциональность, поэтому глотает собственные ошибки:
+  /// провалившаяся запись статуса не должна утащить за собой регистрацию,
+  /// которая могла пройти успешно. Строка одна на человека и переписывается
+  /// на каждый запуск, так что устаревшей она не бывает.
+  Future<void> _recordStatus(
+    String userId,
+    String status, {
+    required AppVersion version,
+    required DeviceOs os,
+    String? detail,
+  }) async {
+    try {
+      await _client
+          .from('push_registration_status')
+          .upsert({
+            'user_id': userId,
+            'status': status,
+            'platform': os.platform,
+            'os_version': os.osVersion,
+            'app_version': version.name,
+            'app_build': version.build,
+            // Обрезка по границе CHECK: иначе длинное сообщение об ошибке
+            // уронило бы запись о самой этой ошибке.
+            'detail': detail == null
+                ? null
+                : (detail.length > 300 ? detail.substring(0, 300) : detail),
+          })
+          .timeout(networkTimeout);
+    } catch (_) {
+      // Некуда и незачем сообщать: это запись о том, что уже пошло не так.
+    }
   }
 
   /// Removes this device's token from [userId]'s rows, so a different user
@@ -115,6 +176,7 @@ class PushNotificationsRepository {
     required String token,
     required String locale,
     required AppVersion version,
+    required DeviceOs os,
   }) {
     return _client
         .from('device_tokens')
@@ -128,6 +190,11 @@ class PushNotificationsRepository {
           // already updated from someone who has not.
           'app_version': version.name,
           'app_build': version.build,
+          // Rewritten on every open for the same reason as the version above:
+          // an OS upgrade has to move the row, not leave it describing the
+          // phone as it was on the day it first registered.
+          'platform': os.platform,
+          'os_version': os.osVersion,
         })
         .timeout(networkTimeout);
   }
@@ -165,9 +232,10 @@ final pushRegistrationProvider = FutureProvider<void>((ref) async {
   // while the app is running, so there is nothing to react to — it just has to
   // be known before the row is written.
   final version = await ref.watch(appVersionProvider.future);
+  final os = await ref.watch(deviceOsProvider.future);
   final subscription = await ref
       .read(pushNotificationsRepositoryProvider)
-      .registerDevice(userId: userId, locale: locale, version: version);
+      .registerDevice(userId: userId, locale: locale, version: version, os: os);
   if (!ref.mounted) {
     subscription?.cancel();
     return;

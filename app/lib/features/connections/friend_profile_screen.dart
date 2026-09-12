@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import '../feed/post_list_view.dart';
 import '../profile/profile_photos_screen.dart';
 import '../profile/profile_repository.dart';
@@ -98,7 +100,28 @@ class FriendProfileScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text(friendName)),
+      appBar: AppBar(
+        title: Text(friendName),
+        actions: [
+          // Жалоба на человека, а не на отдельный пост: для случая, когда
+          // дело не в одной публикации. Экран открывается только для
+          // знакомого, то есть для того, кто и так видим, — проверка
+          // `can_report('user', …)` на сервере это подтвердит, а не узнает
+          // впервые.
+          PopupMenuButton<void>(
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                onTap: () => showReportSheet(
+                  context,
+                  kind: ReportTargetKind.user,
+                  targetId: friendId,
+                ),
+                child: Text(l10n.reportButton),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: PostListView(
         authorId: friendId,
         header: header,

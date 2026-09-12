@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import '../auth/auth_providers.dart';
 import 'comment_thread.dart';
 import 'feed_repository.dart';
@@ -257,9 +260,18 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       // sending — assigning to it puts the message nowhere. The composer would
       // just stop, and the server rejects a reply for several ordinary reasons
       // (its target was deleted or blocked while the reply was being typed).
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.failedToSendCommentError)));
+      // Бан — не «не удалось отправить»: попытка дошла, и ответ на неё
+      // пришёл. Сообщение с датой окончания вместо предложения повторить.
+      final bannedUntil = writeBanUntil(e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            bannedUntil != null
+                ? l10n.writeRestrictedError(bannedUntil)
+                : l10n.failedToSendCommentError,
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -411,6 +423,20 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
               icon: const Icon(Icons.delete_outline),
               iconSize: 20,
               onPressed: () => _deleteComment(comment.id),
+            ),
+          // Заглушка удалённого комментария жалобы не принимает по той же
+          // причине, по которой не принимает ответ: жаловаться уже не на что,
+          // текста там нет.
+          if (!isOwnComment && !comment.isDeleted)
+            IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              iconSize: 20,
+              tooltip: l10n.reportButton,
+              onPressed: () => showReportSheet(
+                context,
+                kind: ReportTargetKind.comment,
+                targetId: comment.id,
+              ),
             ),
         ],
       ),

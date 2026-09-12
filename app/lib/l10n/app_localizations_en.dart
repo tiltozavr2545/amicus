@@ -831,4 +831,59 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get failedToUpdateRoomAvatarError =>
       'Failed to change the room picture. Please try again.';
+
+  @override
+  String get reportButton => 'Report';
+
+  @override
+  String get reportSheetTitle => 'Report';
+
+  @override
+  String get reportSheetSubtitle =>
+      'We will take a look and decide what to do. The author will not learn who reported it.';
+
+  @override
+  String get reportReasonSpam => 'Spam or advertising';
+
+  @override
+  String get reportReasonHarassment => 'Harassment or abuse';
+
+  @override
+  String get reportReasonHate => 'Hate speech';
+
+  @override
+  String get reportReasonViolence => 'Violence or threats';
+
+  @override
+  String get reportReasonSexual => 'Explicit content';
+
+  @override
+  String get reportReasonIllegal => 'Something illegal';
+
+  @override
+  String get reportReasonOther => 'Something else';
+
+  @override
+  String get reportNoteLabel => 'What happened (optional)';
+
+  @override
+  String get reportSubmitButton => 'Send report';
+
+  @override
+  String get reportSentMessage => 'Report sent. Thank you.';
+
+  @override
+  String get reportAlreadySentMessage => 'You have already reported this.';
+
+  @override
+  String get failedToReportError =>
+      'Could not send the report. Please try again.';
+
+  @override
+  String writeRestrictedError(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'You cannot post right now — the restriction lasts until $dateString.';
+  }
 }

@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
 import '../../shared/media_pick_message.dart';
 import '../../shared/media_picking.dart';
 import '../../shared/sized_memory_image.dart';
@@ -345,8 +346,14 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       // is no PopScope — so this State can be gone by the time a timeout
       // lands, and an unguarded setState then throws an unhandled async error.
       if (!mounted) return;
+      // Бан проверяется ПЕРЕД общим сообщением: «не удалось опубликовать»
+      // здесь было бы неправдой — попытка дошла, и сервер ответил именно
+      // отказом, а не молчанием. Человеку нужна дата, а не совет повторить.
+      final bannedUntil = writeBanUntil(e);
       setState(
-        () => _errorMessage = _isEditing
+        () => _errorMessage = bannedUntil != null
+            ? l10n.writeRestrictedError(bannedUntil)
+            : _isEditing
             ? l10n.failedToSaveChangesError
             : l10n.failedToPublishError,
       );

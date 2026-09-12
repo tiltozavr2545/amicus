@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/write_ban.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import '../../shared/media_gallery.dart';
 import '../auth/auth_providers.dart';
 import '../connections/connections_repository.dart';
@@ -420,11 +423,25 @@ class _PostListViewState extends ConsumerState<PostListView> {
         await repo.setReaction(postId: post.id, userId: userId, type: next);
       }
       _confirmedReaction[post.id] = next;
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       // Superseded: a newer tap owns the card now, and this request has no idea
       // what has happened since it went out. Staying quiet is the whole fix.
       if (_reactionSeq[post.id] != seq) return;
+      // Запрет писать — единственный отказ здесь, о котором надо сказать
+      // вслух. Остальные молчат намеренно: реакция откатится, и повторный
+      // тап стоит ничего. Но забанённому откат без объяснения выглядит как
+      // «кнопка сломалась», а он ровно тот человек, которому причина нужна.
+      final bannedUntil = writeBanUntil(e);
+      if (bannedUntil != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context)!.writeRestrictedError(bannedUntil),
+            ),
+          ),
+        );
+      }
       // Roll back by id, not the captured index: the list may have been
       // refreshed or had a post removed while the request was in flight.
       final current = _posts.indexWhere((p) => p.id == post.id);
@@ -506,6 +523,11 @@ class _PostListViewState extends ConsumerState<PostListView> {
                   onReact: (type) => _react(post, type),
                   onEdit: () => _editPost(post),
                   onDelete: () => _deletePost(post),
+                  onReport: () => showReportSheet(
+                    context,
+                    kind: ReportTargetKind.post,
+                    targetId: post.id,
+                  ),
                   onOpenComments: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => CommentsScreen(
@@ -529,6 +551,7 @@ class _PostCard extends StatelessWidget {
     required this.onReact,
     required this.onEdit,
     required this.onDelete,
+    required this.onReport,
     required this.onOpenComments,
   });
 
@@ -537,6 +560,7 @@ class _PostCard extends StatelessWidget {
   final ValueChanged<ReactionType> onReact;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onReport;
   final VoidCallback onOpenComments;
 
   @override
@@ -573,20 +597,45 @@ class _PostCard extends StatelessWidget {
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
-                if (isOwnPost)
-                  PopupMenuButton<void>(
+                // Меню есть у каждого поста, но пункты в нём зависят от того,
+                // чей он: своим постом управляют, на чужой жалуются. Пункт
+                // «пожаловаться» на собственном посте был бы не просто
+                // лишним — жалоба на себя отбивается сервером (AMR02), и
+                // предлагать действие, которое заведомо не сработает, хуже,
+                // чем не предлагать его вовсе.
+                // Размер задан рамкой снаружи, а не свойством кнопки:
+                // `PopupMenuButton` не принимает `visualDensity`, а
+                // дефолтный тап-таргет в 48px приносит в шапку КАЖДОЙ
+                // карточки лишние ~28px высоты. Пока меню было только у
+                // своих постов, это касалось единиц из списка; теперь оно у
+                // всех, и лента заметно вытянулась бы. Мельче соседнего
+                // чипа не делаем — по нему и выровнено.
+                SizedBox(
+                  height: 32,
+                  width: 32,
+                  child: PopupMenuButton<void>(
                     icon: const Icon(Icons.more_vert),
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        onTap: onEdit,
-                        child: Text(l10n.editButton),
-                      ),
-                      PopupMenuItem(
-                        onTap: onDelete,
-                        child: Text(l10n.deleteButton),
-                      ),
-                    ],
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    itemBuilder: (context) => isOwnPost
+                        ? [
+                            PopupMenuItem(
+                              onTap: onEdit,
+                              child: Text(l10n.editButton),
+                            ),
+                            PopupMenuItem(
+                              onTap: onDelete,
+                              child: Text(l10n.deleteButton),
+                            ),
+                          ]
+                        : [
+                            PopupMenuItem(
+                              onTap: onReport,
+                              child: Text(l10n.reportButton),
+                            ),
+                          ],
                   ),
+                ),
               ],
             ),
             Text(

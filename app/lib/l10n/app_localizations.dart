@@ -1495,6 +1495,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to change the room picture. Please try again.'**
   String get failedToUpdateRoomAvatarError;
+
+  /// No description provided for @reportButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get reportButton;
+
+  /// No description provided for @reportSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get reportSheetTitle;
+
+  /// No description provided for @reportSheetSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'We will take a look and decide what to do. The author will not learn who reported it.'**
+  String get reportSheetSubtitle;
+
+  /// No description provided for @reportReasonSpam.
+  ///
+  /// In en, this message translates to:
+  /// **'Spam or advertising'**
+  String get reportReasonSpam;
+
+  /// No description provided for @reportReasonHarassment.
+  ///
+  /// In en, this message translates to:
+  /// **'Harassment or abuse'**
+  String get reportReasonHarassment;
+
+  /// No description provided for @reportReasonHate.
+  ///
+  /// In en, this message translates to:
+  /// **'Hate speech'**
+  String get reportReasonHate;
+
+  /// No description provided for @reportReasonViolence.
+  ///
+  /// In en, this message translates to:
+  /// **'Violence or threats'**
+  String get reportReasonViolence;
+
+  /// No description provided for @reportReasonSexual.
+  ///
+  /// In en, this message translates to:
+  /// **'Explicit content'**
+  String get reportReasonSexual;
+
+  /// No description provided for @reportReasonIllegal.
+  ///
+  /// In en, this message translates to:
+  /// **'Something illegal'**
+  String get reportReasonIllegal;
+
+  /// No description provided for @reportReasonOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Something else'**
+  String get reportReasonOther;
+
+  /// No description provided for @reportNoteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'What happened (optional)'**
+  String get reportNoteLabel;
+
+  /// No description provided for @reportSubmitButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Send report'**
+  String get reportSubmitButton;
+
+  /// No description provided for @reportSentMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent. Thank you.'**
+  String get reportSentMessage;
+
+  /// No description provided for @reportAlreadySentMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You have already reported this.'**
+  String get reportAlreadySentMessage;
+
+  /// No description provided for @failedToReportError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not send the report. Please try again.'**
+  String get failedToReportError;
+
+  /// No description provided for @writeRestrictedError.
+  ///
+  /// In en, this message translates to:
+  /// **'You cannot post right now — the restriction lasts until {date}.'**
+  String writeRestrictedError(DateTime date);
 }
 
 class _AppLocalizationsDelegate

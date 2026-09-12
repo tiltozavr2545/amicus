@@ -129,6 +129,28 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'Вам пишут в комнате: {author_name}',
       'В комнате новое сообщение от {author_name}',
     ],
+    // У модерации вариант ОДИН, в отличие от всех остальных видов. Четыре
+    // формулировки существуют, чтобы одинаковые уведомления не выглядели
+    // роботом, — а здесь ровно наоборот: человек должен видеть, что это
+    // официальное сообщение, всегда одно и то же, а не бот подбирает слова.
+    // `{note}` — то, что дописал модератор в консоли, и оно НЕОБЯЗАТЕЛЬНО:
+    // пустое значение убирается вместе с хвостовым пробелом (см. pickText).
+    // Это единственное место во всём проекте, где в текст пуша попадают
+    // слова, написанные руками, и локализовать их некому — поэтому каркас
+    // осмыслен и без них.
+    moderation_notice: [
+      'Модерация Amicus: ваш материал убран по жалобе. {note}',
+    ],
+    report_resolved: [
+      'Ваша жалоба рассмотрена, меры приняты. {note}',
+    ],
+    // Отдельный вид, а не переписанный `report_resolved`: исход у них разный,
+    // и человек, чью жалобу признали беспочвенной, не должен получать текст
+    // «меры приняты». Тон намеренно нейтральный — отклонённая жалоба не
+    // повод отчитывать того, кто её подал.
+    report_rejected: [
+      'Мы рассмотрели вашу жалобу и не нашли нарушения. {note}',
+    ],
   },
   en: {
     new_post: [
@@ -191,6 +213,15 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name} sent a message in a room',
       'A room has a new message from {author_name}',
     ],
+    moderation_notice: [
+      'Amicus moderation: your content was removed after a report. {note}',
+    ],
+    report_resolved: [
+      'Your report has been reviewed and acted on. {note}',
+    ],
+    report_rejected: [
+      'We reviewed your report and found no violation. {note}',
+    ],
   },
 };
 
@@ -208,7 +239,16 @@ function pickText(
   const variants = (TEXTS[locale] ?? TEXTS.ru)[kind];
   if (!variants || variants.length === 0) return null;
   const template = variants[Math.floor(Math.random() * variants.length)];
-  return template.replace(/\{(\w+)\}/g, (_, key) => String(payload[key] ?? ''));
+  const filled = template.replace(/\{(\w+)\}/g, (_, key) => String(payload[key] ?? ''));
+  // Хвост подчищается ТОЛЬКО там, где подстановка необязательна и оказалась
+  // пустой, — то есть у модерационных текстов с `{note}` в конце. Первая
+  // редакция обрезала хвост у любого вида: на нынешних шаблонах это почти
+  // не видно, но правило «молча подправлять текст всех уведомлений» шире
+  // задачи, ради которой заводилось, и однажды подправило бы то, чего не
+  // просили. Точку не трогаем и здесь: она часть фразы.
+  const noteWasEmpty =
+    template.includes('{note}') && String(payload.note ?? '').trim() === '';
+  return noteWasEmpty ? filled.replace(/[\s:—-]+$/, '') : filled;
 }
 
 function base64url(bytes: ArrayBuffer | Uint8Array): string {
