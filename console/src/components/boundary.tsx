@@ -1,5 +1,5 @@
-import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { Component } from 'react';
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -33,7 +33,9 @@ export class Boundary extends Component<Props, State> {
           Если это случилось сразу после правки кода — скорее всего в состоянии
           остался ответ старого формата, и лечится перезагрузкой страницы.
         </div>
-        <button onClick={() => window.location.reload()}>Перезагрузить</button>
+        <button type="button" onClick={() => window.location.reload()}>
+          Перезагрузить
+        </button>
       </div>
     );
   }
