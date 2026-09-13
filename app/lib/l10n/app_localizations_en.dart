@@ -530,6 +530,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String connectionSinceDate(String date) {
+    return 'since $date';
+  }
+
+  @override
   String get settingsTooltip => 'Settings';
 
   @override
