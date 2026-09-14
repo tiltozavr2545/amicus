@@ -7,12 +7,16 @@ FLUTTER ?= $(HOME)/development/flutter/bin/flutter
 DART ?= $(HOME)/development/flutter/bin/dart
 BASE_REF ?= origin/main
 
-.PHONY: help deps format-check analyze test verify verify-version build-android build-ios release-ios pre-commit pre-push install-hooks uninstall-hooks
+.PHONY: help deps format-check analyze test verify verify-version bump-build bump-patch bump-minor bump-major build-android build-ios release-ios pre-commit pre-push install-hooks uninstall-hooks
 
 help:
 	@printf '%s\n' \
 		'make verify          Run dependency, format, analysis, and test checks' \
 		'make verify-version  Verify a version bump against BASE_REF (default: origin/main)' \
+		'make bump-build      Bump only versionCode, keep versionName the same' \
+		'make bump-patch      Bump versionName patch + versionCode (0.18.8 -> 0.18.9)' \
+		'make bump-minor      Bump versionName minor + versionCode (0.18.8 -> 0.19.0)' \
+		'make bump-major      Bump versionName major + versionCode (0.18.8 -> 1.0.0)' \
 		'make build-android   Build the release Android App Bundle' \
 		'make build-ios       Compile-check the iOS release build (unsigned)' \
 		'make release-ios     Build a signed IPA for TestFlight/App Store upload' \
@@ -37,6 +41,18 @@ verify: deps format-check analyze test
 
 verify-version:
 	BASE_REF="$(BASE_REF)" ./scripts/verify-version.sh
+
+bump-build:
+	./scripts/bump-version.sh build
+
+bump-patch:
+	./scripts/bump-version.sh patch
+
+bump-minor:
+	./scripts/bump-version.sh minor
+
+bump-major:
+	./scripts/bump-version.sh major
 
 # -PallowDebugSigning=true: this target is a compile check, not a shippable
 # build, so it opts in to the debug-key fallback that a release build otherwise

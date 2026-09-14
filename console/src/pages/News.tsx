@@ -1,18 +1,31 @@
 import { useEffect, useState } from 'react';
-import type { NewsDraft, NewsMedia, NewsPost, NewsResponse } from '../../shared/types';
+import type {
+  NewsDraft,
+  NewsMedia,
+  NewsPost,
+  NewsResponse,
+} from '../../shared/types';
 import { useApi } from '../api';
-import { Fail, ago, date } from '../components/ui';
+import { ago, date, Fail } from '../components/ui';
 
 const MAX_MEDIA = 20;
 
-async function send(path: string, method: string, body?: unknown): Promise<any> {
+async function send(
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<unknown> {
   const response = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers:
+      body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const parsed = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error((parsed as { error?: string }).error ?? response.statusText);
+  if (!response.ok)
+    throw new Error(
+      (parsed as { error?: string }).error ?? response.statusText,
+    );
   return parsed;
 }
 
@@ -24,7 +37,10 @@ async function upload(file: File, name = file.name, type = file.type) {
     body: file,
   });
   const parsed = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error((parsed as { error?: string }).error ?? response.statusText);
+  if (!response.ok)
+    throw new Error(
+      (parsed as { error?: string }).error ?? response.statusText,
+    );
   return parsed as { path: string; url: string | null; mediaType: string };
 }
 
@@ -81,7 +97,11 @@ function Preview({ text, media }: { text: string; media: NewsMedia[] }) {
       {shown.length > 0 ? (
         <div className={`grid ${shown.length === 1 ? 'one' : ''}`}>
           {shown.map((m) => (
-            <img key={m.storagePath} src={(m.posterUrl ?? m.url) as string} alt="" />
+            <img
+              key={m.storagePath}
+              src={(m.posterUrl ?? m.url) as string}
+              alt=""
+            />
           ))}
         </div>
       ) : null}
@@ -103,9 +123,14 @@ export function News() {
   }, [data]);
 
   if (error) return <Fail message={error} onRetry={reload} />;
-  if (!data) return <p className="muted">{loading ? 'Читаю ленту аккаунта…' : ''}</p>;
+  if (!data)
+    return <p className="muted">{loading ? 'Читаю ленту аккаунта…' : ''}</p>;
 
-  async function run(label: string, fn: () => Promise<void>, confirmText?: string) {
+  async function run(
+    label: string,
+    fn: () => Promise<void>,
+    confirmText?: string,
+  ) {
     if (confirmText && !window.confirm(confirmText)) return;
     setBusy(label);
     setNotice(null);
@@ -140,7 +165,9 @@ export function News() {
         if (uploaded.mediaType === 'video') {
           const poster = await posterFor(file);
           if (poster) {
-            const posterFile = new File([poster], 'poster.jpg', { type: 'image/jpeg' });
+            const posterFile = new File([poster], 'poster.jpg', {
+              type: 'image/jpeg',
+            });
             const up = await upload(posterFile, 'poster.jpg', 'image/jpeg');
             posterPath = up.path;
             posterUrl = up.url;
@@ -212,7 +239,12 @@ export function News() {
         <span className="stamp">
           постов у аккаунта: {data.posts.length} · черновиков: {drafts.length}
         </span>
-        <button style={{ marginLeft: 'auto' }} onClick={reload} disabled={loading}>
+        <button
+          type="button"
+          style={{ marginLeft: 'auto' }}
+          onClick={reload}
+          disabled={loading}
+        >
           {loading ? 'Обновляю…' : 'Обновить'}
         </button>
       </div>
@@ -226,9 +258,11 @@ export function News() {
       <div className="news-columns">
         <div className="panel">
           <div className="row-actions" style={{ marginBottom: 8 }}>
-            <strong>{editing ? 'Правка опубликованного поста' : 'Новый пост'}</strong>
+            <strong>
+              {editing ? 'Правка опубликованного поста' : 'Новый пост'}
+            </strong>
             {editing ? (
-              <button onClick={clear} disabled={!!busy}>
+              <button type="button" onClick={clear} disabled={!!busy}>
                 Отменить правку
               </button>
             ) : null}
@@ -246,20 +280,33 @@ export function News() {
           <div className="news-thumbs">
             {media.map((m, index) => (
               <div className="news-thumb" key={m.storagePath}>
-                <img src={(m.posterUrl ?? m.url) ?? undefined} alt="" />
-                {m.mediaType === 'video' ? <span className="kind">видео</span> : null}
+                <img src={m.posterUrl ?? m.url ?? undefined} alt="" />
+                {m.mediaType === 'video' ? (
+                  <span className="kind">видео</span>
+                ) : null}
                 <div className="controls">
-                  <button onClick={() => move(index, -1)} disabled={index === 0}>
+                  <button
+                    type="button"
+                    onClick={() => move(index, -1)}
+                    disabled={index === 0}
+                  >
                     ◀
                   </button>
                   <button
+                    type="button"
                     onClick={() =>
-                      setMedia((current) => current.filter((_, i) => i !== index))
+                      setMedia((current) =>
+                        current.filter((_, i) => i !== index),
+                      )
                     }
                   >
                     ✕
                   </button>
-                  <button onClick={() => move(index, 1)} disabled={index === media.length - 1}>
+                  <button
+                    type="button"
+                    onClick={() => move(index, 1)}
+                    disabled={index === media.length - 1}
+                  >
                     ▶
                   </button>
                 </div>
@@ -267,7 +314,10 @@ export function News() {
             ))}
           </div>
 
-          <div className="row-actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+          <div
+            className="row-actions"
+            style={{ marginTop: 12, flexWrap: 'wrap' }}
+          >
             <label className="muted" style={{ fontSize: 13 }}>
               <input
                 type="file"
@@ -279,15 +329,20 @@ export function News() {
                   e.target.value = '';
                 }}
               />
-              <span className="tag" style={{ cursor: 'pointer', padding: '6px 11px' }}>
-                {busy === 'upload' ? 'Загружаю…' : `Добавить медиа (${media.length}/${MAX_MEDIA})`}
+              <span
+                className="tag"
+                style={{ cursor: 'pointer', padding: '6px 11px' }}
+              >
+                {busy === 'upload'
+                  ? 'Загружаю…'
+                  : `Добавить медиа (${media.length}/${MAX_MEDIA})`}
               </span>
             </label>
-            <button onClick={publish} disabled={!!busy}>
+            <button type="button" onClick={publish} disabled={!!busy}>
               {editing ? 'Сохранить изменения' : 'Опубликовать'}
             </button>
             {editing ? null : (
-              <button onClick={keepDraft} disabled={!!busy}>
+              <button type="button" onClick={keepDraft} disabled={!!busy}>
                 В черновики
               </button>
             )}
@@ -312,11 +367,16 @@ export function News() {
                     <div className="muted" style={{ fontSize: 12 }}>
                       {ago(d.updatedAt)} · медиа: {d.media.length}
                     </div>
-                    <div style={{ whiteSpace: 'pre-wrap', margin: '4px 0 8px' }}>
-                      {d.text.slice(0, 200) || <span className="muted">без текста</span>}
+                    <div
+                      style={{ whiteSpace: 'pre-wrap', margin: '4px 0 8px' }}
+                    >
+                      {d.text.slice(0, 200) || (
+                        <span className="muted">без текста</span>
+                      )}
                     </div>
                     <div className="row-actions">
                       <button
+                        type="button"
                         disabled={!!busy}
                         onClick={() => {
                           setText(d.text);
@@ -327,6 +387,7 @@ export function News() {
                         В композер
                       </button>
                       <button
+                        type="button"
                         disabled={!!busy}
                         onClick={() =>
                           run('drop-draft', () =>
@@ -364,6 +425,7 @@ export function News() {
                 </span>
                 <span className="row-actions" style={{ marginLeft: 'auto' }}>
                   <button
+                    type="button"
                     disabled={!!busy}
                     onClick={() => {
                       setEditing(p.id);
@@ -375,6 +437,7 @@ export function News() {
                     Править
                   </button>
                   <button
+                    type="button"
                     disabled={!!busy}
                     onClick={() =>
                       run(
@@ -399,8 +462,10 @@ export function News() {
                 <div className="news-thumbs">
                   {p.media.map((m) => (
                     <div className="news-thumb" key={m.storagePath}>
-                      <img src={(m.posterUrl ?? m.url) ?? undefined} alt="" />
-                      {m.mediaType === 'video' ? <span className="kind">видео</span> : null}
+                      <img src={m.posterUrl ?? m.url ?? undefined} alt="" />
+                      {m.mediaType === 'video' ? (
+                        <span className="kind">видео</span>
+                      ) : null}
                     </div>
                   ))}
                 </div>

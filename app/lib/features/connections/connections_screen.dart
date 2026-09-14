@@ -125,8 +125,28 @@ class _FriendListItem extends ConsumerWidget {
         ),
         child: FriendAvatar(avatarPath: friend.avatarPath),
       ),
-      title: Text(friend.name),
-      subtitle: Text(formatConnectionSummary(l10n, friend.connectedAt)),
+      title: Text(friend.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      // Duration and date are two independent lines, each capped and
+      // ellipsized on its own — not one Text with an embedded '\n' capped at
+      // maxLines: 2, which let a wrapped duration silently swallow the date
+      // at a larger text scale (the row's trailing icons narrow this column
+      // enough that the duration alone can wrap even at a modest scale).
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            formatConnectionDuration(l10n, friend.connectedAt),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            formatConnectionSinceDate(l10n, friend.connectedAt),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

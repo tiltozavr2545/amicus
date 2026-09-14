@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { BroadcastResponse, BroadcastTarget } from '../../shared/types';
 import { get } from '../api';
-import { Card, Fail, date } from '../components/ui';
+import { Card, date, Fail } from '../components/ui';
 
-function People({ title, rows, hint }: { title: string; rows: BroadcastTarget[]; hint: string }) {
+function People({
+  title,
+  rows,
+  hint,
+}: {
+  title: string;
+  rows: BroadcastTarget[];
+  hint: string;
+}) {
   if (rows.length === 0) return null;
   return (
     <div className="panel" style={{ marginTop: 12 }}>
@@ -61,21 +69,26 @@ export function Broadcast() {
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount — load is redefined every render (closes over `build`), so adding it would re-trigger on every state change it causes.
   useEffect(() => {
     void load(null);
     // Первая загрузка берёт цель из pubspec; дальше её меняет только поле.
   }, []);
 
   if (error) return <Fail message={error} onRetry={() => load(build)} />;
-  if (!data || build === null) return <p className="muted">Считаю аудиторию…</p>;
+  if (!data || build === null)
+    return <p className="muted">Считаю аудиторию…</p>;
 
   const ahead = data.repoVersion && build > data.repoVersion.build;
 
   async function send() {
-    const kind = important ? 'НАСТОЙЧИВОЕ «важное обновление»' : 'обычное «вышла новая версия»';
+    if (!data) return;
+    const kind = important
+      ? 'НАСТОЙЧИВОЕ «важное обновление»'
+      : 'обычное «вышла новая версия»';
     if (
       !window.confirm(
-        `Отправить ${kind} уведомление про сборку ${build} — ${data!.willReceive.length} чел.?`,
+        `Отправить ${kind} уведомление про сборку ${build} — ${data.willReceive.length} чел.?`,
       )
     ) {
       return;
@@ -108,7 +121,10 @@ export function Broadcast() {
 
       <div className="panel">
         <h2 style={{ marginTop: 0 }}>Уведомление «вышла новая версия»</h2>
-        <div className="row-actions" style={{ flexWrap: 'wrap', marginBottom: 10 }}>
+        <div
+          className="row-actions"
+          style={{ flexWrap: 'wrap', marginBottom: 10 }}
+        >
           <label className="muted" style={{ fontSize: 13 }}>
             versionCode{' '}
             <input
@@ -139,7 +155,11 @@ export function Broadcast() {
             />{' '}
             настойчивое
           </label>
-          <button onClick={send} disabled={busy || data.willReceive.length === 0}>
+          <button
+            type="button"
+            onClick={send}
+            disabled={busy || data.willReceive.length === 0}
+          >
             {busy ? 'Отправляю…' : `Отправить ${data.willReceive.length} чел.`}
           </button>
         </div>
@@ -150,7 +170,11 @@ export function Broadcast() {
             value={data.repoVersion ? `+${data.repoVersion.build}` : '—'}
             hint={data.repoVersion?.name ?? 'pubspec не прочитан'}
           />
-          <Card label="Получат" value={data.willReceive.length} hint="отстают от цели" />
+          <Card
+            label="Получат"
+            value={data.willReceive.length}
+            hint="отстают от цели"
+          />
           <Card
             label="Уже получали"
             value={data.skippedAlready.length}
@@ -161,7 +185,11 @@ export function Broadcast() {
             value={data.skippedOptOut.length}
             hint="notify_system_account"
           />
-          <Card label="Без устройств" value={data.withoutDevices} hint="не дойдёт ничто" />
+          <Card
+            label="Без устройств"
+            value={data.withoutDevices}
+            hint="не дойдёт ничто"
+          />
         </div>
 
         {result ? (
@@ -170,19 +198,21 @@ export function Broadcast() {
 
         {ahead ? (
           <p className="warn-note" style={{ fontSize: 12.5, marginBottom: 0 }}>
-            Цель выше, чем сборка в <span className="mono">app/pubspec.yaml</span> (
+            Цель выше, чем сборка в{' '}
+            <span className="mono">app/pubspec.yaml</span> (
             {data.repoVersion?.build}). Обновляться людям будет некуда, пока эта
             версия не выложена в стор.
           </p>
         ) : null}
 
         <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>
-          Отправку делает <span className="mono">enqueue_app_update_notifications()</span>,
-          список выше — её же отбор, посчитанный здесь заранее: отстающим считается
-          тот, у кого максимум <span className="mono">app_build</span> по всем
-          устройствам ниже цели. Повторный вызов с той же сборкой безопасен —
-          про одну сборку человек получит ровно одно уведомление, и обычное с
-          настойчивым не сложатся.
+          Отправку делает{' '}
+          <span className="mono">enqueue_app_update_notifications()</span>,
+          список выше — её же отбор, посчитанный здесь заранее: отстающим
+          считается тот, у кого максимум <span className="mono">app_build</span>{' '}
+          по всем устройствам ниже цели. Повторный вызов с той же сборкой
+          безопасен — про одну сборку человек получит ровно одно уведомление, и
+          обычное с настойчивым не сложатся.
         </p>
         {important ? (
           <p className="warn-note" style={{ fontSize: 12.5, marginBottom: 0 }}>

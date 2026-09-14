@@ -25,18 +25,23 @@ if [ "$base_name" = "$base_version" ] || [ "$current_name" = "$current_version" 
 	exit 1
 fi
 
+# versionName (the "0.18.8" part) is a display string only - neither Google
+# Play nor App Store requires it to change between releases; both platforms
+# key on the build number alone (versionCode / CFBundleVersion). So this only
+# rejects a regression (going backwards), the same freedom the App Store
+# side already has of shipping several builds under one marketing version.
 if ! printf '%s\n' "$base_name" "$current_name" | awk -F. '
 function valid(v) { return v ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ }
 NR == 1 { if (!valid($0)) exit 2; base = $0; next }
 NR == 2 {
   if (!valid($0)) exit 2
   split(base, b); split($0, c)
-  if (c[1] > b[1] || (c[1] == b[1] && c[2] > b[2]) ||
-      (c[1] == b[1] && c[2] == b[2] && c[3] > b[3])) exit 0
-  exit 1
+  if (c[1] < b[1] || (c[1] == b[1] && c[2] < b[2]) ||
+      (c[1] == b[1] && c[2] == b[2] && c[3] < b[3])) exit 1
+  exit 0
 }
 '; then
-	echo "PR version bump required: versionName must increase from $base_name to $current_name" >&2
+	echo "versionName must not decrease: $base_name -> $current_name" >&2
 	exit 1
 fi
 
@@ -52,4 +57,4 @@ if [ "$current_code" -le "$base_code" ]; then
 	exit 1
 fi
 
-printf '%s\n' "Version bump verified: $base_version -> $current_version"
+printf '%s\n' "Version check passed: $base_version -> $current_version"

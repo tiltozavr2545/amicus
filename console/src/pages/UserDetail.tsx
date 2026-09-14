@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { UserDetailResponse } from '../../shared/types';
 import { useApi } from '../api';
-import { Card, Fail, ago, date } from '../components/ui';
+import { ago, Card, date, Fail } from '../components/ui';
 
 const PUSH_STATUS: Record<string, string> = {
   granted: 'разрешил, токен записан',
@@ -51,14 +51,16 @@ const COUNT_TITLES: Record<string, string> = {
 
 export function UserDetail() {
   const { id } = useParams();
-  const { data, error, loading, reload } = useApi<UserDetailResponse>(`/users/${id}`);
+  const { data, error, loading, reload } = useApi<UserDetailResponse>(
+    `/users/${id}`,
+  );
   const [kind, setKind] = useState(MANUAL_KINDS[0].kind);
   const [note, setNote] = useState('');
   const [build, setBuild] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  const spec = MANUAL_KINDS.find((k) => k.kind === kind)!;
+  const spec = MANUAL_KINDS.find((k) => k.kind === kind) ?? MANUAL_KINDS[0];
 
   async function notify() {
     setSending(true);
@@ -99,7 +101,12 @@ export function UserDetail() {
         <span className="stamp">
           <Link to="/users">← к списку</Link>
         </span>
-        <button style={{ marginLeft: 'auto' }} onClick={reload} disabled={loading}>
+        <button
+          type="button"
+          style={{ marginLeft: 'auto' }}
+          onClick={reload}
+          disabled={loading}
+        >
           {loading ? 'Обновляю…' : 'Обновить'}
         </button>
       </div>
@@ -139,7 +146,8 @@ export function UserDetail() {
               <td>
                 {u.pushStatus === null ? (
                   <span className="muted">
-                    не сообщал — открывал приложение до версии, которая это умеет
+                    не сообщал — открывал приложение до версии, которая это
+                    умеет
                   </span>
                 ) : (
                   <>
@@ -176,8 +184,15 @@ export function UserDetail() {
 
       <h2>Отправить уведомление</h2>
       <div className="panel">
-        <div className="row-actions" style={{ flexWrap: 'wrap', marginBottom: 8 }}>
-          <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={sending}>
+        <div
+          className="row-actions"
+          style={{ flexWrap: 'wrap', marginBottom: 8 }}
+        >
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+            disabled={sending}
+          >
             {MANUAL_KINDS.map((k) => (
               <option key={k.kind} value={k.kind}>
                 {k.label}
@@ -203,7 +218,11 @@ export function UserDetail() {
               onChange={(e) => setNote(e.target.value)}
             />
           )}
-          <button onClick={notify} disabled={sending || (spec.needsBuild && !build)}>
+          <button
+            type="button"
+            onClick={notify}
+            disabled={sending || (spec.needsBuild && !build)}
+          >
             {sending ? 'Отправляю…' : 'Отправить'}
           </button>
         </div>
@@ -217,7 +236,11 @@ export function UserDetail() {
           </p>
         ) : null}
         {result ? (
-          <p style={{ fontSize: 12.5, marginBottom: 0, color: 'var(--accent)' }}>{result}</p>
+          <p
+            style={{ fontSize: 12.5, marginBottom: 0, color: 'var(--accent)' }}
+          >
+            {result}
+          </p>
         ) : null}
       </div>
 
@@ -240,10 +263,16 @@ export function UserDetail() {
             {data.devices.map((d) => (
               <tr key={d.tokenTail}>
                 <td className="mono muted">…{d.tokenTail}</td>
-                <td className="mono">{d.appVersion ?? <span className="muted">не сообщена</span>}</td>
+                <td className="mono">
+                  {d.appVersion ?? <span className="muted">не сообщена</span>}
+                </td>
                 <td className="num mono">{d.appBuild ?? '—'}</td>
-                <td className="mono">{d.platform ?? <span className="muted">—</span>}</td>
-                <td className="mono">{d.osVersion ?? <span className="muted">—</span>}</td>
+                <td className="mono">
+                  {d.platform ?? <span className="muted">—</span>}
+                </td>
+                <td className="mono">
+                  {d.osVersion ?? <span className="muted">—</span>}
+                </td>
                 <td className="mono">{d.locale}</td>
                 <td className="muted">{date(d.createdAt)}</td>
                 <td>{ago(d.updatedAt)}</td>
@@ -277,7 +306,9 @@ export function UserDetail() {
                   <tr key={key}>
                     <td className="mono">{key}</td>
                     <td>
-                      <span className={`tag ${on ? 'good' : 'bad'}`}>{on ? 'вкл' : 'выкл'}</span>
+                      <span className={`tag ${on ? 'good' : 'bad'}`}>
+                        {on ? 'вкл' : 'выкл'}
+                      </span>
                     </td>
                   </tr>
                 ))
@@ -292,6 +323,7 @@ export function UserDetail() {
           <table>
             <tbody>
               {data.recentNotifications.map((n, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: rows have no id from the API; index only disambiguates same kind+timestamp in this static, re-fetched-wholesale list.
                 <tr key={`${n.kind}-${n.createdAt}-${i}`}>
                   <td className="mono">{n.kind}</td>
                   <td className="muted">{date(n.createdAt)}</td>
@@ -329,7 +361,13 @@ export function UserDetail() {
                 <td className="muted">{date(p.createdAt)}</td>
                 <td className="mono">{p.visibility ?? '—'}</td>
                 <td className="num">{p.media}</td>
-                <td>{p.text ? p.text.slice(0, 160) : <span className="muted">без текста</span>}</td>
+                <td>
+                  {p.text ? (
+                    p.text.slice(0, 160)
+                  ) : (
+                    <span className="muted">без текста</span>
+                  )}
+                </td>
               </tr>
             ))}
             {data.recentPosts.length === 0 ? (

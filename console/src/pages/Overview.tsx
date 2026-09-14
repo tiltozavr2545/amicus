@@ -1,9 +1,10 @@
 import type { OverviewResponse } from '../../shared/types';
 import { useApi } from '../api';
-import { Bars, Card, Fail, date } from '../components/ui';
+import { Bars, Card, date, Fail } from '../components/ui';
 
 export function Overview() {
-  const { data, error, loading, reload } = useApi<OverviewResponse>('/overview');
+  const { data, error, loading, reload } =
+    useApi<OverviewResponse>('/overview');
 
   if (error) return <Fail message={error} onRetry={reload} />;
   if (!data) return <p className="muted">{loading ? 'Считаю…' : ''}</p>;
@@ -21,19 +22,31 @@ export function Overview() {
       <div className="page-head">
         <h1>Обзор</h1>
         <span className="stamp">снято {date(data.generatedAt)}</span>
-        <button onClick={reload} disabled={loading}>
+        <button type="button" onClick={reload} disabled={loading}>
           {loading ? 'Обновляю…' : 'Обновить'}
         </button>
       </div>
 
       <div className="cards">
-        <Card label="Пользователи" value={t.users} hint={`${data.activity.neverActive} ни разу не заходили`} />
-        <Card label="Активны за сутки" value={data.activity.dau} hint={`неделя ${data.activity.wau} · месяц ${data.activity.mau}`} />
+        <Card
+          label="Пользователи"
+          value={t.users}
+          hint={`${data.activity.neverActive} ни разу не заходили`}
+        />
+        <Card
+          label="Активны за сутки"
+          value={data.activity.dau}
+          hint={`неделя ${data.activity.wau} · месяц ${data.activity.mau}`}
+        />
         <Card label="Посты" value={t.posts} />
         <Card label="Комментарии" value={t.comments} />
         <Card label="Реакции" value={t.reactions} />
         <Card label="Знакомства" value={t.connections} />
-        <Card label="Комнаты" value={t.rooms} hint={`${t.roomMessages} сообщений`} />
+        <Card
+          label="Комнаты"
+          value={t.rooms}
+          hint={`${t.roomMessages} сообщений`}
+        />
         <Card label="Устройства" value={t.devices} />
       </div>
 
@@ -59,7 +72,11 @@ export function Overview() {
         <Card
           label="В репозитории"
           value={data.repoVersion ? `+${data.repoVersion.build}` : '—'}
-          hint={data.repoVersion ? data.repoVersion.name : 'pubspec.yaml не прочитан'}
+          hint={
+            data.repoVersion
+              ? data.repoVersion.name
+              : 'pubspec.yaml не прочитан'
+          }
         />
         <Card
           label="Максимум у устройств"
@@ -72,8 +89,16 @@ export function Overview() {
             )
           }
         />
-        <Card label="На максимальной" value={data.usersOnLatest} hint="людей, не установок" />
-        <Card label="Отстали" value={data.usersBehind} hint="максимум build ниже" />
+        <Card
+          label="На максимальной"
+          value={data.usersOnLatest}
+          hint="людей, не установок"
+        />
+        <Card
+          label="Отстали"
+          value={data.usersBehind}
+          hint="максимум build ниже"
+        />
         <Card
           label="Версия не сообщена"
           value={data.usersUnknownBuild}
@@ -98,7 +123,9 @@ export function Overview() {
           <tbody>
             {data.versions.map((v) => (
               <tr key={`${v.version}+${v.build}`}>
-                <td className="mono">{v.version ?? <span className="muted">не сообщена</span>}</td>
+                <td className="mono">
+                  {v.version ?? <span className="muted">не сообщена</span>}
+                </td>
                 <td className="num mono">{v.build ?? '—'}</td>
                 <td className="num">{v.installs}</td>
                 <td className="num">{v.users}</td>
@@ -111,10 +138,11 @@ export function Overview() {
           пользователя бывают на разных сборках. Решения принимаются по build.
           {ahead ? (
             <>
-              {' '}Устройства сообщают build выше, чем в{' '}
+              {' '}
+              Устройства сообщают build выше, чем в{' '}
               <span className="mono">app/pubspec.yaml</span> (
-              {data.repoVersion?.build} → {data.latestBuild}): номер сборки подняли
-              где-то между репозиторием и стором.
+              {data.repoVersion?.build} → {data.latestBuild}): номер сборки
+              подняли где-то между репозиторием и стором.
             </>
           ) : null}
         </p>
@@ -174,7 +202,9 @@ export function Overview() {
             <tbody>
               {data.outbox.byKindLast7d.length === 0 ? (
                 <tr>
-                  <td colSpan={2} className="muted">за неделю пусто</td>
+                  <td colSpan={2} className="muted">
+                    за неделю пусто
+                  </td>
                 </tr>
               ) : (
                 data.outbox.byKindLast7d.map((k) => (
@@ -241,8 +271,8 @@ export function Overview() {
         <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
           Раньше здесь был только счётчик «без устройств», который валил в одну
           кучу отказ в разрешении, сбой регистрации и «просто не открывал
-          приложение». Строку пишет сам клиент на каждый запуск, поэтому
-          «не сообщал» будет таять по мере того, как люди обновятся.
+          приложение». Строку пишет сам клиент на каждый запуск, поэтому «не
+          сообщал» будет таять по мере того, как люди обновятся.
         </p>
       </div>
 

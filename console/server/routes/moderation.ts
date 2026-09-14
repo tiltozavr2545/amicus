@@ -5,18 +5,19 @@ import type {
   ReportRow,
   ReportsResponse,
 } from '../../shared/types.ts';
-import { admin } from '../supabase.ts';
 import { fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
+import { admin } from '../supabase.ts';
 
 export const moderationRouter = Router();
 
 // Таблица и колонка, в которых живёт объект каждого вида. Одно место вместо
 // трёх веток в каждом обработчике.
-const TARGETS: Record<ModerationTargetKind, { table: string; author: string }> = {
-  post: { table: 'posts', author: 'author_id' },
-  comment: { table: 'comments', author: 'author_id' },
-  room_message: { table: 'room_messages', author: 'author_id' },
-};
+const TARGETS: Record<ModerationTargetKind, { table: string; author: string }> =
+  {
+    post: { table: 'posts', author: 'author_id' },
+    comment: { table: 'comments', author: 'author_id' },
+    room_message: { table: 'room_messages', author: 'author_id' },
+  };
 
 function isTargetKind(value: unknown): value is ModerationTargetKind {
   return value === 'post' || value === 'comment' || value === 'room_message';
@@ -37,7 +38,6 @@ async function enqueue(userId: string, kind: string, note?: string) {
   if (error) throw new Error(`notification_outbox: ${error.message}`);
 }
 
-
 // Медиа объекта, на который жалуются. Без него решение по картинке принимать
 // нечем: снимок текста у такого поста пустой, а весь смысл жалобы — в том,
 // что на фотографии.
@@ -49,7 +49,10 @@ async function mediaForTargets(
   posts: string[],
   messages: string[],
 ): Promise<Map<string, ReportMedia[]>> {
-  const raw = new Map<string, { kind: string; path: string; poster: string | null }[]>();
+  const raw = new Map<
+    string,
+    { kind: string; path: string; poster: string | null }[]
+  >();
 
   if (posts.length > 0) {
     const rows = await fetchOnce<{
@@ -57,12 +60,16 @@ async function mediaForTargets(
       media_type: string;
       storage_path: string;
       poster_path: string | null;
-    }>('post_media', 'post_id, media_type, storage_path, poster_path', (q: any) =>
+    }>('post_media', 'post_id, media_type, storage_path, poster_path', (q) =>
       q.in('post_id', posts),
     );
     for (const r of rows) {
       const list = raw.get(`post:${r.post_id}`) ?? [];
-      list.push({ kind: r.media_type, path: r.storage_path, poster: r.poster_path });
+      list.push({
+        kind: r.media_type,
+        path: r.storage_path,
+        poster: r.poster_path,
+      });
       raw.set(`post:${r.post_id}`, list);
     }
   }
@@ -71,7 +78,7 @@ async function mediaForTargets(
     const rows = await fetchOnce<{ id: string; media: unknown }>(
       'room_messages',
       'id, media',
-      (q: any) => q.in('id', messages),
+      (q) => q.in('id', messages),
     );
     for (const r of rows) {
       const items = Array.isArray(r.media) ? r.media : [];
@@ -97,10 +104,13 @@ async function mediaForTargets(
   ];
   const signed = new Map<string, string>();
   if (paths.length > 0) {
-    const { data, error } = await admin.storage.from('media').createSignedUrls(paths, 3600);
+    const { data, error } = await admin.storage
+      .from('media')
+      .createSignedUrls(paths, 3600);
     if (error) throw new Error(`storage: ${error.message}`);
     for (const entry of data ?? []) {
-      if (entry.signedUrl && entry.path) signed.set(entry.path, entry.signedUrl);
+      if (entry.signedUrl && entry.path)
+        signed.set(entry.path, entry.signedUrl);
     }
   }
 
@@ -112,7 +122,7 @@ async function mediaForTargets(
         kind: i.kind,
         path: i.path,
         url: signed.get(i.path) ?? null,
-        posterUrl: i.poster ? signed.get(i.poster) ?? null : null,
+        posterUrl: i.poster ? (signed.get(i.poster) ?? null) : null,
       })),
     );
   }
@@ -150,12 +160,16 @@ moderationRouter.get('/reports', async (req, res, next) => {
     // разницы между «надо разобрать» и «уже разобрано, жалоба осталась».
     const state = new Map<string, { exists: boolean; hidden: boolean }>();
     for (const kind of ['post', 'comment', 'room_message'] as const) {
-      const ids = [...new Set(rows.filter((r) => r.target_kind === kind).map((r) => r.target_id))];
+      const ids = [
+        ...new Set(
+          rows.filter((r) => r.target_kind === kind).map((r) => r.target_id),
+        ),
+      ];
       if (ids.length === 0) continue;
       const found = await fetchOnce<{ id: string; hidden_at: string | null }>(
         TARGETS[kind].table,
         'id, hidden_at',
-        (q: any) => q.in('id', ids),
+        (q) => q.in('id', ids),
       );
       const byId = new Map(found.map((f) => [f.id, f.hidden_at]));
       for (const id of ids) {
@@ -167,8 +181,18 @@ moderationRouter.get('/reports', async (req, res, next) => {
     }
 
     const media = await mediaForTargets(
-      [...new Set(rows.filter((r) => r.target_kind === 'post').map((r) => r.target_id))],
-      [...new Set(rows.filter((r) => r.target_kind === 'room_message').map((r) => r.target_id))],
+      [
+        ...new Set(
+          rows.filter((r) => r.target_kind === 'post').map((r) => r.target_id),
+        ),
+      ],
+      [
+        ...new Set(
+          rows
+            .filter((r) => r.target_kind === 'room_message')
+            .map((r) => r.target_id),
+        ),
+      ],
     );
 
     // Сколько жалоб подал сам жалобщик и сколько из них отклонили. Сигнал не
@@ -202,14 +226,15 @@ moderationRouter.get('/reports', async (req, res, next) => {
           targetId: r.target_id,
           targetAuthorId: r.target_author_id,
           targetAuthorName: r.target_author_id
-            ? nameOf.get(r.target_author_id) ?? '—'
+            ? (nameOf.get(r.target_author_id) ?? '—')
             : null,
           targetAuthorBanned: r.target_author_id
             ? Boolean(auth.get(r.target_author_id)?.bannedUntil)
             : false,
           targetSnapshot: r.target_snapshot,
           media: media.get(key) ?? [],
-          targetExists: r.target_kind === 'user' ? true : known?.exists ?? false,
+          targetExists:
+            r.target_kind === 'user' ? true : (known?.exists ?? false),
           targetHidden: known?.hidden ?? false,
           reportsOnTarget: perTarget.get(key) ?? 1,
           reporterTotal: byReporter.get(r.reporter_id)?.total ?? 1,
@@ -245,8 +270,10 @@ moderationRouter.post('/moderation/content', async (req, res, next) => {
     }
     const { table, author } = TARGETS[kind];
 
-    const existing = await fetchOnce<Record<string, unknown>>(table, `id, ${author}`, (q: any) =>
-      q.eq('id', targetId),
+    const existing = await fetchOnce<Record<string, unknown>>(
+      table,
+      `id, ${author}`,
+      (q) => q.eq('id', targetId),
     );
     if (existing.length === 0) {
       res.status(404).json({ error: 'Объект уже не существует' });
@@ -257,7 +284,9 @@ moderationRouter.post('/moderation/content', async (req, res, next) => {
     if (action === 'hide' || action === 'unhide') {
       const { error } = await admin
         .from(table)
-        .update({ hidden_at: action === 'hide' ? new Date().toISOString() : null })
+        .update({
+          hidden_at: action === 'hide' ? new Date().toISOString() : null,
+        })
         .eq('id', targetId);
       if (error) throw new Error(`${table}: ${error.message}`);
     } else if (action === 'delete') {
@@ -278,7 +307,10 @@ moderationRouter.post('/moderation/content', async (req, res, next) => {
           text: '',
         };
         if (kind === 'room_message') patch.media = [];
-        const { error } = await admin.from(table).update(patch).eq('id', targetId);
+        const { error } = await admin
+          .from(table)
+          .update(patch)
+          .eq('id', targetId);
         if (error) throw new Error(`${table}: ${error.message}`);
       }
     } else {
@@ -316,9 +348,12 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
       // Снятие запрета писать снимает и бан входа: иначе «none» означало бы
       // разное в зависимости от того, чем банили, а из консоли это не видно.
       if (mode === 'none') {
-        const { error: authError } = await admin.auth.admin.updateUserById(userId, {
-          ban_duration: 'none',
-        });
+        const { error: authError } = await admin.auth.admin.updateUserById(
+          userId,
+          {
+            ban_duration: 'none',
+          },
+        );
         if (authError) throw new Error(`auth: ${authError.message}`);
       }
     } else if (mode === 'auth') {
@@ -375,7 +410,7 @@ moderationRouter.post('/users/:id/notify', async (req, res, next) => {
       return;
     }
 
-    const user = await fetchOnce<{ id: string }>('users', 'id', (q: any) =>
+    const user = await fetchOnce<{ id: string }>('users', 'id', (q) =>
       q.eq('id', req.params.id),
     );
     if (user.length === 0) {
@@ -386,27 +421,35 @@ moderationRouter.post('/users/:id/notify', async (req, res, next) => {
     if (spec.needsBuild) {
       const build = Number(req.body?.build);
       if (!Number.isInteger(build) || build <= 0) {
-        res.status(400).json({ error: 'Для этого вида нужен build — положительный versionCode' });
+        res.status(400).json({
+          error: 'Для этого вида нужен build — положительный versionCode',
+        });
         return;
       }
 
       const prefs = await fetchOnce<{ notify_system_account: boolean }>(
         'notification_preferences',
         'notify_system_account',
-        (q: any) => q.eq('user_id', req.params.id),
+        (q) => q.eq('user_id', req.params.id),
       );
       if (prefs[0]?.notify_system_account === false) {
-        res.status(409).json({ error: 'Человек выключил уведомления системного аккаунта' });
+        res
+          .status(409)
+          .json({ error: 'Человек выключил уведомления системного аккаунта' });
         return;
       }
 
-      const already = await fetchOnce<{ id: string; payload: Record<string, unknown> }>(
-        'notification_outbox',
-        'id, payload',
-        (q: any) =>
-          q.eq('user_id', req.params.id).in('kind', ['app_update', 'app_update_important']),
+      const already = await fetchOnce<{
+        id: string;
+        payload: Record<string, unknown>;
+      }>('notification_outbox', 'id, payload', (q) =>
+        q
+          .eq('user_id', req.params.id)
+          .in('kind', ['app_update', 'app_update_important']),
       );
-      if (already.some((n) => String(n.payload?.build ?? '') === String(build))) {
+      if (
+        already.some((n) => String(n.payload?.build ?? '') === String(build))
+      ) {
         res.status(409).json({ error: 'Про эту сборку ему уже отправляли' });
         return;
       }
@@ -418,7 +461,11 @@ moderationRouter.post('/users/:id/notify', async (req, res, next) => {
       });
       if (error) throw new Error(`notification_outbox: ${error.message}`);
     } else {
-      await enqueue(req.params.id, kind, typeof req.body?.note === 'string' ? req.body.note : undefined);
+      await enqueue(
+        req.params.id,
+        kind,
+        typeof req.body?.note === 'string' ? req.body.note : undefined,
+      );
     }
 
     res.json({ ok: true });
@@ -437,7 +484,7 @@ moderationRouter.post('/reports/:id/resolve', async (req, res, next) => {
     const rows = await fetchOnce<{ reporter_id: string }>(
       'content_reports',
       'reporter_id',
-      (q: any) => q.eq('id', req.params.id),
+      (q) => q.eq('id', req.params.id),
     );
     if (rows.length === 0) {
       res.status(404).json({ error: 'Жалоба не найдена' });
@@ -448,7 +495,10 @@ moderationRouter.post('/reports/:id/resolve', async (req, res, next) => {
       .from('content_reports')
       .update({
         status,
-        resolution: typeof resolution === 'string' && resolution.trim() ? resolution.trim() : null,
+        resolution:
+          typeof resolution === 'string' && resolution.trim()
+            ? resolution.trim()
+            : null,
         resolved_at: new Date().toISOString(),
       })
       .eq('id', req.params.id);

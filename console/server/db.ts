@@ -1,5 +1,17 @@
 import { admin } from './supabase.ts';
 
+// Достаточно описать методы, которые реально использует вызывающий код:
+// настоящий тип PostgrestFilterBuilder тянет восемь generic-параметров,
+// завязанных на Database-схему, которой у консоли нет.
+interface Filterable<Self> {
+  eq(column: string, value: unknown): Self;
+  is(column: string, value: unknown): Self;
+  in(column: string, values: readonly unknown[]): Self;
+  gte(column: string, value: unknown): Self;
+  order(column: string, options?: { ascending?: boolean }): Self;
+  limit(count: number): Self;
+}
+
 const PAGE = 1000;
 // Потолок на всякий случай: консоль читает таблицы целиком и агрегирует в
 // памяти (проект пилотный, строк немного). Если потолок когда-нибудь
@@ -9,11 +21,14 @@ const HARD_CAP = 100_000;
 export async function fetchAll<T>(
   table: string,
   columns: string,
-  tweak?: (q: any) => any,
+  tweak?: <Q extends Filterable<Q>>(q: Q) => Q,
 ): Promise<T[]> {
   const rows: T[] = [];
   for (let from = 0; from < HARD_CAP; from += PAGE) {
-    let query = admin.from(table).select(columns).range(from, from + PAGE - 1);
+    let query = admin
+      .from(table)
+      .select(columns)
+      .range(from, from + PAGE - 1);
     if (tweak) query = tweak(query);
     const { data, error } = await query;
     if (error) throw new Error(`${table}: ${error.message}`);
@@ -26,7 +41,7 @@ export async function fetchAll<T>(
 
 export async function countOf(
   table: string,
-  tweak?: (q: any) => any,
+  tweak?: <Q extends Filterable<Q>>(q: Q) => Q,
 ): Promise<number> {
   let query = admin.from(table).select('*', { count: 'exact', head: true });
   if (tweak) query = tweak(query);
@@ -49,7 +64,10 @@ export type AuthUser = {
 export async function fetchAuthUsers(): Promise<Map<string, AuthUser>> {
   const byId = new Map<string, AuthUser>();
   for (let page = 1; page <= 100; page += 1) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    });
     if (error) throw new Error(`auth.users: ${error.message}`);
     const users = data?.users ?? [];
     for (const u of users) {
@@ -74,7 +92,7 @@ export async function fetchAuthUsers(): Promise<Map<string, AuthUser>> {
 export async function fetchOnce<T>(
   table: string,
   columns: string,
-  tweak?: (q: any) => any,
+  tweak?: <Q extends Filterable<Q>>(q: Q) => Q,
 ): Promise<T[]> {
   let query = admin.from(table).select(columns);
   if (tweak) query = tweak(query);

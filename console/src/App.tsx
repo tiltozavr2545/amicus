@@ -1,17 +1,24 @@
 import { useEffect } from 'react';
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import {
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+} from 'react-router-dom';
 import { Boundary } from './components/boundary';
-import { Overview } from './pages/Overview';
 import { Broadcast } from './pages/Broadcast';
 import { News } from './pages/News';
+import { Overview } from './pages/Overview';
 import { Reports } from './pages/Reports';
-import { Users } from './pages/Users';
 import { UserDetail } from './pages/UserDetail';
+import { Users } from './pages/Users';
 
 // Роутер сам прокрутку не сбрасывает: со списка, промотанного вниз, переход
 // в карточку попадал в её середину.
 function ScrollToTop() {
   const { pathname } = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the re-run trigger, not a value the effect body reads.
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
@@ -25,19 +32,34 @@ export function App() {
         <p className="brand">Amicus</p>
         <p className="brand-sub">консоль · локально</p>
         <nav className="nav">
-          <NavLink to="/overview" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink
+            to="/overview"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
             Обзор
           </NavLink>
-          <NavLink to="/users" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink
+            to="/users"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
             Пользователи
           </NavLink>
-          <NavLink to="/reports" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink
+            to="/reports"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
             Жалобы
           </NavLink>
-          <NavLink to="/news" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink
+            to="/news"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
             Новости
           </NavLink>
-          <NavLink to="/broadcast" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink
+            to="/broadcast"
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
             Рассылки
           </NavLink>
         </nav>

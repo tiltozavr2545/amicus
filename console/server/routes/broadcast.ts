@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import type { BroadcastResponse, BroadcastTarget } from '../../shared/types.ts';
-import { admin } from '../supabase.ts';
-import { fetchAll } from '../db.ts';
 import { loadDevices } from '../aggregate.ts';
+import { fetchAll } from '../db.ts';
 import { repoVersion } from '../release.ts';
+import { admin } from '../supabase.ts';
 
 export const broadcastRouter = Router();
 
@@ -27,10 +27,12 @@ async function audience(targetBuild: number) {
       'notification_preferences',
       'user_id, notify_system_account',
     ),
-    fetchAll<{ user_id: string; kind: string; payload: Record<string, unknown> }>(
-      'notification_outbox',
-      'user_id, kind, payload',
-      (q: any) => q.in('kind', UPDATE_KINDS),
+    fetchAll<{
+      user_id: string;
+      kind: string;
+      payload: Record<string, unknown>;
+    }>('notification_outbox', 'user_id, kind, payload', (q) =>
+      q.in('kind', UPDATE_KINDS),
     ),
   ]);
 
@@ -44,7 +46,9 @@ async function audience(targetBuild: number) {
   }
 
   const optedOut = new Set(
-    prefs.filter((p) => p.notify_system_account === false).map((p) => p.user_id),
+    prefs
+      .filter((p) => p.notify_system_account === false)
+      .map((p) => p.user_id),
   );
   const alreadyToldAbout = new Set(
     outbox
@@ -76,8 +80,8 @@ async function audience(targetBuild: number) {
     skippedAlready: sort(skippedAlready),
     skippedOptOut: sort(skippedOptOut),
     withoutDevices: users.filter((u) => !maxBuild.has(u.id)).length,
-    history: [...
-      outbox
+    history: [
+      ...outbox
         .reduce((map, n) => {
           const build = String(n.payload?.build ?? '?');
           const key = `${build}|${n.kind}`;
@@ -96,7 +100,9 @@ broadcastRouter.get('/broadcast', async (req, res, next) => {
     const repo = await repoVersion();
     const target = Number(req.query.build ?? repo?.build ?? 0);
     if (!Number.isInteger(target) || target <= 0) {
-      res.status(400).json({ error: 'build должен быть положительным versionCode' });
+      res
+        .status(400)
+        .json({ error: 'build должен иметь положительный versionCode' });
       return;
     }
     const body: BroadcastResponse = {
@@ -114,22 +120,29 @@ broadcastRouter.get('/broadcast', async (req, res, next) => {
 broadcastRouter.post('/broadcast/app-update', async (req, res, next) => {
   try {
     const build = Number(req.body?.build);
-    const version = typeof req.body?.version === 'string' ? req.body.version : null;
+    const version =
+      typeof req.body?.version === 'string' ? req.body.version : null;
     const important = req.body?.important === true;
     if (!Number.isInteger(build) || build <= 0) {
-      res.status(400).json({ error: 'build должен быть положительным versionCode' });
+      res
+        .status(400)
+        .json({ error: 'build должен иметь положительный versionCode' });
       return;
     }
 
     // Вызывается сама функция, а не повторяется её логика вставкой: отбор,
     // защита от повтора и выбор вида — её дело, и второй реализации этому
     // месту не нужно. Консоль здесь только форма ввода.
-    const { data, error } = await admin.rpc('enqueue_app_update_notifications', {
-      p_min_build: build,
-      p_version: version,
-      p_important: important,
-    });
-    if (error) throw new Error(`enqueue_app_update_notifications: ${error.message}`);
+    const { data, error } = await admin.rpc(
+      'enqueue_app_update_notifications',
+      {
+        p_min_build: build,
+        p_version: version,
+        p_important: important,
+      },
+    );
+    if (error)
+      throw new Error(`enqueue_app_update_notifications: ${error.message}`);
 
     res.json({ ok: true, queued: typeof data === 'number' ? data : 0 });
   } catch (error) {

@@ -210,6 +210,12 @@
       "date": { "type": "String" }
     }
   },
+  "connectionSinceDate": "since {date}",
+  "@connectionSinceDate": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
 
   "settingsTooltip": "Settings",
   "settingsTitle": "Settings",

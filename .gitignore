@@ -16,3 +16,6 @@
 
 # Local scratch/backup files, not part of the repo
 archive/
+
+# Claude Code's own local dev-server launch config, per-machine
+.claude/launch.json

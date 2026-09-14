@@ -1,6 +1,6 @@
-import { config } from 'dotenv';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config } from 'dotenv';
 
 const here = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(here, '..', '.env') });
@@ -36,7 +36,8 @@ function assertServiceRole(key: string): string {
         );
       }
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('SUPABASE_')) throw error;
+      if (error instanceof Error && error.message.startsWith('SUPABASE_'))
+        throw error;
       // Не JWT — значит ключ нового поколения (`sb_secret_…`), проверить нечем.
     }
   }
