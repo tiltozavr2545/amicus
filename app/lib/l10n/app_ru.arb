@@ -180,6 +180,7 @@
   "connectionKnownMonths": "Знакомы {months, plural, one{{months} месяц} few{{months} месяца} many{{months} месяцев} other{{months} месяца}}",
   "connectionKnownYears": "Знакомы {years, plural, one{{years} год} few{{years} года} many{{years} лет} other{{years} года}}",
   "connectionSummary": "{duration}\nс {date}",
+  "connectionSinceDate": "с {date}",
 
   "settingsTooltip": "Настройки",
   "settingsTitle": "Настройки",

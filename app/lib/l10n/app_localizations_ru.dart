@@ -537,6 +537,11 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String connectionSinceDate(String date) {
+    return 'с $date';
+  }
+
+  @override
   String get settingsTooltip => 'Настройки';
 
   @override

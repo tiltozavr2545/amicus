@@ -980,6 +980,12 @@ abstract class AppLocalizations {
   /// **'{duration}\nsince {date}'**
   String connectionSummary(String duration, String date);
 
+  /// No description provided for @connectionSinceDate.
+  ///
+  /// In en, this message translates to:
+  /// **'since {date}'**
+  String connectionSinceDate(String date);
+
   /// No description provided for @settingsTooltip.
   ///
   /// In en, this message translates to:

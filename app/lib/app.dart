@@ -40,6 +40,16 @@ class KrugApp extends ConsumerWidget {
       locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      // Without this, the app inherits the device's system font-scale
+      // setting uncapped, so a user with a larger accessibility text size
+      // gets every row stretched well beyond what the layout was designed
+      // for (e.g. a 3-line connection row wrapping to 5 lines). Clamping
+      // still lets accessibility scaling through, just bounded.
+      builder: (context, child) => MediaQuery.withClampedTextScaling(
+        minScaleFactor: 1.0,
+        maxScaleFactor: 1.3,
+        child: child!,
+      ),
       routerConfig: router,
     );
   }

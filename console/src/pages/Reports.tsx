@@ -1,8 +1,12 @@
-import { useState } from 'react';
 import type { ReactNode } from 'react';
-import type { ReportMedia, ReportRow, ReportsResponse } from '../../shared/types';
+import { useState } from 'react';
+import type {
+  ReportMedia,
+  ReportRow,
+  ReportsResponse,
+} from '../../shared/types';
 import { useApi } from '../api';
-import { Fail, ago, date } from '../components/ui';
+import { ago, date, Fail } from '../components/ui';
 
 const REASONS: Record<string, string> = {
   spam: 'Спам или реклама',
@@ -29,10 +33,11 @@ async function post(path: string, body: unknown): Promise<void> {
   });
   if (!response.ok) {
     const parsed = await response.json().catch(() => ({}));
-    throw new Error((parsed as { error?: string }).error ?? response.statusText);
+    throw new Error(
+      (parsed as { error?: string }).error ?? response.statusText,
+    );
   }
 }
-
 
 /** С заглавной — эти подписи начинают предложение. */
 function cap(value: string): string {
@@ -62,7 +67,12 @@ function Action({
 }) {
   return (
     <div className="action">
-      <button className={danger ? 'danger' : undefined} disabled={disabled} onClick={onClick}>
+      <button
+        type="button"
+        className={danger ? 'danger' : undefined}
+        disabled={disabled}
+        onClick={onClick}
+      >
         {label}
       </button>
       <p>{description}</p>
@@ -77,7 +87,7 @@ function MediaStrip({ media }: { media: ReportMedia[] }) {
       {media.map((m) => {
         // У видео показываем постер: проигрывать в карточке нечего, а по
         // ссылке файл открывается в отдельной вкладке как есть.
-        const src = m.kind === 'video' ? m.posterUrl ?? m.url : m.url;
+        const src = m.kind === 'video' ? (m.posterUrl ?? m.url) : m.url;
         if (!src) {
           return (
             <div className="media-missing" key={m.path} title={m.path}>
@@ -86,7 +96,13 @@ function MediaStrip({ media }: { media: ReportMedia[] }) {
           );
         }
         return (
-          <a key={m.path} href={m.url ?? src} target="_blank" rel="noreferrer" title={m.path}>
+          <a
+            key={m.path}
+            href={m.url ?? src}
+            target="_blank"
+            rel="noreferrer"
+            title={m.path}
+          >
             <img src={src} alt="" />
             {m.kind === 'video' ? <span className="badge">видео</span> : null}
           </a>
@@ -105,7 +121,11 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
 
   const isContent = report.targetKind !== 'user';
 
-  async function run(label: string, fn: () => Promise<void>, confirmText?: string) {
+  async function run(
+    label: string,
+    fn: () => Promise<void>,
+    confirmText?: string,
+  ) {
     if (confirmText && !window.confirm(confirmText)) return;
     setBusy(label);
     setError(null);
@@ -131,7 +151,8 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
   const resolve = (status: 'resolved' | 'rejected') =>
     post(`/reports/${report.id}/resolve`, {
       status,
-      resolution: status === 'resolved' ? 'Меры приняты' : 'Нарушения не найдено',
+      resolution:
+        status === 'resolved' ? 'Меры приняты' : 'Нарушения не найдено',
       notifyReporter: notify,
       note,
     });
@@ -153,17 +174,30 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
 
   return (
     <div className="panel" style={{ marginBottom: 12 }}>
-      <div className="row-actions" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+      <div
+        className="row-actions"
+        style={{ marginBottom: 8, flexWrap: 'wrap' }}
+      >
         <strong>{KINDS[report.targetKind] ?? report.targetKind}</strong>
-        <span className="tag warn">{REASONS[report.reason] ?? report.reason}</span>
+        <span className="tag warn">
+          {REASONS[report.reason] ?? report.reason}
+        </span>
         {report.reportsOnTarget > 1 ? (
-          <span className="tag bad">жалоб на объект: {report.reportsOnTarget}</span>
+          <span className="tag bad">
+            жалоб на объект: {report.reportsOnTarget}
+          </span>
         ) : null}
         {report.targetHidden ? <span className="tag">уже скрыт</span> : null}
-        {!report.targetExists ? <span className="tag">объекта уже нет</span> : null}
-        {report.targetAuthorBanned ? <span className="tag bad">вход забанен</span> : null}
+        {!report.targetExists ? (
+          <span className="tag">объекта уже нет</span>
+        ) : null}
+        {report.targetAuthorBanned ? (
+          <span className="tag bad">вход забанен</span>
+        ) : null}
         {report.status !== 'open' ? (
-          <span className="tag good">{report.status === 'resolved' ? 'разобрано' : 'отклонено'}</span>
+          <span className="tag good">
+            {report.status === 'resolved' ? 'разобрано' : 'отклонено'}
+          </span>
         ) : null}
         <span className="muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
           {ago(report.createdAt)} · {date(report.createdAt)}
@@ -173,7 +207,9 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
       <table style={{ marginBottom: 10 }}>
         <tbody>
           <tr>
-            <td className="muted" style={{ width: 150 }}>автор</td>
+            <td className="muted" style={{ width: 150 }}>
+              автор
+            </td>
             <td>{report.targetAuthorName ?? '—'}</td>
           </tr>
           <tr>
@@ -182,7 +218,8 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
               {report.reporterName}
               {report.reporterTotal > 1 ? (
                 <span className="muted" style={{ fontSize: 12 }}>
-                  {' '}· жалоб за всё время: {report.reporterTotal}
+                  {' '}
+                  · жалоб за всё время: {report.reporterTotal}
                   {report.reporterRejected > 0
                     ? `, отклонено ${report.reporterRejected}`
                     : ''}
@@ -198,7 +235,9 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
           {report.targetSnapshot ? (
             <tr>
               <td className="muted">текст на момент жалобы</td>
-              <td style={{ whiteSpace: 'pre-wrap' }}>{report.targetSnapshot}</td>
+              <td style={{ whiteSpace: 'pre-wrap' }}>
+                {report.targetSnapshot}
+              </td>
             </tr>
           ) : null}
           {report.note ? (
@@ -212,7 +251,10 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
 
       <MediaStrip media={report.media} />
 
-      <div className="row-actions" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+      <div
+        className="row-actions"
+        style={{ marginBottom: 8, flexWrap: 'wrap' }}
+      >
         <input
           type="text"
           style={{ flex: 1, minWidth: 280 }}
@@ -238,10 +280,13 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
             onClick={() => run('hide', () => content('hide'))}
             description={
               <>
-                {cap(ACCUSATIVE[report.targetKind] ?? 'объект')} исчезнет у всех, включая
-                самого автора, вместе с прикреплёнными файлами. Строка и файлы
-                остаются на месте — действие обратимо кнопкой «Вернуть».
-                {notify ? ' Автору уйдёт уведомление.' : ' Уведомление не уйдёт — галочка снята.'}
+                {cap(ACCUSATIVE[report.targetKind] ?? 'объект')} исчезнет у
+                всех, включая самого автора, вместе с прикреплёнными файлами.
+                Строка и файлы остаются на месте — действие обратимо кнопкой
+                «Вернуть».
+                {notify
+                  ? ' Автору уйдёт уведомление.'
+                  : ' Уведомление не уйдёт — галочка снята.'}
               </>
             }
           />
@@ -261,19 +306,21 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
             label="Удалить"
             danger
             disabled={!!busy}
-            onClick={() => run('delete', () => content('delete'), 'Удалить безвозвратно?')}
+            onClick={() =>
+              run('delete', () => content('delete'), 'Удалить безвозвратно?')
+            }
             description={
               report.targetKind === 'post' ? (
                 <>
-                  Строка сносится насовсем, вместе с комментариями и реакциями под
-                  ней. Файлы из бакета вынесет уборщик в течение суток.{' '}
+                  Строка сносится насовсем, вместе с комментариями и реакциями
+                  под ней. Файлы из бакета вынесет уборщик в течение суток.{' '}
                   <span className="warn-note">Отменить нельзя.</span>
                 </>
               ) : (
                 <>
-                  На месте останется заглушка «удалено» — без текста и файлов, но
-                  строка сохранится, иначе оборвётся ветка ответов на неё. Так же
-                  удаляет и сам автор из приложения.{' '}
+                  На месте останется заглушка «удалено» — без текста и файлов,
+                  но строка сохранится, иначе оборвётся ветка ответов на неё.
+                  Так же удаляет и сам автор из приложения.{' '}
                   <span className="warn-note">Отменить нельзя.</span>
                 </>
               )
@@ -289,10 +336,10 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
             description={
               <>
                 Отправит ему сообщение модерации и <b>больше ничего</b>: контент
-                останется на месте, жалоба — в очереди. Для предупреждения, когда
-                убирать нечего, а сказать есть что. Приписка выше уходит в текст;
-                без неё придёт общая формулировка. Настройкой уведомлений это не
-                выключается — сообщение личное, про его же материал.
+                останется на месте, жалоба — в очереди. Для предупреждения,
+                когда убирать нечего, а сказать есть что. Приписка выше уходит в
+                текст; без неё придёт общая формулировка. Настройкой уведомлений
+                это не выключается — сообщение личное, про его же материал.
               </>
             }
           />
@@ -302,9 +349,14 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
           <>
             <div className="action">
               <button
+                type="button"
                 disabled={!!busy}
                 onClick={() =>
-                  run('ban', () => ban('write', banDays), `Запретить писать на ${banDays} дн.?`)
+                  run(
+                    'ban',
+                    () => ban('write', banDays),
+                    `Запретить писать на ${banDays} дн.?`,
+                  )
                 }
               >
                 Запретить писать
@@ -334,13 +386,17 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
               danger
               disabled={!!busy}
               onClick={() =>
-                run('banauth', () => ban('auth'), 'Закрыть вход в аккаунт на 10 лет?')
+                run(
+                  'banauth',
+                  () => ban('auth'),
+                  'Закрыть вход в аккаунт на 10 лет?',
+                )
               }
               description={
                 <>
-                  Самое жёсткое: аккаунт вообще не сможет войти — ни прочитать свою
-                  переписку, ни увидеть объяснение, только ошибка входа. Данные не
-                  удаляются. Снимается кнопкой ниже.
+                  Самое жёсткое: аккаунт вообще не сможет войти — ни прочитать
+                  свою переписку, ни увидеть объяснение, только ошибка входа.
+                  Данные не удаляются. Снимается кнопкой ниже.
                 </>
               }
             />
@@ -362,9 +418,9 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
               onClick={() => run('resolved', () => resolve('resolved'))}
               description={
                 <>
-                  Исход «нарушение было, меры приняты». Уберёт жалобу из очереди;{' '}
-                  <b>самого контента не трогает</b> — скрывать или удалять надо
-                  отдельно, до или после.
+                  Исход «нарушение было, меры приняты». Уберёт жалобу из
+                  очереди; <b>самого контента не трогает</b> — скрывать или
+                  удалять надо отдельно, до или после.
                   {notify
                     ? ' Жалобщику уйдёт «рассмотрена, меры приняты».'
                     : ' Жалобщик ничего не узнает — галочка снята.'}
@@ -382,10 +438,10 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
                   уходит другой текст
                   {notify ? ' («рассмотрели, нарушения не нашли»)' : ''}, и
                   отклонённые жалобы копятся в его историю — по ней видно того,
-                  кто жалуется впустую. Отдельной кнопки «написать жалобщику» нет
-                  намеренно: оба готовых текста для него описывают ИСХОД разбора,
-                  и врозь с ним это было бы сообщение о решении, которого ещё не
-                  приняли.
+                  кто жалуется впустую. Отдельной кнопки «написать жалобщику»
+                  нет намеренно: оба готовых текста для него описывают ИСХОД
+                  разбора, и врозь с ним это было бы сообщение о решении,
+                  которого ещё не приняли.
                 </>
               }
             />
@@ -394,7 +450,9 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
       </div>
 
       {error ? (
-        <p style={{ color: 'var(--bad)', fontSize: 12, marginBottom: 0 }}>{error}</p>
+        <p style={{ color: 'var(--bad)', fontSize: 12, marginBottom: 0 }}>
+          {error}
+        </p>
       ) : null}
     </div>
   );
@@ -417,10 +475,10 @@ export function Reports() {
           открытых {data.open} · снято {date(data.generatedAt)}
         </span>
         <div className="row-actions" style={{ marginLeft: 'auto' }}>
-          <button onClick={() => setShowAll((v) => !v)}>
+          <button type="button" onClick={() => setShowAll((v) => !v)}>
             {showAll ? 'Только открытые' : 'Показать разобранные'}
           </button>
-          <button onClick={reload} disabled={loading}>
+          <button type="button" onClick={reload} disabled={loading}>
             {loading ? 'Обновляю…' : 'Обновить'}
           </button>
         </div>
@@ -429,7 +487,9 @@ export function Reports() {
       {data.reports.length === 0 ? (
         <div className="panel">
           <p className="empty" style={{ margin: 0 }}>
-            {showAll ? 'Жалоб не было ни одной.' : 'Разбирать нечего — открытых жалоб нет.'}
+            {showAll
+              ? 'Жалоб не было ни одной.'
+              : 'Разбирать нечего — открытых жалоб нет.'}
           </p>
         </div>
       ) : (

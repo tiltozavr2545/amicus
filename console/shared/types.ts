@@ -38,7 +38,11 @@ export type OverviewResponse = {
   pushReachability: { state: string; users: number }[];
   signups: SeriesPoint[];
   posts: SeriesPoint[];
-  outbox: { pending: number; sentLast24h: number; byKindLast7d: { kind: string; count: number }[] };
+  outbox: {
+    pending: number;
+    sentLast24h: number;
+    byKindLast7d: { kind: string; count: number }[];
+  };
   optOuts: { setting: string; users: number }[];
 };
 
@@ -110,7 +114,11 @@ export type UserDetailResponse = {
     favoritedBy: number;
   };
   recentPosts: PostPreview[];
-  recentNotifications: { kind: string; createdAt: string; sentAt: string | null }[];
+  recentNotifications: {
+    kind: string;
+    createdAt: string;
+    sentAt: string | null;
+  }[];
 };
 
 export type ApiError = { error: string };

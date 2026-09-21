@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { OverviewResponse, VersionRow } from '../../shared/types.ts';
-import { countOf, fetchAll } from '../db.ts';
 import { groupCount, loadDevices, series } from '../aggregate.ts';
+import { countOf, fetchAll } from '../db.ts';
 import { repoVersion } from '../release.ts';
 
 export const overviewRouter = Router();
@@ -13,44 +13,53 @@ overviewRouter.get('/overview', async (_req, res, next) => {
 
     const [users, activity, devices, posts, outbox7d, prefs, pushStatus] =
       await Promise.all([
-      fetchAll<{ id: string; created_at: string }>('users', 'id, created_at'),
-      fetchAll<{ user_id: string; last_active_at: string }>(
-        'user_activity',
-        'user_id, last_active_at',
-      ),
-      loadDevices(),
-      fetchAll<{ id: string; author_id: string; created_at: string }>(
-        'posts',
-        'id, author_id, created_at',
-      ),
-      fetchAll<{ kind: string; created_at: string; sent_at: string | null }>(
-        'notification_outbox',
-        'kind, created_at, sent_at',
-        (q) => q.gte('created_at', since7d),
-      ),
-      fetchAll<Record<string, unknown>>('notification_preferences', '*'),
-      fetchAll<{ user_id: string; status: string }>(
-        'push_registration_status',
-        'user_id, status',
-      ),
-    ]);
-
-    const [comments, reactions, connections, rooms, roomMessages, pending, repo] =
-      await Promise.all([
-        countOf('comments'),
-        countOf('reactions'),
-        countOf('connections'),
-        countOf('rooms'),
-        countOf('room_messages'),
-        countOf('notification_outbox', (q: any) => q.is('sent_at', null)),
-        repoVersion(),
+        fetchAll<{ id: string; created_at: string }>('users', 'id, created_at'),
+        fetchAll<{ user_id: string; last_active_at: string }>(
+          'user_activity',
+          'user_id, last_active_at',
+        ),
+        loadDevices(),
+        fetchAll<{ id: string; author_id: string; created_at: string }>(
+          'posts',
+          'id, author_id, created_at',
+        ),
+        fetchAll<{ kind: string; created_at: string; sent_at: string | null }>(
+          'notification_outbox',
+          'kind, created_at, sent_at',
+          (q) => q.gte('created_at', since7d),
+        ),
+        fetchAll<Record<string, unknown>>('notification_preferences', '*'),
+        fetchAll<{ user_id: string; status: string }>(
+          'push_registration_status',
+          'user_id, status',
+        ),
       ]);
+
+    const [
+      comments,
+      reactions,
+      connections,
+      rooms,
+      roomMessages,
+      pending,
+      repo,
+    ] = await Promise.all([
+      countOf('comments'),
+      countOf('reactions'),
+      countOf('connections'),
+      countOf('rooms'),
+      countOf('room_messages'),
+      countOf('notification_outbox', (q) => q.is('sent_at', null)),
+      repoVersion(),
+    ]);
 
     // Активность: «был в приложении» — это user_activity, которую пишет сам
     // клиент при запуске. Человек без строки не заходил ни разу с тех пор,
     // как таблица появилась.
     const now = Date.now();
-    const lastActive = new Map(activity.map((a) => [a.user_id, a.last_active_at]));
+    const lastActive = new Map(
+      activity.map((a) => [a.user_id, a.last_active_at]),
+    );
     const within = (iso: string | undefined, days: number) =>
       iso !== undefined && now - Date.parse(iso) <= days * 864e5;
     const dau = users.filter((u) => within(lastActive.get(u.id), 1)).length;
@@ -97,7 +106,10 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       }
     }
     const latestBuild = devices.reduce<number | null>(
-      (max, d) => (d.app_build !== null && (max === null || d.app_build > max) ? d.app_build : max),
+      (max, d) =>
+        d.app_build !== null && (max === null || d.app_build > max)
+          ? d.app_build
+          : max,
       null,
     );
     let usersOnLatest = 0;
@@ -122,7 +134,9 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       set.add(d.user_id);
       usersByPlatform.set(key, set);
     }
-    const platforms = [...groupCount(devices, (d) => d.platform ?? 'не сообщена')]
+    const platforms = [
+      ...groupCount(devices, (d) => d.platform ?? 'не сообщена'),
+    ]
       .map(([platform, installs]) => ({
         platform,
         installs,
@@ -184,7 +198,8 @@ overviewRouter.get('/overview', async (_req, res, next) => {
     for (const u of users) {
       const status = statusOf.get(u.id);
       let state: string;
-      if (status && status !== 'granted') state = STATE_TITLES[status] ?? status;
+      if (status && status !== 'granted')
+        state = STATE_TITLES[status] ?? status;
       else if (withTokens.has(u.id)) state = STATE_TITLES.granted;
       else if (status === 'granted') state = 'токен был и пропал';
       else state = 'не сообщал — старая версия';
@@ -238,11 +253,19 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       platforms,
       tokenAges,
       pushReachability,
-      signups: series(users.map((u) => u.created_at), 30),
-      posts: series(posts.map((p) => p.created_at), 30),
+      signups: series(
+        users.map((u) => u.created_at),
+        30,
+      ),
+      posts: series(
+        posts.map((p) => p.created_at),
+        30,
+      ),
       outbox: {
         pending,
-        sentLast24h: outbox7d.filter((n) => n.sent_at !== null && n.sent_at >= since24h).length,
+        sentLast24h: outbox7d.filter(
+          (n) => n.sent_at !== null && n.sent_at >= since24h,
+        ).length,
         byKindLast7d: [...groupCount(outbox7d, (n) => n.kind)]
           .map(([kind, count]) => ({ kind, count }))
           .sort((a, b) => b.count - a.count),

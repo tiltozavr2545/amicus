@@ -30,6 +30,20 @@ String formatConnectionSummary(
   DateTime? now,
 }) {
   final duration = formatConnectionDuration(l10n, connectedAt, now: now);
-  final date = DateFormat('d MMM y', l10n.localeName).format(connectedAt);
+  final date = _formatConnectionDate(l10n, connectedAt);
   return l10n.connectionSummary(duration, date);
+}
+
+/// "since 10 Jul 2026" on its own — the second half of [formatConnectionSummary],
+/// split out so a caller can lay the duration and the date out as two
+/// independent lines instead of one string with an embedded newline. That
+/// matters because a wider text scale can make the duration alone wrap onto
+/// two lines; joined into one `Text` with a line cap, that wrap silently
+/// swallows the date instead of just truncating the duration.
+String formatConnectionSinceDate(AppLocalizations l10n, DateTime connectedAt) {
+  return l10n.connectionSinceDate(_formatConnectionDate(l10n, connectedAt));
+}
+
+String _formatConnectionDate(AppLocalizations l10n, DateTime connectedAt) {
+  return DateFormat('d MMM y', l10n.localeName).format(connectedAt);
 }

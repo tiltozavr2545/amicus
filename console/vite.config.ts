@@ -1,9 +1,7 @@
-import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-
 // Порт API берётся из того же .env, что читает сервер: держать два места,
 // где записан один и тот же номер, — гарантированный способ их разъединить.
-import { loadEnv } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');

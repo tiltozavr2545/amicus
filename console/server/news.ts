@@ -14,7 +14,11 @@ const DRAFTS = resolve(here, '..', 'drafts.json');
 export type Draft = {
   id: string;
   text: string;
-  media: { mediaType: string; storagePath: string; posterPath: string | null }[];
+  media: {
+    mediaType: string;
+    storagePath: string;
+    posterPath: string | null;
+  }[];
   updatedAt: string;
 };
 

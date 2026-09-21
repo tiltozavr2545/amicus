@@ -6,9 +6,9 @@ import type {
   UserRow,
   UsersResponse,
 } from '../../shared/types.ts';
-import { admin } from '../supabase.ts';
-import { countOf, fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
 import { loadDevices, systemAccountIds } from '../aggregate.ts';
+import { countOf, fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
+import { admin } from '../supabase.ts';
 
 export const usersRouter = Router();
 
@@ -25,7 +25,7 @@ async function buildRows(): Promise<UserRow[]> {
       ),
       loadDevices(),
       fetchAll<{ author_id: string }>('posts', 'author_id'),
-      fetchAll<{ author_id: string }>('comments', 'author_id', (q: any) =>
+      fetchAll<{ author_id: string }>('comments', 'author_id', (q) =>
         q.is('deleted_at', null),
       ),
       fetchAll<{ user_a_id: string; user_b_id: string }>(
@@ -35,23 +35,23 @@ async function buildRows(): Promise<UserRow[]> {
       systemAccountIds(),
     ]);
 
-    // Почему у человека нет токена — единственный источник ответа на это
-    // (20260913120000). Раньше «отказал в разрешении» и «у нас упала запись»
-    // выглядели снаружи одинаково: строки просто нет.
-    const pushStatus = new Map(
-      (
-        await fetchAll<{
-          user_id: string;
-          status: string;
-          platform: string | null;
-          os_version: string | null;
-          app_version: string | null;
-          app_build: number | null;
-          detail: string | null;
-          updated_at: string;
-        }>('push_registration_status', '*')
-      ).map((r) => [r.user_id, r]),
-    );
+  // Почему у человека нет токена — единственный источник ответа на это
+  // (20260913120000). Раньше «отказал в разрешении» и «у нас упала запись»
+  // выглядели снаружи одинаково: строки просто нет.
+  const pushStatus = new Map(
+    (
+      await fetchAll<{
+        user_id: string;
+        status: string;
+        platform: string | null;
+        os_version: string | null;
+        app_version: string | null;
+        app_build: number | null;
+        detail: string | null;
+        updated_at: string;
+      }>('push_registration_status', '*')
+    ).map((r) => [r.user_id, r]),
+  );
 
   const bump = (map: Map<string, number>, key: string) =>
     map.set(key, (map.get(key) ?? 0) + 1);
@@ -100,17 +100,23 @@ async function buildRows(): Promise<UserRow[]> {
       // регистрации: `device_tokens` их не знает по определению — колонки
       // там появляются только при УСПЕШНОЙ регистрации, то есть у тех, про
       // кого и так всё понятно.
-      maxBuild: builds.length
-        ? Math.max(...builds)
-        : push?.app_build ?? null,
+      maxBuild: builds.length ? Math.max(...builds) : (push?.app_build ?? null),
       versions: mine.length
-        ? [...new Set(mine.map((d) => d.app_version).filter((v): v is string => !!v))]
+        ? [
+            ...new Set(
+              mine.map((d) => d.app_version).filter((v): v is string => !!v),
+            ),
+          ]
         : push?.app_version
           ? [push.app_version]
           : [],
       locales: [...new Set(mine.map((d) => d.locale))],
       platforms: mine.length
-        ? [...new Set(mine.map((d) => d.platform).filter((p): p is string => !!p))]
+        ? [
+            ...new Set(
+              mine.map((d) => d.platform).filter((p): p is string => !!p),
+            ),
+          ]
         : push?.platform
           ? [push.platform]
           : [],
@@ -145,44 +151,58 @@ usersRouter.get('/users/:id', async (req, res, next) => {
       return;
     }
 
-    const [devices, prefsRows, recentPostRows, notifications] = await Promise.all([
-      fetchOnce<{
-        fcm_token: string;
-        locale: string;
-        app_version: string | null;
-        app_build: number | null;
-        platform: string | null;
-        os_version: string | null;
-        created_at: string;
-        updated_at: string;
-      }>(
-        'device_tokens',
-        'fcm_token, locale, app_version, app_build, platform, os_version, created_at, updated_at',
-        (q: any) => q.eq('user_id', id).order('updated_at', { ascending: false }),
-      ),
-      fetchOnce<Record<string, unknown>>('notification_preferences', '*', (q: any) =>
-        q.eq('user_id', id),
-      ),
-      fetchOnce<{ id: string; text: string | null; created_at: string; visibility: string | null }>(
-        'posts',
-        'id, text, created_at, visibility',
-        (q: any) => q.eq('author_id', id).order('created_at', { ascending: false }).limit(20),
-      ),
-      fetchOnce<{ kind: string; created_at: string; sent_at: string | null }>(
-        'notification_outbox',
-        'kind, created_at, sent_at',
-        (q: any) => q.eq('user_id', id).order('created_at', { ascending: false }).limit(20),
-      ),
-    ]);
+    const [devices, prefsRows, recentPostRows, notifications] =
+      await Promise.all([
+        fetchOnce<{
+          fcm_token: string;
+          locale: string;
+          app_version: string | null;
+          app_build: number | null;
+          platform: string | null;
+          os_version: string | null;
+          created_at: string;
+          updated_at: string;
+        }>(
+          'device_tokens',
+          'fcm_token, locale, app_version, app_build, platform, os_version, created_at, updated_at',
+          (q) => q.eq('user_id', id).order('updated_at', { ascending: false }),
+        ),
+        fetchOnce<Record<string, unknown>>(
+          'notification_preferences',
+          '*',
+          (q) => q.eq('user_id', id),
+        ),
+        fetchOnce<{
+          id: string;
+          text: string | null;
+          created_at: string;
+          visibility: string | null;
+        }>('posts', 'id, text, created_at, visibility', (q) =>
+          q
+            .eq('author_id', id)
+            .order('created_at', { ascending: false })
+            .limit(20),
+        ),
+        fetchOnce<{ kind: string; created_at: string; sent_at: string | null }>(
+          'notification_outbox',
+          'kind, created_at, sent_at',
+          (q) =>
+            q
+              .eq('user_id', id)
+              .order('created_at', { ascending: false })
+              .limit(20),
+        ),
+      ]);
 
     const postIds = recentPostRows.map((p) => p.id);
     const media = postIds.length
-      ? await fetchOnce<{ post_id: string }>('post_media', 'post_id', (q: any) =>
+      ? await fetchOnce<{ post_id: string }>('post_media', 'post_id', (q) =>
           q.in('post_id', postIds),
         )
       : [];
     const mediaCount = new Map<string, number>();
-    for (const m of media) mediaCount.set(m.post_id, (mediaCount.get(m.post_id) ?? 0) + 1);
+    for (const m of media)
+      mediaCount.set(m.post_id, (mediaCount.get(m.post_id) ?? 0) + 1);
 
     const [
       reactions,
@@ -194,20 +214,24 @@ usersRouter.get('/users/:id', async (req, res, next) => {
       mutedBy,
       favoritedBy,
     ] = await Promise.all([
-      countOf('reactions', (q: any) => q.eq('user_id', id)),
-      countOf('room_members', (q: any) => q.eq('user_id', id)),
-      countOf('room_messages', (q: any) => q.eq('author_id', id).is('deleted_at', null)),
-      countOf('profile_photos', (q: any) => q.eq('user_id', id)),
-      countOf('invite_links', (q: any) => q.eq('owner_id', id)),
-      countOf('blocked_users', (q: any) => q.eq('blocked_id', id)),
-      countOf('muted_users', (q: any) => q.eq('muted_id', id)),
-      countOf('favorite_users', (q: any) => q.eq('favorite_id', id)),
+      countOf('reactions', (q) => q.eq('user_id', id)),
+      countOf('room_members', (q) => q.eq('user_id', id)),
+      countOf('room_messages', (q) =>
+        q.eq('author_id', id).is('deleted_at', null),
+      ),
+      countOf('profile_photos', (q) => q.eq('user_id', id)),
+      countOf('invite_links', (q) => q.eq('owner_id', id)),
+      countOf('blocked_users', (q) => q.eq('blocked_id', id)),
+      countOf('muted_users', (q) => q.eq('muted_id', id)),
+      countOf('favorite_users', (q) => q.eq('favorite_id', id)),
     ]);
 
     const prefs = prefsRows[0];
     const preferences = prefs
       ? Object.fromEntries(
-          Object.entries(prefs).filter(([k, v]) => k !== 'user_id' && typeof v === 'boolean'),
+          Object.entries(prefs).filter(
+            ([k, v]) => k !== 'user_id' && typeof v === 'boolean',
+          ),
         )
       : null;
 
@@ -266,7 +290,9 @@ usersRouter.get('/users/:id', async (req, res, next) => {
 // Заглушка «проверить связь»: сервер поднялся и ключ рабочий.
 usersRouter.get('/health', async (_req, res, next) => {
   try {
-    const { error } = await admin.from('users').select('id', { head: true, count: 'exact' });
+    const { error } = await admin
+      .from('users')
+      .select('id', { head: true, count: 'exact' });
     if (error) throw new Error(error.message);
     res.json({ ok: true });
   } catch (error) {

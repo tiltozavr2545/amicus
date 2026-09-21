@@ -9,7 +9,9 @@
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite",
     "build": "vite build",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.0",
@@ -20,6 +22,7 @@
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.13",
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",

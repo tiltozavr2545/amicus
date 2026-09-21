@@ -1,5 +1,5 @@
-import { admin } from './supabase.ts';
 import { fetchAll } from './db.ts';
+import { admin } from './supabase.ts';
 
 export function dayKey(iso: string): string {
   return iso.slice(0, 10);
@@ -7,7 +7,10 @@ export function dayKey(iso: string): string {
 
 // Ряд за N дней без дырок: пустой день должен рисоваться нулём, а не
 // пропадать из графика.
-export function series(dates: string[], days: number): { date: string; count: number }[] {
+export function series(
+  dates: string[],
+  days: number,
+): { date: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const iso of dates) {
     const key = dayKey(iso);
@@ -24,7 +27,10 @@ export function series(dates: string[], days: number): { date: string; count: nu
   return out;
 }
 
-export function tally<T>(rows: T[], key: (row: T) => string | null): Map<string, number> {
+export function tally<T>(
+  rows: T[],
+  key: (row: T) => string | null,
+): Map<string, number> {
   const out = new Map<string, number>();
   for (const row of rows) {
     const k = key(row);
@@ -34,7 +40,10 @@ export function tally<T>(rows: T[], key: (row: T) => string | null): Map<string,
   return out;
 }
 
-export function groupCount<T>(rows: T[], key: (row: T) => string | null | undefined): Map<string, number> {
+export function groupCount<T>(
+  rows: T[],
+  key: (row: T) => string | null | undefined,
+): Map<string, number> {
   const out = new Map<string, number>();
   for (const row of rows) {
     const k = key(row);

@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 
-export function Card({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+export function Card({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+}) {
   return (
     <div className="card">
       <div className="label">{label}</div>
@@ -10,7 +18,11 @@ export function Card({ label, value, hint }: { label: string; value: ReactNode; 
   );
 }
 
-export function Bars({ points }: { points: { date: string; count: number }[] }) {
+export function Bars({
+  points,
+}: {
+  points: { date: string; count: number }[];
+}) {
   const max = Math.max(1, ...points.map((p) => p.count));
   return (
     <div className="bars">
@@ -26,13 +38,21 @@ export function Bars({ points }: { points: { date: string; count: number }[] }) 
   );
 }
 
-export function Fail({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function Fail({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
   return (
     <div className="error">
       <div>{message}</div>
       {onRetry ? (
         <div style={{ marginTop: 10 }}>
-          <button onClick={onRetry}>Повторить</button>
+          <button type="button" onClick={onRetry}>
+            Повторить
+          </button>
         </div>
       ) : null}
     </div>
@@ -59,5 +79,10 @@ export function day(iso: string | null): string {
 }
 
 export function date(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+  return iso
+    ? new Date(iso).toLocaleString('ru-RU', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      })
+    : '—';
 }

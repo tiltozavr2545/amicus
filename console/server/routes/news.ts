@@ -1,18 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { Router, raw } from 'express';
 import type { NewsMedia, NewsPost, NewsResponse } from '../../shared/types.ts';
-import { admin } from '../supabase.ts';
-import { fetchOnce } from '../db.ts';
 import { systemAccountIds } from '../aggregate.ts';
+import { fetchOnce } from '../db.ts';
+import type { Draft } from '../news.ts';
 import {
   ALLOWED_MIME,
+  extensionFor,
   MAX_FILE_BYTES,
   MAX_MEDIA_PER_POST,
-  extensionFor,
   readDrafts,
   writeDrafts,
 } from '../news.ts';
-import type { Draft } from '../news.ts';
+import { admin } from '../supabase.ts';
 
 export const newsRouter = Router();
 
@@ -48,7 +48,9 @@ async function normalise(
   const items = Array.isArray(media) ? (media as IncomingMedia[]) : [];
 
   if (items.length > MAX_MEDIA_PER_POST) {
-    throw new Error(`Медиа больше ${MAX_MEDIA_PER_POST} — столько пост не примет`);
+    throw new Error(
+      `Медиа больше ${MAX_MEDIA_PER_POST} — столько пост не примет`,
+    );
   }
   if (trimmed === '' && items.length === 0) {
     throw new Error('Посту нужен текст или медиа');
@@ -76,7 +78,9 @@ async function normalise(
 async function signed(paths: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (paths.length === 0) return out;
-  const { data, error } = await admin.storage.from('media').createSignedUrls(paths, 3600);
+  const { data, error } = await admin.storage
+    .from('media')
+    .createSignedUrls(paths, 3600);
   if (error) throw new Error(`storage: ${error.message}`);
   for (const entry of data ?? []) {
     if (entry.path && entry.signedUrl) out.set(entry.path, entry.signedUrl);
@@ -88,7 +92,10 @@ async function replaceMedia(postId: string, media: Required<NewsMedia>[]) {
   // Набор переписывается целиком, а не доливается — как в
   // `create_post_with_media()`: `position` раздаётся по порядку массива, и
   // оставшиеся старые строки заняли бы чужие места.
-  const { error: wipeError } = await admin.from('post_media').delete().eq('post_id', postId);
+  const { error: wipeError } = await admin
+    .from('post_media')
+    .delete()
+    .eq('post_id', postId);
   if (wipeError) throw new Error(`post_media: ${wipeError.message}`);
   if (media.length === 0) return;
   const { error } = await admin.from('post_media').insert(
@@ -111,8 +118,11 @@ newsRouter.get('/news', async (_req, res, next) => {
       text: string | null;
       created_at: string;
       hidden_at: string | null;
-    }>('posts', 'id, text, created_at, hidden_at', (q: any) =>
-      q.eq('author_id', author).order('created_at', { ascending: false }).limit(50),
+    }>('posts', 'id, text, created_at, hidden_at', (q) =>
+      q
+        .eq('author_id', author)
+        .order('created_at', { ascending: false })
+        .limit(50),
     );
 
     const ids = posts.map((p) => p.id);
@@ -126,22 +136,26 @@ newsRouter.get('/news', async (_req, res, next) => {
         }>(
           'post_media',
           'post_id, position, media_type, storage_path, poster_path',
-          (q: any) => q.in('post_id', ids).order('position', { ascending: true }),
+          (q) => q.in('post_id', ids).order('position', { ascending: true }),
         )
       : [];
 
     const urls = await signed(
-      media.flatMap((m) => (m.poster_path ? [m.storage_path, m.poster_path] : [m.storage_path])),
+      media.flatMap((m) =>
+        m.poster_path ? [m.storage_path, m.poster_path] : [m.storage_path],
+      ),
     );
 
     const [comments, reactions] = await Promise.all([
       ids.length
-        ? fetchOnce<{ post_id: string }>('comments', 'post_id', (q: any) =>
+        ? fetchOnce<{ post_id: string }>('comments', 'post_id', (q) =>
             q.in('post_id', ids).is('deleted_at', null),
           )
         : [],
       ids.length
-        ? fetchOnce<{ post_id: string }>('reactions', 'post_id', (q: any) => q.in('post_id', ids))
+        ? fetchOnce<{ post_id: string }>('reactions', 'post_id', (q) =>
+            q.in('post_id', ids),
+          )
         : [],
     ]);
     const tally = (rows: { post_id: string }[]) => {
@@ -169,7 +183,7 @@ newsRouter.get('/news', async (_req, res, next) => {
             storagePath: m.storage_path,
             posterPath: m.poster_path,
             url: urls.get(m.storage_path) ?? null,
-            posterUrl: m.poster_path ? urls.get(m.poster_path) ?? null : null,
+            posterUrl: m.poster_path ? (urls.get(m.poster_path) ?? null) : null,
           })),
       })),
       drafts: await readDrafts(),
@@ -193,7 +207,9 @@ newsRouter.post(
       const body = req.body as Buffer;
 
       if (!ALLOWED_MIME.has(mime)) {
-        res.status(400).json({ error: `Бакет не принимает ${mime || 'файл без типа'}` });
+        res
+          .status(400)
+          .json({ error: `Бакет не принимает ${mime || 'файл без типа'}` });
         return;
       }
       if (!Buffer.isBuffer(body) || body.length === 0) {
@@ -201,7 +217,9 @@ newsRouter.post(
         return;
       }
       if (body.length > MAX_FILE_BYTES) {
-        res.status(400).json({ error: 'Файл больше 100 МиБ — бакет столько не примет' });
+        res
+          .status(400)
+          .json({ error: 'Файл больше 100 МиБ — бакет столько не примет' });
         return;
       }
 
@@ -214,7 +232,11 @@ newsRouter.post(
       if (error) throw new Error(`storage: ${error.message}`);
 
       const url = (await signed([path])).get(path) ?? null;
-      res.json({ path, url, mediaType: mime.startsWith('video/') ? 'video' : 'image' });
+      res.json({
+        path,
+        url,
+        mediaType: mime.startsWith('video/') ? 'video' : 'image',
+      });
     } catch (error) {
       next(error);
     }
@@ -228,7 +250,12 @@ newsRouter.post('/news', async (req, res, next) => {
 
     const inserted = await admin
       .from('posts')
-      .insert({ author_id: author, text, client_token: randomUUID(), visibility: 'connections' })
+      .insert({
+        author_id: author,
+        text,
+        client_token: randomUUID(),
+        visibility: 'connections',
+      })
       .select('id')
       .single();
     if (inserted.error) throw new Error(`posts: ${inserted.error.message}`);
@@ -250,22 +277,28 @@ newsRouter.patch('/news/:id', async (req, res, next) => {
     // `text` обнулял набор и переписывал текст.
     if (!Array.isArray(req.body?.media)) {
       res.status(400).json({
-        error: 'Правка переписывает медиа целиком — пришли media списком, даже пустым',
+        error:
+          'Правка переписывает медиа целиком — пришли media списком, даже пустым',
       });
       return;
     }
     const { text, media } = await normalise(req.body?.text, req.body?.media);
     const author = await systemId();
 
-    const existing = await fetchOnce<{ id: string }>('posts', 'id', (q: any) =>
+    const existing = await fetchOnce<{ id: string }>('posts', 'id', (q) =>
       q.eq('id', req.params.id).eq('author_id', author),
     );
     if (existing.length === 0) {
-      res.status(404).json({ error: 'Пост не найден или принадлежит не новостному аккаунту' });
+      res.status(404).json({
+        error: 'Пост не найден или не принадлежит новостному аккаунту',
+      });
       return;
     }
 
-    const { error } = await admin.from('posts').update({ text }).eq('id', req.params.id);
+    const { error } = await admin
+      .from('posts')
+      .update({ text })
+      .eq('id', req.params.id);
     if (error) throw new Error(`posts: ${error.message}`);
     await replaceMedia(req.params.id, media);
     res.json({ ok: true });
@@ -299,7 +332,9 @@ newsRouter.put('/news/drafts', async (req, res, next) => {
     // целиком: тот же класс, что и PATCH без `media`, только цена выше —
     // черновик восстановить неоткуда, он нигде больше не хранится.
     if (!Array.isArray(req.body?.drafts)) {
-      res.status(400).json({ error: 'drafts обязателен списком — пустой список тоже список' });
+      res.status(400).json({
+        error: 'drafts обязателен списком — пустой список тоже список',
+      });
       return;
     }
     const drafts = req.body.drafts as Draft[];
