@@ -43,9 +43,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// needs the context too — and the refresh survives the screen:
 ///
 /// ```dart
-/// final refresh = refreshAfterAwait(context);
+/// final container = refreshAfterAwait(context);
 /// await repository.doTheThing();
-/// refresh.invalidate(someProvider);
+/// container.invalidate(someProvider);
 /// if (!mounted) return;
 /// // …only now touch context / setState
 /// ```

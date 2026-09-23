@@ -286,11 +286,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     // Captured before the await — see [refreshAfterAwait]. This runs on every
     // arriving message, so leaving the chat mid-flight is the ordinary case,
     // and the badge it clears belongs to the rooms tab, not to this screen.
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       await ref.read(roomsRepositoryProvider).markRoomRead(widget.roomId);
       // The unread badge in the room list is now wrong by exactly this room.
-      refresh.read(roomsRefreshTickProvider.notifier).bump();
+      container.read(roomsRefreshTickProvider.notifier).bump();
     } catch (_) {
       // Best effort by design: failing to move a read mark is not worth a
       // message on screen, and the next open tries again.
