@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../shared/delete_order.dart';
 import '../../shared/media_bucket.dart';
 import '../../shared/network_timeout.dart';
+import '../../shared/signed_url_cache.dart';
 import '../auth/auth_providers.dart';
 import '../feed/carousel_position_cache.dart';
 import '../feed/feed_cache.dart';
@@ -15,12 +16,17 @@ class AccountRepository {
     this._pushRepository,
     this._feedCache,
     this._carouselPositions,
+    this._signedUrls,
   );
 
   final SupabaseClient _client;
   final PushNotificationsRepository _pushRepository;
   final FeedCache _feedCache;
   final CarouselPositionCache _carouselPositions;
+
+  /// Signed URLs for room attachments this account was shown — dropped with
+  /// the rest, for the same reason the feed cache is (see [SignedUrlCache]).
+  final SignedUrlCache _signedUrls;
 
   /// Drops this device's push token (best-effort, while the session is still
   /// valid — see [PushNotificationsRepository.unregisterDevice]), wipes the
@@ -40,6 +46,7 @@ class AccountRepository {
     }
     await _feedCache.clear();
     _carouselPositions.clear();
+    _signedUrls.clear();
     await _client.auth.signOut();
   }
 
@@ -171,6 +178,7 @@ class AccountRepository {
     // and the account it belonged to no longer exists to re-authorize them.
     await _feedCache.clear();
     _carouselPositions.clear();
+    _signedUrls.clear();
 
     // The account (and with it, every refresh token tied to this session) is
     // already gone server-side, so the default sign-out's revoke round-trip
@@ -215,5 +223,6 @@ final accountRepositoryProvider = Provider<AccountRepository>((ref) {
     ref.watch(pushNotificationsRepositoryProvider),
     ref.watch(feedCacheProvider),
     ref.watch(carouselPositionCacheProvider),
+    ref.watch(signedUrlCacheProvider),
   );
 });

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/refresh_after_await.dart';
 import '../../shared/write_ban.dart';
 import '../moderation/report_repository.dart';
 import '../moderation/report_sheet.dart';
@@ -306,7 +307,15 @@ class _PostListViewState extends ConsumerState<PostListView> {
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
 
+    // Captured before the await — see [refreshAfterAwait]. This card can be
+    // gone by the time the delete lands (another live PostListView — feed,
+    // profile, FriendProfileScreen — pops this one off first), and the bump
+    // below is exactly what those other, still-live lists need to notice the
+    // post is gone; gating it on `mounted` used to skip it whenever that
+    // happened, leaving the post clickable elsewhere (see the comment below).
+    final container = refreshAfterAwait(context);
     try {
       final mediaPaths = [
         for (final media in post.media) media.storagePath,
@@ -316,10 +325,6 @@ class _PostListViewState extends ConsumerState<PostListView> {
       await ref
           .read(feedRepositoryProvider)
           .deletePost(postId: post.id, mediaStoragePaths: mediaPaths);
-      if (!mounted) return;
-      // Remove by id, not the captured index: the list may have shifted (a
-      // refresh, another delete) while the request was in flight.
-      setState(() => _posts.removeWhere((p) => p.id == post.id));
       // Убрать из СВОЕГО списка мало. Живых PostListView одновременно
       // несколько: лента и профиль — две ветки shell'а в IndexedStack, плюс
       // FriendProfileScreen сверху. Удалили пост из профиля — во вкладке
@@ -332,9 +337,13 @@ class _PostListViewState extends ConsumerState<PostListView> {
       // Ровно та несогласованность, ради которой заведён
       // [feedRefreshTickProvider] — и правка поста, и mute/block, и новый
       // пост через него уже проходят. Удаление было единственной мутацией
-      // ленты, которая его не дёргала. Локальное removeWhere выше при этом
+      // ленты, которая его не дёргала. Локальное removeWhere ниже при этом
       // остаётся: оно убирает карточку сразу, не дожидаясь перезапроса.
-      ref.read(feedRefreshTickProvider.notifier).bump();
+      container.read(feedRefreshTickProvider.notifier).bump();
+      if (!mounted) return;
+      // Remove by id, not the captured index: the list may have shifted (a
+      // refresh, another delete) while the request was in flight.
+      setState(() => _posts.removeWhere((p) => p.id == post.id));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

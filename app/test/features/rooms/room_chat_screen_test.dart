@@ -8,6 +8,7 @@ import 'package:amicus/features/rooms/room_chat_screen.dart';
 import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 import 'package:amicus/shared/media_picking.dart';
+import 'package:amicus/shared/signed_url_cache.dart';
 
 /// Only the members the chat screen calls need real behaviour; the rest
 /// satisfy the `implements` contract via `noSuchMethod`, the same trick the
@@ -28,12 +29,31 @@ class _FakeRoomsRepository implements RoomsRepository {
   void Function(RoomMessage)? onUpdate;
   int unsubscribeCalls = 0;
 
+  /// How many times the newest page was asked for — the catch-up after a
+  /// re-subscription is exactly one such request.
+  int firstPageFetches = 0;
+
+  /// How many times a page of OLDER history was asked for. Zero is the right
+  /// answer once a short page has said there is no more of it.
+  int olderPageFetches = 0;
+
+  bool fetchThrows = false;
+
   @override
   Future<List<RoomMessage>> fetchMessages({
     required String roomId,
     RoomMessage? before,
     int limit = 50,
-  }) async => before == null ? messages : const [];
+  }) async {
+    if (before != null) {
+      olderPageFetches++;
+      if (fetchThrows) throw Exception('offline');
+      return const [];
+    }
+    firstPageFetches++;
+    if (fetchThrows) throw Exception('offline');
+    return messages;
+  }
 
   /// Attachments each send carried — the attach button is only meaningful if
   /// what it collects reaches the repository.
@@ -76,20 +96,45 @@ class _FakeRoomsRepository implements RoomsRepository {
   @override
   Future<void> markRoomRead(String roomId) async => markReadCalls++;
 
+  /// The screen's catch-up hook, captured so a test can play the part of a
+  /// channel that went down with the app and came back.
+  void Function()? onResubscribed;
+
   @override
   void Function() subscribeToMessages({
     required String roomId,
     required void Function(RoomMessage message) onInsert,
     required void Function(RoomMessage message) onUpdate,
+    required void Function() onResubscribed,
   }) {
     this.onInsert = onInsert;
     this.onUpdate = onUpdate;
+    this.onResubscribed = onResubscribed;
     return () => unsubscribeCalls++;
   }
 
+  /// Every batch of paths a round trip was actually spent on. The chat list
+  /// recreates a bubble's `State` whenever a message is inserted above it, so
+  /// "how many times was this photo signed" is precisely the question
+  /// [SignedUrlCache] exists to answer — and the real repository answers it
+  /// the same way this fake does.
+  final List<List<String>> signedBatches = [];
+  final Map<String, String> _signed = {};
+
   @override
-  Future<Map<String, String>> resolveMediaUrls(List<String> paths) async =>
-      const {};
+  Future<Map<String, String>> resolveMediaUrls(List<String> paths) async {
+    signedBatches.add(paths);
+    for (final path in paths) {
+      _signed[path] = 'https://example.invalid/$path';
+    }
+    return {for (final path in paths) path: _signed[path]!};
+  }
+
+  @override
+  Map<String, String> cachedMediaUrls(List<String> paths) => {
+    for (final path in paths)
+      if (_signed[path] case final url?) path: url,
+  };
 
   /// The screen's presence handler, captured so a test can play the part of
   /// the channel and say who is here and who is typing.
@@ -99,13 +144,20 @@ class _FakeRoomsRepository implements RoomsRepository {
   final List<bool> typingAnnounced = [];
   int presenceUnsubscribeCalls = 0;
 
+  /// The screen's answer to "is this viewer typing right now", captured so a
+  /// test can play the part of a channel joining — which the real one does
+  /// again on every rejoin, not only the first time.
+  bool Function()? announceSelf;
+
   @override
   RoomPresenceHandle subscribeToPresence({
     required String roomId,
     required String userId,
     required void Function(Set<String> present, Set<String> typing) onChange,
+    required bool Function() onSubscribed,
   }) {
     onPresence = onChange;
+    announceSelf = onSubscribed;
     return RoomPresenceHandle(
       setTyping: (typing) async => typingAnnounced.add(typing),
       unsubscribe: () => presenceUnsubscribeCalls++,
@@ -179,7 +231,16 @@ final _room = Room(
   ],
 );
 
-Widget _wrap(_FakeRoomsRepository repo, {List<Room> rooms = const []}) {
+/// [showChat] off leaves the same `ProviderScope` — and so the same
+/// container, and the same provider state — standing with the screen gone,
+/// which is what "the viewer left the chat" actually looks like. Replacing
+/// the whole tree would take the container with it and there would be
+/// nothing left to assert about.
+Widget _wrap(
+  _FakeRoomsRepository repo, {
+  List<Room> rooms = const [],
+  bool showChat = true,
+}) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('me'),
@@ -189,7 +250,9 @@ Widget _wrap(_FakeRoomsRepository repo, {List<Room> rooms = const []}) {
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: const RoomChatScreen(roomId: 'room-1'),
+      home: showChat
+          ? const RoomChatScreen(roomId: 'room-1')
+          : const SizedBox.shrink(),
     ),
   );
 }
@@ -296,6 +359,73 @@ void main() {
     expect(repo.typingAnnounced, [true, false]);
   });
 
+  testWidgets('a join announces the draft rather than wiping it', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    // The channel is still joining; this announcement is buffered by the
+    // channel, not lost.
+    await tester.enterText(find.byType(TextField), 'пишу');
+    await tester.pump();
+    expect(repo.typingAnnounced, [true]);
+
+    // The join lands. It used to track a hardcoded `typing: false` here,
+    // which overwrote the buffered "typing" AND left the screen believing it
+    // had announced one — so no later keystroke ever re-raised it.
+    expect(repo.announceSelf!(), isTrue);
+
+    await tester.enterText(find.byType(TextField), 'пишу дальше');
+    await tester.pump();
+    // Still the one announcement: the state never changed, and the join
+    // agreed with it instead of contradicting it.
+    expect(repo.typingAnnounced, [true]);
+  });
+
+  testWidgets('a rejoin puts the announcement back in sync', (tester) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'пишу');
+    await tester.pump();
+    expect(repo.typingAnnounced, [true]);
+
+    // The socket went down with the app and came back on a fresh channel,
+    // which carries nothing over — and by then the draft is gone.
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    expect(repo.announceSelf!(), isFalse);
+
+    // In sync again: the next draft raises the indicator instead of being
+    // skipped as something already announced.
+    await tester.enterText(find.byType(TextField), 'снова');
+    await tester.pump();
+    expect(repo.typingAnnounced, [true, false, true]);
+  });
+
+  testWidgets('a channel that is no longer up takes "online" with it', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+
+    repo.onPresence!({'me', 'anya'}, const {});
+    await tester.pump();
+    expect(find.text('1 online'), findsOneWidget);
+
+    // What the repository reports when the channel errors, times out or
+    // closes: presence is a claim about right now, and there is no longer a
+    // channel making it true.
+    repo.onPresence!(const {}, const {});
+    await tester.pump();
+
+    expect(find.text('1 online'), findsNothing);
+  });
+
   testWidgets('a message can be attachments with no caption at all', (
     tester,
   ) async {
@@ -322,6 +452,40 @@ void main() {
     // bubble ever shows in place of one).
     expect(find.byKey(const ValueKey('message-media-m1')), findsOneWidget);
     expect(find.text('Message deleted'), findsNothing);
+  });
+
+  testWidgets('an arriving message does not re-sign the photos on screen', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'm1',
+          authorId: 'anya',
+          text: '',
+          media: const [
+            RoomMessageMedia(
+              storagePath: 'messages/room-1/anya/t/a.jpg',
+              isVideo: false,
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    expect(repo.signedBatches, hasLength(1));
+
+    // Inserting at the top shifts every index below it, and the list has no
+    // `findChildIndexCallback` to offer, so this bubble's attachment `State`
+    // is rebuilt from scratch. It must come back with the URL it already had
+    // rather than a spinner and a second round trip.
+    repo.onInsert!(_message(id: 'live-1', authorId: 'anya', text: 'и ещё'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('и ещё'), findsOneWidget);
+    expect(repo.signedBatches, hasLength(1));
   });
 
   testWidgets('sending posts the text and clears the field', (tester) async {
@@ -576,6 +740,145 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Original message unavailable'), findsOneWidget);
+  });
+
+  testWidgets('a page shorter than a full one ends the history', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'всё, что есть')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    // This used to read "there is more unless the page came back empty", so
+    // every chat spent one extra round trip asking for history that a short
+    // page had already ruled out.
+    expect(repo.olderPageFetches, 0);
+  });
+
+  testWidgets('a failed load backs off instead of retrying at once', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository()..fetchThrows = true;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    expect(repo.firstPageFetches, 1);
+
+    // Coming back to the app asks again — but the last failure was a moment
+    // ago, and the trigger behind this fires on every frame of every scroll.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(repo.firstPageFetches, 1);
+  });
+
+  testWidgets('a channel coming back picks up what was missed', (tester) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'до')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    expect(repo.firstPageFetches, 1);
+
+    // Said while the socket was down — which it is every time the app is
+    // backgrounded. Postgres Changes does not replay, so nothing will ever
+    // deliver this; only re-reading the newest page can find it.
+    repo.messages = [
+      _message(id: 'm2', authorId: 'anya', text: 'пока тебя не было'),
+      _message(id: 'm1', authorId: 'anya', text: 'до'),
+    ];
+    repo.onResubscribed!();
+    await tester.pumpAndSettle();
+
+    expect(repo.firstPageFetches, 2);
+    expect(find.text('пока тебя не было'), findsOneWidget);
+    // Stitched, not replaced: the message that was already here is still
+    // here, exactly once.
+    expect(find.text('до'), findsOneWidget);
+  });
+
+  testWidgets('a deletion that happened while away lands as a tombstone', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'зря написал')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    expect(find.text('зря написал'), findsOneWidget);
+
+    // A delete arrives as an edit to a row already on screen, so it is not
+    // something a "what is newer than my newest" query would ever find —
+    // which is why the catch-up re-reads the page rather than the tail.
+    repo.messages = [
+      _message(
+        id: 'm1',
+        authorId: 'anya',
+        text: '',
+        deletedAt: DateTime.utc(2026, 8, 26, 18, 5),
+      ),
+    ];
+    repo.onResubscribed!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('зря написал'), findsNothing);
+    expect(find.text('Message deleted'), findsOneWidget);
+  });
+
+  testWidgets('a gap too big to stitch restarts the list instead', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'старое')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    // Not one id in common: a page's worth arrived and there may be more
+    // still between this page and what is loaded. Stitching would put a
+    // silent hole in the middle of the conversation.
+    repo.messages = [
+      _message(id: 'n2', authorId: 'anya', text: 'второе новое'),
+      _message(id: 'n1', authorId: 'anya', text: 'первое новое'),
+    ];
+    repo.onResubscribed!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('первое новое'), findsOneWidget);
+    expect(find.text('второе новое'), findsOneWidget);
+    expect(find.text('старое'), findsNothing);
+  });
+
+  testWidgets('arriving messages do not refetch the room list; leaving does', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(RoomChatScreen)),
+    );
+    final atOpen = container.read(roomsRefreshTickProvider);
+
+    repo.onInsert!(_message(id: 'live-1', authorId: 'anya', text: 'раз'));
+    await tester.pumpAndSettle();
+    repo.onInsert!(_message(id: 'live-2', authorId: 'anya', text: 'два'));
+    await tester.pumpAndSettle();
+
+    // Every message still moves the read mark — that is what silences the
+    // room's pushes and flips the other side's tick. What it no longer does
+    // is refetch the whole room list behind this screen, three round trips
+    // and a realtime fan-out at a time.
+    expect(repo.markReadCalls, 3);
+    expect(container.read(roomsRefreshTickProvider), atOpen);
+
+    await tester.pumpWidget(_wrap(repo, showChat: false));
+    await tester.pumpAndSettle();
+
+    // Once, on the way out, when the list is about to be looked at again.
+    expect(container.read(roomsRefreshTickProvider), atOpen + 1);
   });
 
   testWidgets('leaving the screen unsubscribes', (tester) async {

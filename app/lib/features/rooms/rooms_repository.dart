@@ -10,6 +10,7 @@ import '../../shared/media_gallery.dart';
 import '../../shared/media_picking.dart';
 import '../../shared/network_timeout.dart';
 import '../../shared/parse_timestamp.dart';
+import '../../shared/signed_url_cache.dart';
 import '../../shared/signed_urls.dart';
 import '../../shared/tolerant_upload.dart';
 import '../auth/auth_providers.dart';
@@ -27,6 +28,19 @@ class RoomMember {
     name: json['name'] as String,
     avatarPath: json['avatar_path'] as String?,
   );
+
+  /// Value equality, so that [Room]'s can compare membership — see there for
+  /// why a room needs to be comparable at all.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RoomMember &&
+          other.userId == userId &&
+          other.name == name &&
+          other.avatarPath == avatarPath);
+
+  @override
+  int get hashCode => Object.hash(userId, name, avatarPath);
 }
 
 /// A room: a chat shared by [members].
@@ -144,6 +158,57 @@ class Room {
     }
     return null;
   }
+
+  /// Value equality, and not for tidiness: [roomProvider] rebuilds this out
+  /// of [myRoomsProvider] on every refetch, and Riverpod only notifies its
+  /// watchers when the new value differs from the old one. With identity as
+  /// the comparison a fresh instance always differed, so every refetch of the
+  /// room list rebuilt the whole chat screen — every bubble, every status
+  /// line — whether or not anything about the room had actually changed.
+  ///
+  /// The scalars are compared before the membership because they are where a
+  /// difference almost always is: a new last message, a moved unread count.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Room ||
+        other.id != id ||
+        other.name != name ||
+        other.avatarPath != avatarPath ||
+        other.isDirect != isDirect ||
+        other.ownerId != ownerId ||
+        other.createdAt != createdAt ||
+        other.lastMessageAt != lastMessageAt ||
+        other.lastMessageText != lastMessageText ||
+        other.lastMessageAuthorId != lastMessageAuthorId ||
+        other.lastMessageHasMedia != lastMessageHasMedia ||
+        other.unreadCount != unreadCount ||
+        other.notificationsMuted != notificationsMuted ||
+        other.members.length != members.length) {
+      return false;
+    }
+    for (var i = 0; i < members.length; i++) {
+      if (other.members[i] != members[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    avatarPath,
+    isDirect,
+    ownerId,
+    createdAt,
+    lastMessageAt,
+    lastMessageText,
+    lastMessageAuthorId,
+    lastMessageHasMedia,
+    unreadCount,
+    notificationsMuted,
+    Object.hashAll(members),
+  );
 }
 
 /// One photo or video attached to a message.
@@ -453,9 +518,13 @@ const _replyToColumns =
     'reply_to:reply_to_id(id, text, deleted_at, media, author:users(name))';
 
 class RoomsRepository {
-  RoomsRepository(this._client);
+  RoomsRepository(this._client, this._signedUrls);
 
   final SupabaseClient _client;
+
+  /// Signatures already obtained for this bucket's objects — see
+  /// [SignedUrlCache], which exists for the chat list in particular.
+  final SignedUrlCache _signedUrls;
 
   /// The whole room list in one round trip — name, membership (the list shows
   /// avatars) and last activity — instead of a query per room. See
@@ -761,8 +830,35 @@ class RoomsRepository {
 
   /// Signs attachment paths so they can be shown. Same call the feed makes
   /// for post media — one bucket, one TTL (see [resolveSignedUrls]).
-  Future<Map<String, String>> resolveMediaUrls(List<String> storagePaths) =>
-      resolveSignedUrls(_client, storagePaths);
+  ///
+  /// What comes back is kept in [SignedUrlCache] and asked of it first, so
+  /// the same object is signed once per day rather than once per widget. In
+  /// the chat that is the difference between a photo that stays put and one
+  /// that blinks on every arriving message — the reasoning in full is on
+  /// [SignedUrlCache] itself.
+  Future<Map<String, String>> resolveMediaUrls(
+    List<String> storagePaths,
+  ) async {
+    final cached = _signedUrls.read(storagePaths);
+    final missing = [
+      for (final path in storagePaths)
+        if (!cached.containsKey(path)) path,
+    ];
+    if (missing.isEmpty) return cached;
+    final signed = await resolveSignedUrls(_client, missing);
+    _signedUrls.write(signed);
+    return {...cached, ...signed};
+  }
+
+  /// What [resolveMediaUrls] can answer without the network.
+  ///
+  /// The synchronous half, and the one that matters to a widget rebuilt from
+  /// scratch: it has to decide what to paint *before* its first frame, and
+  /// "a spinner, then the photo a round trip later" is exactly the flicker
+  /// the cache exists to remove. Paths not held are absent, same shape as
+  /// [resolveMediaUrls].
+  Map<String, String> cachedMediaUrls(List<String> storagePaths) =>
+      _signedUrls.read(storagePaths);
 
   /// Tombstones own message. Server-side it clears the text AND the
   /// attachments in the same statement, so nothing is left to read back — and
@@ -869,16 +965,33 @@ class RoomsRepository {
   /// [RoomMessage]). The server-side filter is on `room_id`, and RLS is
   /// applied on top of it per subscriber, so another room's traffic cannot
   /// reach this channel even if the filter were wrong.
+  ///
+  /// [onResubscribed] fires when the channel comes back after having been up
+  /// once already — never on the first join. It exists because Postgres
+  /// Changes has no replay: a subscriber is sent what happens while it is
+  /// subscribed and nothing else. The socket goes down every time the app is
+  /// backgrounded (`supabase_flutter` disconnects it on `paused` and rejoins
+  /// on `resumed`) and on any dropped connection, so a gap is not an edge
+  /// case here, it is what happens every time someone switches apps. Nothing
+  /// arriving in that gap is ever delivered, and until this callback existed
+  /// the screen simply never learned of it: the chat sat there missing
+  /// messages until it was closed and reopened.
+  ///
+  /// Fired on re-subscription rather than on resume so the catch-up query
+  /// runs *after* the subscription is live — the other order leaves a second
+  /// hole between the query and the rejoin.
   void Function() subscribeToMessages({
     required String roomId,
     required void Function(RoomMessage message) onInsert,
     required void Function(RoomMessage message) onUpdate,
+    required void Function() onResubscribed,
   }) {
     final filter = PostgresChangeFilter(
       type: PostgresChangeFilterType.eq,
       column: 'room_id',
       value: roomId,
     );
+    var everSubscribed = false;
     final channel = _client
         .channel('room_messages:$roomId')
         .onPostgresChanges(
@@ -897,7 +1010,14 @@ class RoomsRepository {
           callback: (payload) =>
               onUpdate(RoomMessage.fromRow(payload.newRecord)),
         )
-        .subscribe();
+        .subscribe((status, error) {
+          if (status != RealtimeSubscribeStatus.subscribed) return;
+          if (!everSubscribed) {
+            everSubscribed = true;
+            return;
+          }
+          onResubscribed();
+        });
     return () => channel.unsubscribe();
   }
 
@@ -918,11 +1038,34 @@ class RoomsRepository {
   ///
   /// [onChange] is called with everyone present and everyone typing, the
   /// caller included — the screen filters itself out, since only it knows
-  /// who is looking.
+  /// who is looking. It is also called with two empty sets whenever the
+  /// channel stops being up: presence is only ever a claim about right now,
+  /// and a list left over from a channel that has since dropped is a lie
+  /// that outlives the only thing making it true.
+  ///
+  /// [onSubscribed] answers "is this viewer typing right now" and is asked on
+  /// every join, not just the first. Both halves of that matter:
+  ///
+  ///  * **on every join** — `supabase_flutter` disconnects the socket the
+  ///    moment the app is backgrounded and rejoins on resume, and a rejoined
+  ///    channel carries no presence over. Until this viewer announces
+  ///    themselves again they are simply not in the room, however long the
+  ///    screen has been open.
+  ///  * **asked, not assumed** — this used to track a hardcoded
+  ///    `typing: false`, which wiped an indicator the viewer had just
+  ///    raised. Announcing before the channel is up isn't dropped, it is
+  ///    *buffered* and flushed on join by the hook the channel registers in
+  ///    its own constructor — before this callback runs. So "typing" sent
+  ///    while joining arrived first and was immediately overwritten by the
+  ///    "false" that followed it, and since the screen had already recorded
+  ///    the announcement, no later keystroke re-sent it: the other side saw
+  ///    nothing for the whole draft. Only the screen knows what the composer
+  ///    actually holds, so only the screen can answer this.
   RoomPresenceHandle subscribeToPresence({
     required String roomId,
     required String userId,
     required void Function(Set<String> present, Set<String> typing) onChange,
+    required bool Function() onSubscribed,
   }) {
     final channel = _client.channel(
       'room:$roomId',
@@ -948,11 +1091,17 @@ class RoomsRepository {
         .onPresenceJoin((_) => emit())
         .onPresenceLeave((_) => emit())
         .subscribe((status, error) async {
-          // Announcing before the channel is up is dropped silently, so it
-          // waits for the callback rather than firing right after subscribe().
           if (status == RealtimeSubscribeStatus.subscribed) {
-            await channel.track({'user_id': userId, 'typing': false});
+            // This is what puts the viewer on the channel at all: presence is
+            // not a side effect of subscribing, it is this call. See
+            // [onSubscribed] for why it is asked rather than assumed.
+            await channel.track({'user_id': userId, 'typing': onSubscribed()});
+            return;
           }
+          // Errored, timed out or closed. Nobody on the channel can be
+          // vouched for any more, and the screen is told so rather than left
+          // showing who was here when it last worked.
+          onChange(const {}, const {});
         });
 
     return RoomPresenceHandle(
@@ -973,7 +1122,10 @@ class RoomsRepository {
 }
 
 final roomsRepositoryProvider = Provider<RoomsRepository>((ref) {
-  return RoomsRepository(ref.watch(supabaseClientProvider));
+  return RoomsRepository(
+    ref.watch(supabaseClientProvider),
+    ref.watch(signedUrlCacheProvider),
+  );
 });
 
 /// The viewer's rooms, newest activity first.

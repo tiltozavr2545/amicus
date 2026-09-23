@@ -170,6 +170,28 @@ class _ProfilePhotoReorderScreenState
         padding: const EdgeInsets.all(16),
         itemCount: _order.length,
         onReorder: _reorder,
+        // The default proxy is a bare elevation bump — real on a light
+        // Material background, next to invisible on this app's dark theme.
+        // Long-press-then-drag has no platform affordance of its own (unlike
+        // a mouse cursor changing shape), so without a visible lift the row
+        // gives no sign it picked up at all until it is already moving.
+        proxyDecorator: (child, index, animation) => AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) {
+            final t = Curves.easeOut.transform(animation.value);
+            return Material(
+              elevation: 6 * t,
+              color: Color.lerp(
+                Colors.transparent,
+                Theme.of(context).colorScheme.surfaceContainerHighest,
+                t,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              child: child,
+            );
+          },
+          child: child,
+        ),
         itemBuilder: (context, index) {
           final photo = _order[index];
           return Padding(
@@ -209,6 +231,12 @@ class ProfilePhotoDeleteScreen extends ConsumerStatefulWidget {
 
 class _ProfilePhotoDeleteScreenState
     extends ConsumerState<ProfilePhotoDeleteScreen> {
+  // A local, mutable copy — same shape as [ProfilePhotoReorderScreen]'s
+  // `_order`. A successful delete removes the photos from this list and the
+  // person stays here to keep going, rather than being bounced back to
+  // Profile after every single batch; the screen is titled "Delete photos",
+  // plural, precisely so more than one can go per visit.
+  late final List<ProfilePhoto> _photos = List.of(widget.photos);
   final _selectedIds = <String>{};
   bool _isDeleting = false;
 
@@ -222,6 +250,12 @@ class _ProfilePhotoDeleteScreenState
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
+      // Destructive confirmation: a stray tap that lands even slightly
+      // outside the dialog (mouse-to-touch translation on the iPad
+      // simulator does this on every click, not just occasionally) must not
+      // silently dismiss it — that reads as "nothing happened" rather than
+      // "you cancelled".
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: Text(l10n.deletePhotosConfirmTitle),
         content: Text(l10n.deletePhotosConfirmContent),
@@ -241,11 +275,20 @@ class _ProfilePhotoDeleteScreenState
 
     setState(() => _isDeleting = true);
     try {
-      final toDelete = widget.photos
+      final toDelete = _photos
           .where((p) => _selectedIds.contains(p.id))
           .toList();
       await ref.read(profileRepositoryProvider).deletePhotos(photos: toDelete);
-      if (mounted) Navigator.of(context).pop(true);
+      if (!mounted) return;
+      setState(() {
+        _photos.removeWhere((p) => _selectedIds.contains(p.id));
+        _selectedIds.clear();
+        _isDeleting = false;
+      });
+      // Nothing left to select — the empty grid would otherwise sit here
+      // with a disabled delete button and no way forward but the back
+      // button, so return automatically once there is nothing more to do.
+      if (_photos.isEmpty) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,9 +337,9 @@ class _ProfilePhotoDeleteScreenState
           mainAxisSpacing: 8,
           crossAxisSpacing: 8,
         ),
-        itemCount: widget.photos.length,
+        itemCount: _photos.length,
         itemBuilder: (context, index) {
-          final photo = widget.photos[index];
+          final photo = _photos[index];
           return _SelectablePhotoThumb(
             key: ValueKey(photo.id),
             path: photo.storagePath,

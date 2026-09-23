@@ -83,7 +83,10 @@ release-ios:
 	cd $(APP_DIR) && $(FLUTTER) build ipa --dart-define-from-file=.env \
 		--export-options-plist=ios/ExportOptions.plist
 
-pre-commit: verify
+# Deliberately excludes `test`: pre-commit runs on every commit and needs to
+# stay fast enough not to be worked around. The full suite still gates every
+# push, via pre-push below.
+pre-commit: deps format-check analyze
 
 pre-push: verify build-android
 
