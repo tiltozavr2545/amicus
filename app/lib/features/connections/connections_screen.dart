@@ -63,11 +63,11 @@ class _FriendListItem extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     // Captured before the await — see [refreshAfterAwait]. The feed tab this
     // bumps is a different screen from the one that may be gone by now.
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       await action();
-      refresh.invalidate(friendsProvider);
-      if (refreshFeed) refresh.read(feedRefreshTickProvider.notifier).bump();
+      container.invalidate(friendsProvider);
+      if (refreshFeed) container.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -535,15 +535,15 @@ class _IncomingRequestsState extends ConsumerState<_IncomingRequests> {
     if (!_busy.add(request.id)) return;
     setState(() {});
     // Captured before the await — see [refreshAfterAwait].
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       await ref
           .read(connectionsRepositoryProvider)
           .respondToRequest(requestId: request.id, accept: accept);
-      refresh.read(connectionRequestsTickProvider.notifier).bump();
+      container.read(connectionRequestsTickProvider.notifier).bump();
       // Accepting adds a Connection, and the list right below this one is
       // where it lands.
-      if (accept) refresh.invalidate(friendsProvider);
+      if (accept) container.invalidate(friendsProvider);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

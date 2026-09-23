@@ -112,7 +112,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repo.deleted!.map((p) => p.id), ['p0', 'p2']);
-      expect(popped, [true]);
+      // Stays on the delete screen so a second batch can be picked right
+      // away, instead of bouncing back to Profile after every delete.
+      expect(popped, isEmpty);
+      expect(find.byKey(const ValueKey('p0')), findsNothing);
+      expect(find.byKey(const ValueKey('p2')), findsNothing);
+      expect(find.byKey(const ValueKey('p1')), findsOneWidget);
     });
 
     testWidgets('tapping a selected photo again deselects it', (tester) async {

@@ -51,10 +51,10 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
     // Captured before the await — see [refreshAfterAwait]. Leaving a room pops
     // this screen, so by the time the RPC lands `ref` is regularly dead, and
     // the rooms tab that has to reload is a different screen entirely.
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       await action();
-      refresh.read(roomsRefreshTickProvider.notifier).bump();
+      container.read(roomsRefreshTickProvider.notifier).bump();
       return true;
     } catch (e) {
       if (mounted) {
@@ -91,13 +91,13 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
     // out of this screen while the ask is in flight threw out of `ref`, the
     // throw was swallowed by the catch below, and the Connections tab kept
     // offering "ask" for a request the server had already accepted.
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       final connected = await ref
           .read(connectionsRepositoryProvider)
           .requestConnection(member.userId);
-      refresh.read(connectionRequestsTickProvider.notifier).bump();
-      if (connected) refresh.invalidate(friendsProvider);
+      container.read(connectionRequestsTickProvider.notifier).bump();
+      if (connected) container.invalidate(friendsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -111,8 +111,8 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
     } catch (e) {
       if (!mounted) return;
       if (e is PostgrestException && e.code == 'PT409') {
-        refresh.read(connectionRequestsTickProvider.notifier).bump();
-        refresh.invalidate(friendsProvider);
+        container.read(connectionRequestsTickProvider.notifier).bump();
+        container.invalidate(friendsProvider);
         return;
       }
       final bannedUntil = writeBanUntil(e);

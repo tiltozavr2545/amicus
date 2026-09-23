@@ -29,20 +29,20 @@ class _BlockedUserListItem extends ConsumerWidget {
     // Captured before the await: `ref` throws once this widget is gone, and
     // the lists below belong to screens that are still there — see
     // [refreshAfterAwait].
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       await ref
           .read(connectionsRepositoryProvider)
           .unblockUser(blockerId: currentUserId, blockedId: blockedUser.userId);
-      refresh.invalidate(_blockedUsersProvider);
+      container.invalidate(_blockedUsersProvider);
       // ConnectionsScreen is the route this one was pushed over, so it is still
       // mounted and still holding this list with its now-wrong isBlocked flag —
       // popping back would show the person as blocked, on a button whose
       // tooltip says "Unblock".
-      refresh.invalidate(friendsProvider);
+      container.invalidate(friendsProvider);
       // Their posts are allowed back into the feed now, and the feed tab is
       // still alive in the shell behind this screen holding the old page.
-      refresh.read(feedRefreshTickProvider.notifier).bump();
+      container.read(feedRefreshTickProvider.notifier).bump();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(

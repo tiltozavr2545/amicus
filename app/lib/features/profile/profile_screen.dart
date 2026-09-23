@@ -78,12 +78,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _isSaving = true);
     // Captured before the await — see [refreshAfterAwait]. The name also
     // paints the shell's profile tab, which outlives this screen.
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       await ref
           .read(profileRepositoryProvider)
           .updateName(userId: userId, name: name);
-      refresh.invalidate(myProfileProvider);
+      container.invalidate(myProfileProvider);
     } catch (e) {
       // _showError checks context.mounted itself before touching context —
       // the analyzer can't see across that call, only into this function.
@@ -152,20 +152,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
+    // Пути, а не байты: раньше здесь стоял `await file.readAsBytes()` на
+    // каждый файл, и весь батч — до 80 фотографий при `maxWidth: 1600` —
+    // материализовался в памяти целиком и держался там всю последовательную
+    // загрузку. См. [PendingPhoto]. Заодно список перестал быть
+    // асинхронным: читать нечего.
+    final items = [
+      for (final file in usable)
+        PendingPhoto(
+          photoClientToken: const Uuid().v4(),
+          path: file.path,
+          ext: fileExtension(file.name),
+        ),
+    ];
+    // Captured before the await — see [refreshAfterAwait]. Without it, a
+    // `finally` gated on `mounted` silently skipped the invalidation below
+    // whenever the upload outlived this screen, leaving the gallery, the
+    // 80-photo limit and both buttons' enabled state stuck on pre-upload
+    // data until something unrelated happened to invalidate them.
+    final container = refreshAfterAwait(context);
     try {
-      // Пути, а не байты: раньше здесь стоял `await file.readAsBytes()` на
-      // каждый файл, и весь батч — до 80 фотографий при `maxWidth: 1600` —
-      // материализовался в памяти целиком и держался там всю последовательную
-      // загрузку. См. [PendingPhoto]. Заодно список перестал быть
-      // асинхронным: читать нечего.
-      final items = [
-        for (final file in usable)
-          PendingPhoto(
-            photoClientToken: const Uuid().v4(),
-            path: file.path,
-            ext: fileExtension(file.name),
-          ),
-      ];
       await ref
           .read(profileRepositoryProvider)
           .addPhotos(userId: userId, items: items);
@@ -206,11 +212,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // (`append_profile_photos()`, 20260824130000), и этого тупика больше
       // нет; перечитать список всё равно надо, чтобы человек видел, что на
       // самом деле долетело.
-      if (mounted) {
-        ref.invalidate(myProfileProvider);
-        ref.invalidate(_profilePhotosProvider);
-        setState(() => _isAddingPhotos = false);
-      }
+      //
+      // Инвалидация — безусловно, через `container`, а не `ref`: `ref`
+      // умирает вместе с этим экраном, а список, который надо перечитать,
+      // должен пережить его уход (см. [refreshAfterAwait]). `setState`
+      // трогает `context` этого экрана, поэтому остаётся под `mounted`.
+      container.invalidate(myProfileProvider);
+      container.invalidate(_profilePhotosProvider);
+      if (mounted) setState(() => _isAddingPhotos = false);
     }
   }
 
@@ -237,12 +246,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// Цена — один лишний запрос галереи, когда человек зашёл на экран и вышел,
   /// ничего не поменяв.
   Future<void> _openGalleryEditor(Widget screen) async {
+    // Captured before the await — see [refreshAfterAwait]. A `mounted` check
+    // ahead of the `ref` calls used to gate the refresh itself: if this
+    // screen's widget was torn down while `Navigator.push` awaited (seen on
+    // iPad, apparently tied to window/scene reflows — Stage Manager, Split
+    // View, rotation), the invalidation was silently skipped and the gallery
+    // stayed stale until something else happened to invalidate it, which
+    // read as "delete does nothing" until a later retry or tab switch.
+    final container = refreshAfterAwait(context);
     await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => screen));
-    if (!mounted) return;
-    ref.invalidate(myProfileProvider);
-    ref.invalidate(_profilePhotosProvider);
+    container.invalidate(myProfileProvider);
+    container.invalidate(_profilePhotosProvider);
   }
 
   void _openViewer(List<ProfilePhoto> photos) {

@@ -46,7 +46,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     });
     // Captured before the await — see [refreshAfterAwait]. The rooms tab that
     // has to show the new room is a different screen from this one.
-    final refresh = refreshAfterAwait(context);
+    final container = refreshAfterAwait(context);
     try {
       final roomId = await ref
           .read(roomsRepositoryProvider)
@@ -56,7 +56,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
             // is in the field is not its name — don't send it.
             name: _selected.length == 1 ? null : _nameController.text.trim(),
           );
-      refresh.read(roomsRefreshTickProvider.notifier).bump();
+      container.read(roomsRefreshTickProvider.notifier).bump();
       if (!mounted) return;
       // Straight into the new room's chat: the room was created to be used,
       // and coming back to a list to find it again is a wasted tap. Replacing
