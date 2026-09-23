@@ -48,13 +48,17 @@
       <li><strong>Your social graph:</strong> connections you make (via an invite link, or a connection request sent to someone you already share a chat room with), invite codes you generate, and your mute, block and favorites lists. Nobody can read your lists, and who you've muted or blocked is never revealed to anyone, including the person concerned. Favorites are the one exception: because a post can be restricted to your favorites, someone can tell that you have added them — they still cannot see your list itself, or anyone else's.</li>
       <li><strong>Chat:</strong> messages and attached media inside the rooms you're a member of, plus how far you have read in each room — that mark is what lets the other members see whether their messages reached you and were read.</li>
       <li><strong>Notification settings:</strong> your per-source preferences (comments, favorites, room messages, digests, and so on).</li>
-      <li><strong>Push notification token:</strong> a device token issued by Firebase Cloud Messaging (a Google service), together with your app version and interface language — used only to deliver push notifications, in the right language, and to know which installs need to be nudged to update.</li>
+      <li><strong>Push notification token:</strong> a device token issued by Firebase Cloud Messaging (a Google service), together with your app version, interface language, and your device's platform and operating-system version (for example "android 16") — used only to deliver push notifications, in the right language, and to know which installs need to be nudged to update. We do not collect a device model, advertising identifier, or anything else that identifies the handset itself.</li>
+      <li><strong>Whether push notifications could be set up:</strong> the outcome of the app's attempt to register for notifications on each launch — that you allowed them, that you declined, or that registration failed, with a technical error code in the last case. Kept as a single record per account, overwritten on every launch, and used only to tell "this person turned notifications off" apart from "our own notification setup is broken for them".</li>
       <li><strong>Last-active timestamp:</strong> when you last opened the app — used only to decide what counts as "new" in your digest, and whether to send an inactivity reminder.</li>
+      <li><strong>Reports you send:</strong> when you report a post, comment, message or person, we store who reported, what was reported, the reason you picked, and any note you wrote. <strong>The person you report is never told who reported them.</strong></li>
+      <li><strong>Reports about your content:</strong> if someone reports something you wrote, the report also stores a copy of that text — up to the first 500 characters, as it stood at the moment of the report. This copy exists so the report can still be reviewed if the original is edited or deleted before we get to it, and it is visible only to us.</li>
+      <li><strong>Moderation records:</strong> if we hide or remove content following a report, or restrict an account from posting, we keep the fact and, for a restriction, the date it ends.</li>
     </ul>
     <p>"Typing…" and "online" indicators are not stored anywhere — they exist only in memory for as long as a chat screen is open, and disappear the moment it closes.</p>
 
     <h2>How your data is used</h2>
-    <p>Solely to run the app: to show your feed, your profile, and the profiles, posts and messages of your connections and room peers, and to deliver the push notifications you've opted into. Visibility rules (who can see what) are enforced directly in the database, not just in app code. We do not sell your data, share it with third parties for marketing, or run advertising or analytics/tracking inside the app.</p>
+    <p>Solely to run the app: to show your feed, your profile, and the profiles, posts and messages of your connections and room peers, and to deliver the push notifications you've opted into. Reports, and the moderation records that follow from them, are used only to review what was reported and act on it — to keep the app usable, as required of any app carrying user-generated content. Visibility rules (who can see what) are enforced directly in the database, not just in app code. We do not sell your data, share it with third parties for marketing, or run advertising or analytics/tracking inside the app.</p>
 
     <h2>Third-party processors</h2>
     <p><a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> hosts our database, file storage and authentication. <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Firebase Cloud Messaging</a> (Google) delivers push notifications and receives only your device's push token — no message content is routed through it beyond what's needed to display a notification. Neither is used for advertising.</p>
@@ -63,7 +67,7 @@
     <p>Data lives with our cloud provider, <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> (PostgreSQL + Storage), protected by database-level access rules (Row Level Security) — a post, comment or photo is only readable by someone entitled to see it, enforced by the database itself, independent of the app.</p>
 
     <h2 id="deleting-your-data">Deleting your data</h2>
-    <p>You can delete your account at any time from Settings → Delete account, right inside the app. This is immediate and permanent: your profile, posts, comments, photos, messages and connections are all erased and cannot be recovered.</p>
+    <p>You can delete your account at any time from Settings → Delete account, right inside the app. This is immediate and permanent: your profile, posts, comments, photos, messages and connections are all erased and cannot be recovered. Reports you sent are erased with your account. One exception, stated plainly: if something you wrote had been reported before you left, the short copy of that text kept with the report (see above) remains, with your account no longer named on it — otherwise deleting an account would erase the evidence for a report still awaiting review.</p>
     <p>If you no longer have the app installed, or would rather we do it for you, write to <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a> from the email address on your account and ask for it to be deleted — this works whether or not you still have Amicus installed. Deletion is carried out promptly, normally within a few days; a small number of backend backups may take up to 30 days to fully expire, after which no copy of your data remains.</p>
 
     <h2>Your rights</h2>
@@ -79,7 +83,7 @@
     <p>Questions about this policy, or about our <a href="terms.html">Terms of Use</a>: <a href="mailto:projectamicushelper@gmail.com">projectamicushelper@gmail.com</a>.</p>
 
     <p class="updated">© 2026 Timofei Rusakov</p>
-    <p class="updated">Last updated: September 6, 2026</p>
+    <p class="updated">Last updated: September 12, 2026</p>
   </div>
 </body>
 </html>
