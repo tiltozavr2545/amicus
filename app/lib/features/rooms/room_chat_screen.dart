@@ -15,6 +15,7 @@ import '../../shared/media_gallery.dart';
 import '../../shared/media_pick_message.dart';
 import '../../shared/media_picking.dart';
 import '../../shared/refresh_after_await.dart';
+import '../../shared/signed_url_cache.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
 import 'room_details_screen.dart';
@@ -28,6 +29,15 @@ import 'rooms_repository.dart';
 /// for the case where neither happens.
 const _typingIdleTimeout = Duration(seconds: 4);
 
+/// How many messages one page of history holds. The screen names it rather
+/// than leaning on the repository's default because it also reads it back:
+/// a page shorter than this is the end of the history.
+const _pageSize = 50;
+
+/// How long after a failed page load the next attempt is allowed. See
+/// [_RoomChatScreenState._lastLoadFailure].
+const _loadRetryBackoff = Duration(seconds: 5);
+
 /// How many photos/videos one message may carry. Mirrors the CHECK on
 /// `room_messages.media` (20260828120000) — the server refuses an eleventh,
 /// and being told so after the upload would be a wasted upload.
@@ -39,6 +49,11 @@ const _maxAttachments = 10;
 /// fields directly rather than converting again.
 bool _isSameLocalDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// The later of two read/delivered marks. They only ever move forward
+/// server-side, so this is what "reconcile these two versions" means — see
+/// [_RoomChatScreenState._loadReceipts].
+DateTime _later(DateTime a, DateTime b) => a.isAfter(b) ? a : b;
 
 /// The line a reply's quote shows for the message it answers: the text if
 /// there is any, "Photo" if it's media with no caption, or the tombstone
@@ -71,7 +86,8 @@ class RoomChatScreen extends ConsumerStatefulWidget {
   ConsumerState<RoomChatScreen> createState() => _RoomChatScreenState();
 }
 
-class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
+class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
+    with WidgetsBindingObserver {
   /// Index-addressable, unlike a plain `ScrollController` — [_scrollToMessage]
   /// needs to land on an arbitrary loaded message, most of which are never
   /// built (`ListView.builder` only builds what's near the viewport), and a
@@ -130,7 +146,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   /// ticks on the viewer's own messages. Absent while the first fetch is
   /// still in flight; a bubble with no entry for a member just shows no
   /// status yet rather than guessing.
-  Map<String, RoomMemberReceipt> _receipts = {};
+  final Map<String, RoomMemberReceipt> _receipts = {};
 
   /// The message being answered, or null when the composer is writing a
   /// plain message. Cleared on send, on cancel, and whenever the draft it
@@ -143,9 +159,48 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   String? _highlightedMessageId;
   Timer? _highlightTimer;
 
+  /// Something happened here that the rooms list does not know about yet: a
+  /// read mark moved, or a message went out. Refreshed once on the way out
+  /// rather than at the moment it happens — see [_markRead].
+  bool _roomListIsStale = false;
+
+  /// The provider container, captured while there is still a context to get
+  /// it from, because [dispose] has neither that nor a usable `ref` — the
+  /// same trick and the same reason as [refreshAfterAwait], which this calls.
+  late final ProviderContainer _container;
+
+  /// A reconciliation with the server is in flight — see [_catchUp], which
+  /// has two triggers that regularly fire within a moment of each other.
+  bool _isCatchingUp = false;
+
+  /// [_buildChatItems]'s answer for the current [_messages], or null when it
+  /// has to be worked out again. Dropped by [_updateMessages], which is the
+  /// only thing allowed to change the list it is derived from.
+  ///
+  /// Kept because it is asked for far more often than it changes: `build`
+  /// wants it, [_scrollToMessage] wants it, and [_maybeLoadMoreOnScroll]
+  /// wants it on **every frame of every scroll** — the positions notifier
+  /// assigns a new list after each layout, so its listeners run continuously
+  /// while a finger is down. Rebuilding a few hundred items there, per frame,
+  /// was the jank itself.
+  List<_ChatListItem>? _chatItems;
+
+  /// When the last attempt to page in history failed.
+  ///
+  /// A failure leaves [_hasMore] true — there may well be more, the request
+  /// simply didn't get there — and [_maybeLoadMoreOnScroll] fires on every
+  /// frame, so the retry went out again the instant the previous one gave up:
+  /// a request every [networkTimeout] for as long as the chat stayed open and
+  /// offline. The backoff below leaves the retry in place (it is how this
+  /// heals on its own when the connection comes back) and only stops it being
+  /// continuous.
+  DateTime? _lastLoadFailure;
+
   @override
   void initState() {
     super.initState();
+    _container = refreshAfterAwait(context);
+    WidgetsBinding.instance.addObserver(this);
     _loadMore();
     _subscribe();
     _loadReceipts();
@@ -159,8 +214,28 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     _itemPositionsListener.itemPositions.addListener(_maybeLoadMoreOnScroll);
   }
 
+  /// Coming back to the app is coming back to the conversation.
+  ///
+  /// The channel's own re-subscription ([_catchUp]'s other trigger) is the
+  /// tidier of the two, because it queries *after* the subscription is live.
+  /// This one is the backstop for when the socket does not come back at all —
+  /// then nothing would ever arrive, and a chat frozen at whatever was true
+  /// before the app was backgrounded is the worst of the available answers.
+  ///
+  /// The read mark and the receipts are refreshed for the same reason: both
+  /// moved while this screen was not being told about anything.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    _catchUp();
+    _loadReceipts();
+    _markRead();
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Unsubscribing is not optional: the channel outlives this State
     // otherwise, and its callbacks would call setState on a dead widget.
     _unsubscribe?.call();
@@ -176,6 +251,49 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     super.dispose();
   }
 
+  /// The one refresh of the rooms list this screen owes it, collected on the
+  /// way out instead of once per message — see [_markRead].
+  ///
+  /// Two constraints meet here and between them leave exactly one place to
+  /// put this. Riverpod refuses to have a provider modified from **any**
+  /// widget life-cycle method, [deactivate] and [dispose] included ("Tried to
+  /// modify a provider while the widget tree was building"), so the bump has
+  /// to be deferred past the current frame. And `ref` cannot carry it there:
+  /// it is backed by this element, which is what is being taken down — hence
+  /// [_container], captured in [initState] (see [refreshAfterAwait] for the
+  /// rule in full).
+  @override
+  void deactivate() {
+    if (_roomListIsStale) {
+      _roomListIsStale = false;
+      final container = _container;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          container.read(roomsRefreshTickProvider.notifier).bump();
+        } catch (_) {
+          // The container itself is gone — the whole `ProviderScope` was torn
+          // down in the same frame (sign-out, hot restart). Then there is no
+          // rooms list left to be stale, and nothing to report to.
+        }
+      });
+    }
+    super.deactivate();
+  }
+
+  /// [_messages] with its day separators, worked out once per change to the
+  /// list rather than once per caller — see [_chatItems].
+  List<_ChatListItem> get _chatListItems => _chatItems ??= _buildChatItems();
+
+  /// The one way [_messages] is allowed to change: it repaints and drops the
+  /// derived [_chatItems], which would otherwise go on describing the list as
+  /// it was before [change] ran.
+  void _updateMessages(VoidCallback change) {
+    setState(() {
+      change();
+      _chatItems = null;
+    });
+  }
+
   /// Pages in older history once the loaded list's oldest end comes into
   /// view — the same "near the end of the scroll" trigger the feed uses,
   /// expressed in item indices instead of pixels since [_itemScrollController]
@@ -187,7 +305,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     for (final position in positions) {
       if (position.index > maxIndex) maxIndex = position.index;
     }
-    if (maxIndex >= _buildChatItems().length - 3) _loadMore();
+    if (maxIndex >= _chatListItems.length - 3) _loadMore();
   }
 
   void _subscribe() {
@@ -201,15 +319,19 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
             // echo of it arrives here too, and without this check it would
             // appear twice.
             if (_messages.any((m) => m.id == message.id)) return;
-            setState(() => _messages.insert(0, message));
+            _updateMessages(() => _messages.insert(0, message));
             _markRead();
           },
           onUpdate: (message) {
             if (!mounted) return;
             final index = _messages.indexWhere((m) => m.id == message.id);
             if (index == -1) return;
-            setState(() => _messages[index] = message);
+            _updateMessages(() => _messages[index] = message);
           },
+          // The channel came back after having been down — so there is a
+          // stretch of the conversation nobody told this screen about. See
+          // [_catchUp].
+          onResubscribed: _catchUp,
         );
   }
 
@@ -227,6 +349,19 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
               _present = present;
               _typing = typing;
             });
+          },
+          // Asked on every join, including the rejoin after the app comes
+          // back from the background — see [RoomsRepository.subscribeToPresence].
+          // The composer is the only place that knows the answer, and
+          // [_announcedTyping] has to be re-synced with it here: the previous
+          // channel is gone, so whatever was announced on it no longer counts,
+          // and leaving the flag set would make [_announceTyping] skip the
+          // keystroke that should have re-raised the indicator.
+          onSubscribed: () {
+            if (!mounted) return false;
+            final typing = _textController.text.trim().isNotEmpty;
+            _announcedTyping = typing;
+            return typing;
           },
         );
   }
@@ -283,14 +418,22 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   }
 
   Future<void> _markRead() async {
-    // Captured before the await — see [refreshAfterAwait]. This runs on every
-    // arriving message, so leaving the chat mid-flight is the ordinary case,
-    // and the badge it clears belongs to the rooms tab, not to this screen.
-    final refresh = refreshAfterAwait(context);
     try {
       await ref.read(roomsRepositoryProvider).markRoomRead(widget.roomId);
-      // The unread badge in the room list is now wrong by exactly this room.
-      refresh.read(roomsRefreshTickProvider.notifier).bump();
+      // The unread badge in the room list is now wrong by exactly this room —
+      // but the list is behind this screen and nobody is looking at it, so
+      // the refresh waits for the way out (see [deactivate]).
+      //
+      // It used to happen here, on every arriving message, and that one line
+      // was the most expensive thing in the room. A bump refetches the whole
+      // list through `my_rooms()` — a lateral per room for its last message,
+      // a `count(*)` for its unread and an aggregation of its members — and
+      // `fetchRooms()` follows it with `mark_rooms_delivered()`, which
+      // rewrote every one of this viewer's `room_members` rows. Those rows
+      // are published to realtime, so each rewrite woke every member of every
+      // one of those rooms, whose screens then did the same thing back. Three
+      // round trips and a fan-out, per message, for a badge nobody could see.
+      _roomListIsStale = true;
     } catch (_) {
       // Best effort by design: failing to move a read mark is not worth a
       // message on screen, and the next open tries again.
@@ -304,7 +447,28 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
           .fetchMemberReceipts(widget.roomId);
       if (!mounted) return;
       setState(() {
-        _receipts = {for (final r in receipts) r.userId: r};
+        for (final fetched in receipts) {
+          final known = _receipts[fetched.userId];
+          // Merged, not assigned. This used to replace the map wholesale,
+          // and it races the subscription that starts in the same
+          // `initState`: a mark that moved while the fetch was in flight
+          // arrives first and was then overwritten by the older values the
+          // fetch was already carrying, so the tick went stale until the
+          // next event happened to move it again. Marks only ever move
+          // forward server-side, so the later of the two is right whichever
+          // of them got here first — and the two move independently, which
+          // is why they are compared one by one rather than as a pair.
+          _receipts[fetched.userId] = known == null
+              ? fetched
+              : RoomMemberReceipt(
+                  userId: fetched.userId,
+                  lastReadAt: _later(known.lastReadAt, fetched.lastReadAt),
+                  lastDeliveredAt: _later(
+                    known.lastDeliveredAt,
+                    fetched.lastDeliveredAt,
+                  ),
+                );
+        }
       });
     } catch (_) {
       // Best effort, same reasoning as `_markRead`: a stale tick is not
@@ -324,8 +488,79 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
         );
   }
 
+  /// Reconciles the list with the server after a stretch during which
+  /// nothing could have been delivered to it.
+  ///
+  /// Realtime is a stream, not a log: whatever happened while the socket was
+  /// down is not replayed when it comes back, so after every trip to the
+  /// background this list is missing every message sent meanwhile — and every
+  /// deletion, which arrives as an edit to a row already here. Neither would
+  /// ever have shown up: `_loadMore` only ever pages *older*, so the chat
+  /// stayed wrong until it was closed and reopened.
+  ///
+  /// Re-reading the newest page covers both, and the overlap with what is
+  /// already loaded is what says whether it is safe to stitch:
+  ///
+  ///  * **it overlaps** — nothing happened between that page and this list,
+  ///    so the new messages are prepended and the rest are replaced in place,
+  ///    which is what brings the tombstones.
+  ///  * **it doesn't** — a page's worth arrived and there may be more still
+  ///    between the two, so stitching would put a hole in the middle of the
+  ///    conversation. The list starts again from that page instead: losing
+  ///    the scroll position is a nuisance, a conversation with a silent gap
+  ///    in it is a lie.
+  Future<void> _catchUp() async {
+    if (_isCatchingUp || _isLoading) return;
+    // Nothing loaded to reconcile against: this is the first load's job, and
+    // it may be the one that failed while the app was away.
+    if (_messages.isEmpty) return _loadMore();
+    _isCatchingUp = true;
+    try {
+      final page = await ref
+          .read(roomsRepositoryProvider)
+          .fetchMessages(roomId: widget.roomId);
+      if (!mounted || page.isEmpty) return;
+      final known = {for (final m in _messages) m.id};
+      _updateMessages(() {
+        if (!page.any((m) => known.contains(m.id))) {
+          _messages
+            ..clear()
+            ..addAll(page);
+          _hasMore = true;
+          return;
+        }
+        // Oldest first, each one prepended, so the list comes out newest
+        // first the way the rest of this screen expects it.
+        for (var i = page.length - 1; i >= 0; i--) {
+          final message = page[i];
+          final index = _messages.indexWhere((m) => m.id == message.id);
+          if (index == -1) {
+            _messages.insert(0, message);
+          } else {
+            _messages[index] = message;
+          }
+        }
+      });
+    } catch (_) {
+      // Offline, or the request timed out. What is on screen is still what
+      // was true when the server was last reachable, and the next resume (or
+      // the next re-subscription) tries again — which is more than the
+      // silence this replaced.
+    } finally {
+      _isCatchingUp = false;
+    }
+  }
+
   Future<void> _loadMore() async {
     if (_isLoading || !_hasMore) return;
+    // See [_lastLoadFailure]: the scroll trigger fires every frame, so
+    // without this a failure turned into a request every [networkTimeout],
+    // forever.
+    final failedAt = _lastLoadFailure;
+    if (failedAt != null &&
+        DateTime.now().difference(failedAt) < _loadRetryBackoff) {
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -336,17 +571,23 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
           .fetchMessages(
             roomId: widget.roomId,
             before: _messages.isEmpty ? null : _messages.last,
+            limit: _pageSize,
           );
       if (!mounted) return;
-      setState(() {
+      _lastLoadFailure = null;
+      _updateMessages(() {
         // A realtime insert can land while this page is in flight and would
         // then be in both — the id check keeps the list a set.
         final known = {for (final m in _messages) m.id};
         _messages.addAll(page.where((m) => !known.contains(m.id)));
-        _hasMore = page.isNotEmpty;
+        // A short page is the end of the history. `isNotEmpty` was not: a
+        // full last page is non-empty, so there was always one more request
+        // after it, answered with nothing.
+        _hasMore = page.length == _pageSize;
       });
     } catch (e) {
       if (!mounted) return;
+      _lastLoadFailure = DateTime.now();
       setState(
         () => _errorMessage = AppLocalizations.of(
           context,
@@ -435,14 +676,16 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       // can't re-announce after the message is gone.
       _typingTimer?.cancel();
       _textController.clear();
-      setState(() {
+      _updateMessages(() {
         _attachments.clear();
         _replyTarget = null;
         if (!_messages.any((m) => m.id == message.id)) {
           _messages.insert(0, message);
         }
       });
-      ref.read(roomsRefreshTickProvider.notifier).bump();
+      // The list's preview line and its ordering are both behind now. Same
+      // reasoning as [_markRead]: it is refreshed on the way out, not here.
+      _roomListIsStale = true;
     } catch (e) {
       if (!mounted) return;
       // The draft (and [_pendingSendToken]) deliberately survive a failure:
@@ -487,7 +730,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
       if (!mounted) return;
       final index = _messages.indexWhere((m) => m.id == message.id);
       if (index != -1) {
-        setState(
+        _updateMessages(
           () => _messages[index] = RoomMessage(
             id: message.id,
             roomId: message.roomId,
@@ -563,13 +806,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
   /// Pages in older history first when it isn't loaded yet — a reply can
   /// answer a message from well before the first page fetched.
   Future<void> _scrollToMessage(String messageId) async {
-    var index = _buildChatItems().indexWhere(
+    var index = _chatListItems.indexWhere(
       (item) => item.message?.id == messageId,
     );
     while (index == -1 && _hasMore) {
       await _loadMore();
       if (!mounted) return;
-      index = _buildChatItems().indexWhere(
+      index = _chatListItems.indexWhere(
         (item) => item.message?.id == messageId,
       );
     }
@@ -629,7 +872,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen> {
     final viewerId = ref.watch(currentUserIdProvider);
 
     final status = _presenceLine(l10n, room, viewerId);
-    final chatItems = _buildChatItems();
+    final chatItems = _chatListItems;
 
     return Scaffold(
       appBar: AppBar(
@@ -1179,7 +1422,10 @@ class _MessageBubble extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.78,
+            // `sizeOf`, not `of`: the latter is a dependency on the whole
+            // `MediaQueryData`, so opening the keyboard — which only moves
+            // `viewInsets` — rebuilt every bubble on screen.
+            maxWidth: MediaQuery.sizeOf(context).width * 0.78,
           ),
           decoration: BoxDecoration(
             color: isHighlighted
@@ -1331,35 +1577,83 @@ class _MessageMedia extends ConsumerStatefulWidget {
 }
 
 class _MessageMediaState extends ConsumerState<_MessageMedia> {
-  late List<RoomMessageMedia> _items = widget.media;
+  late List<RoomMessageMedia> _items;
   bool _resolving = false;
+
+  /// Bumped whenever [_items] is replaced by a different message's
+  /// attachments, so a signing round trip started against the previous list
+  /// is dropped rather than writing indices that no longer mean the same
+  /// slides. Same guard, for the same reason, as the feed carousel's.
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
+    _items = _withCachedUrls(widget.media);
     _resolve();
   }
 
-  /// Signs everything this message carries in one round trip: ten is the
-  /// most there can be, and a bubble shows them all at once anyway — the
-  /// feed's window-of-one prefetch has nothing to save here.
+  /// This `State` is recreated far more often than the message changes: the
+  /// chat list hands a given slot's element the *next* message whenever one
+  /// is inserted at the top (see [SignedUrlCache]). But the widget's own
+  /// [media] can change under a surviving `State` too — so the same path is
+  /// taken here rather than trusting it not to.
+  @override
+  void didUpdateWidget(_MessageMedia oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_sameMedia(oldWidget.media, widget.media)) return;
+    _generation++;
+    _items = _withCachedUrls(widget.media);
+    _resolve();
+  }
+
+  /// Whether two attachment lists describe the same objects. By storage path,
+  /// which is the object's identity for its whole life — a message's media is
+  /// never edited, so this only ever answers "a different message landed in
+  /// this slot".
+  static bool _sameMedia(List<RoomMessageMedia> a, List<RoomMessageMedia> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].storagePath != b[i].storagePath) return false;
+    }
+    return true;
+  }
+
+  /// [media] with every signature this session already holds filled in,
+  /// **synchronously**, before the first frame.
+  ///
+  /// That timing is the whole point. Resolving from scratch means painting a
+  /// spinner and replacing it a round trip later, and since this `State` is
+  /// thrown away and rebuilt on every message that arrives, a photo already
+  /// on screen would blink each time. See [SignedUrlCache].
+  List<RoomMessageMedia> _withCachedUrls(List<RoomMessageMedia> media) {
+    final indices = [for (var i = 0; i < media.length; i++) i];
+    final cached = ref
+        .read(roomsRepositoryProvider)
+        .cachedMediaUrls(pathsToSign(media, indices));
+    if (cached.isEmpty) return media;
+    return applySignedUrls(media, indices, cached);
+  }
+
+  /// Signs whatever [_withCachedUrls] could not answer, in one round trip:
+  /// ten is the most a message can carry, and a bubble shows them all at
+  /// once anyway — the feed's window-of-one prefetch has nothing to save
+  /// here. Returns without a request at all when the cache covered
+  /// everything, which is the ordinary case after the first view.
   Future<void> _resolve() async {
     if (_resolving) return;
-    final paths = pathsToSign(_items, [
-      for (var i = 0; i < _items.length; i++) i,
-    ]);
+    final indices = [for (var i = 0; i < _items.length; i++) i];
+    final paths = pathsToSign(_items, indices);
     if (paths.isEmpty) return;
+    final generation = _generation;
     _resolving = true;
     try {
       final signed = await ref
           .read(roomsRepositoryProvider)
           .resolveMediaUrls(paths);
-      if (!mounted) return;
-      setState(() {
-        _items = applySignedUrls(_items, [
-          for (var i = 0; i < _items.length; i++) i,
-        ], signed);
-      });
+      if (!mounted || generation != _generation) return;
+      setState(() => _items = applySignedUrls(_items, indices, signed));
     } catch (_) {
       // Offline, or the request timed out. The thumbnails stay on their
       // spinner; reopening the chat asks again, and there is nothing to say
