@@ -6,10 +6,11 @@ set -eu
 # Everything Flutter/CocoaPods normally does before a real build has to
 # happen here, in ci_post_clone.sh, or the archive step fails.
 #
-# Pinned to the exact version this project's SDK constraint expects
-# (app/pubspec.yaml: `sdk: ^3.8.1` -> Flutter 3.32.8 ships that Dart).
+# Pinned to the exact version needed for iOS 27's mandatory UIScene
+# lifecycle (IMM-251: 3.41+ required; also see AGENTS.md constraint about
+# the Android developer's machine, which never builds through this script).
 # Bump this only after bumping the pin in AGENTS.md/pubspec.yaml too.
-FLUTTER_VERSION="3.32.8"
+FLUTTER_VERSION="3.47.5"
 FLUTTER_HOME="$HOME/flutter"
 
 if [ ! -d "$FLUTTER_HOME" ]; then

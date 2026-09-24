@@ -52,3 +52,12 @@ app.*.map.json
 
 # flutter test --coverage output
 /coverage/
+
+# FVM Version Cache. Kept fully local, not just the version cache but also
+# the version-pointer file: the iOS build machine needs Flutter 3.47+ for
+# iOS 27's UIScene lifecycle requirement (IMM-251), but the Android
+# developer's Intel MacBook is capped at Flutter 3.32.8 by its macOS
+# version and must never be steered toward a newer SDK by a committed
+# .fvmrc.
+.fvm/
+.fvmrc
