@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/feed/feed_repository.dart';
@@ -16,6 +17,10 @@ class _FakeProfileRepository implements ProfileRepository {
   List<ProfilePhoto> photos = const [];
   bool photosThrow = false;
   String? savedName;
+
+  /// Чем отвечает `updateName`, если не успехом. `Exception?`, а не `Object?`:
+  /// сюда кладут только то, что действительно приходит с сервера.
+  Exception? updateNameError;
 
   @override
   Future<Profile> fetchProfile(String userId) async =>
@@ -37,11 +42,12 @@ class _FakeProfileRepository implements ProfileRepository {
     required String userId,
     required String name,
   }) async {
+    if (updateNameError != null) throw updateNameError!;
     savedName = name;
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// ProfileScreen embeds PostListView for "my posts"; an empty page keeps it
@@ -55,7 +61,7 @@ class _FakeFeedRepository implements FeedRepository {
   }) async => const [];
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Widget _wrap(_FakeProfileRepository repo) => ProviderScope(
@@ -200,5 +206,56 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.fetchPhotosCalls, greaterThan(before));
+  });
+
+  // До 20260924100000 запрет писать держался только на BEFORE INSERT, и смена
+  // имени под баном проходила — то есть AMB01 отсюда был недостижим, и экран
+  // его не разбирал. Миграция добавила `before update of name on users`, и
+  // вместе с ней появилась возможность показать забанённому «попробуйте ещё
+  // раз» — приглашение повторить то, что до конца срока не выйдет.
+  testWidgets('a write ban on rename names the date instead of "try again"', (
+    tester,
+  ) async {
+    final repo = _FakeProfileRepository()
+      ..updateNameError = const PostgrestException(
+        message: 'Writing is restricted for this account',
+        code: 'AMB01',
+        details: '2026-10-01T09:00:00Z',
+      );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(_nameField, 'Новое имя');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    // Дата берётся из DETAIL, а не сочиняется, поэтому проверяется именно она.
+    expect(
+      find.textContaining('the restriction lasts until Oct 1, 2026'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Please try again'), findsNothing);
+    expect(repo.savedName, isNull);
+  });
+
+  // Обратная половина той же ветки: обычный отказ обязан остаться обычным.
+  // Проверка «показали дату» без неё проходила бы и на коде, который всегда
+  // говорит про бан.
+  testWidgets('an ordinary failure to save the name still says "try again"', (
+    tester,
+  ) async {
+    final repo = _FakeProfileRepository()
+      ..updateNameError = Exception('offline');
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(_nameField, 'Новое имя');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('the restriction lasts until'), findsNothing);
+    expect(find.textContaining('Failed to save name'), findsOneWidget);
   });
 }

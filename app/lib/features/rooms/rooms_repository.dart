@@ -108,8 +108,19 @@ class Room {
   final int unreadCount;
 
   /// This viewer has silenced this one room's pushes. Per member, not per
-  /// room: the flag lives on their own `room_members` row, so muting a room
-  /// is invisible to everyone else in it.
+  /// room: the flag lives on their own `room_members` row, so muting one room
+  /// says nothing about the others.
+  ///
+  /// It is NOT hidden from the other members, and this comment used to claim
+  /// it was. `room_members` is readable by every member of the room (the same
+  /// policy that lets the room list show names and avatars) and the SELECT
+  /// grant is on the whole table, so a peer who asks for the column gets it.
+  /// Nothing in the app asks — `fetchMemberReceipts` selects three columns and
+  /// this is not one of them — but "nobody currently looks" is not the same as
+  /// "nobody can". Closing it means a per-column grant, and `room_members` is
+  /// in the realtime publication that carries the delivered/read marks, so
+  /// that change needs verifying against a live client first; see the header
+  /// of migration 20260924100000 and "Комнаты" in docs/data-model.md.
   ///
   /// Pushes only. [unreadCount] keeps counting and the badge keeps showing —
   /// silencing a room is not the same as no longer reading it.
