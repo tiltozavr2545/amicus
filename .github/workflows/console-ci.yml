@@ -32,4 +32,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Тесты серверной половины: `node --test` через tsx, без отдельного
+      # раннера в зависимостях. Стоят перед сборкой, потому что проверяют
+      # проверку, которая стоит перед service_role-ключом (server/local_only.ts)
+      # — если она перестала работать, собирать уже незачем.
+      - run: npm test
       - run: npm run build
