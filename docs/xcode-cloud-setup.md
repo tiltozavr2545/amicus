@@ -52,8 +52,13 @@ to the Report Navigator:
 Already committed at `app/ios/ci_scripts/ci_post_clone.sh` — Xcode Cloud
 picks it up automatically because it sits next to `Runner.xcworkspace`. It:
 
-1. Installs Flutter 3.32.8 (pinned to match `app/pubspec.yaml`'s SDK
-   constraint) into the build VM.
+1. Installs Flutter 3.47.5 into the build VM. This pin is now
+   **independent** of `AGENTS.md`'s shared Android-constrained Flutter
+   version (3.32.8) — iOS 27 requires UIScene lifecycle support that only
+   landed in newer Flutter, while the Android colleague's machine cannot
+   run past 3.32.8 (see AGENTS.md's "Ограничения среды"). Bump this pin for
+   iOS/Xcode Cloud needs only; it no longer has to match `pubspec.yaml`'s
+   `sdk:` constraint or AGENTS.md's shared pin.
 2. Reconstitutes `GoogleService-Info.plist` and `.env` from Environment
    Variables (see step 4) — both are gitignored, so Xcode Cloud's clone
    never has them.
@@ -95,9 +100,13 @@ Same workflow → **Environment Variables** tab → add:
 ## 5. Trigger and verify a build
 
 Push to the start-condition branch, or use **Start Build** in App Store
-Connect to trigger one on demand without waiting for a push. Watch the build
-log for the `ci_post_clone.sh` output first — a failure there (missing env
-var, Flutter clone failing) shows up before the archive step even starts.
+Connect to trigger one on demand without waiting for a push. To trigger a
+build programmatically instead (from a script, CI, or an agent with no
+browser access to App Store Connect), see
+[app-store-connect-api-automation.md](app-store-connect-api-automation.md).
+Watch the build log for the `ci_post_clone.sh` output first — a failure
+there (missing env var, Flutter clone failing) shows up before the archive
+step even starts.
 
 Once it succeeds and reaches **Ready to Submit** under TestFlight (or gets
 auto-attached, if step 3's post-action is configured), the resulting build

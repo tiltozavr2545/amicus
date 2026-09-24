@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,15 +92,21 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   /// The "profile" destination's icon: the user's own avatar once it's
   /// loaded, falling back to the generic person icon while it isn't (first
   /// frame, still loading, no photo set, or the fetch failed).
-  Widget _profileIcon() {
+  Widget _profileIcon(double iconSize) {
     final avatarPath = ref.watch(myProfileProvider).value?.avatarPath;
     final avatarBytes = avatarPath == null
         ? null
         : ref.watch(avatarBytesProvider(avatarPath)).value;
-    if (avatarBytes == null) return const Icon(Icons.person_outline);
+    if (avatarBytes == null) {
+      return Icon(Icons.person_outline, size: iconSize);
+    }
     return CircleAvatar(
-      radius: 12,
-      backgroundImage: sizedMemoryImage(context, avatarBytes, logicalWidth: 24),
+      radius: iconSize / 2,
+      backgroundImage: sizedMemoryImage(
+        context,
+        avatarBytes,
+        logicalWidth: iconSize,
+      ),
     );
   }
 
@@ -135,55 +143,264 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               child: CreatePostScreen(onClose: _closeCompose),
             )
           : navigationShell,
-      bottomNavigationBar: NavigationBar(
-        // Icons only. The labels stay in the tree (`label` is what a screen
-        // reader announces and what the long-press tooltip shows), they are
-        // just not painted — five of them across a phone would either wrap or
-        // shrink to unreadable.
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-        selectedIndex: _composing
-            ? _addPostDestinationIndex
-            : MainShellScreen._destinationIndexForBranch(
-                navigationShell.currentIndex,
-              ),
-        onDestinationSelected: (index) {
-          if (index == _addPostDestinationIndex) {
-            setState(() => _composing = true);
-            return;
-          }
-          // Leaving the tab underneath the composer without saving; there is
-          // no draft to preserve once it's gone from screen.
-          if (_composing) setState(() => _composing = false);
-          final branchIndex = index < _addPostDestinationIndex
-              ? index
-              : index - 1;
-          navigationShell.goBranch(
-            branchIndex,
-            initialLocation: branchIndex == navigationShell.currentIndex,
-          );
-        },
-        destinations: [
+      bottomNavigationBar: _bottomNavigationBar(l10n, navigationShell),
+    );
+  }
+
+  int _selectedIndex(StatefulNavigationShell navigationShell) => _composing
+      ? _addPostDestinationIndex
+      : MainShellScreen._destinationIndexForBranch(
+          navigationShell.currentIndex,
+        );
+
+  void _onDestinationSelected(
+    int index,
+    StatefulNavigationShell navigationShell,
+  ) {
+    if (index == _addPostDestinationIndex) {
+      setState(() => _composing = true);
+      return;
+    }
+    // Leaving the tab underneath the composer without saving; there is
+    // no draft to preserve once it's gone from screen.
+    if (_composing) setState(() => _composing = false);
+    final branchIndex = index < _addPostDestinationIndex ? index : index - 1;
+    navigationShell.goBranch(
+      branchIndex,
+      initialLocation: branchIndex == navigationShell.currentIndex,
+    );
+  }
+
+  /// The bottom bar's icons/labels, shared between the iOS-only [_BottomBar]
+  /// and Android's stock [NavigationBar] below — only the *container*
+  /// differs per platform, not what's in it.
+  List<_BottomBarDestination> _destinations(AppLocalizations l10n) => [
+    _BottomBarDestination(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+      label: l10n.feedTabLabel,
+    ),
+    _BottomBarDestination(
+      icon: Icons.add_circle_outline,
+      label: l10n.newPostTitle,
+    ),
+    _BottomBarDestination(
+      icon: Icons.forum_outlined,
+      selectedIcon: Icons.forum,
+      label: l10n.roomsTitle,
+    ),
+    _BottomBarDestination(
+      icon: Icons.people_outline,
+      selectedIcon: Icons.people,
+      label: l10n.connectionsTitle,
+    ),
+    _BottomBarDestination(iconBuilder: _profileIcon, label: l10n.profileTitle),
+  ];
+
+  /// iOS gets the custom [_BottomBar] (IMM-195: [NavigationBar] bakes in an
+  /// asymmetric icon row that no wrapping can fix — see its doc comment).
+  /// Android's [NavigationBar] never had that asymmetry (no home-indicator
+  /// safe-area to expose it) and the IMM-195 ticket required Android's bar
+  /// to stay unchanged, so Android keeps using the stock widget.
+  Widget _bottomNavigationBar(
+    AppLocalizations l10n,
+    StatefulNavigationShell navigationShell,
+  ) {
+    final selectedIndex = _selectedIndex(navigationShell);
+    void onSelected(int index) =>
+        _onDestinationSelected(index, navigationShell);
+    if (Platform.isIOS) {
+      return _BottomBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onSelected,
+        destinations: _destinations(l10n),
+      );
+    }
+    return NavigationBar(
+      // Icons only. The labels stay in the tree (`label` is what a screen
+      // reader announces and what the long-press tooltip shows), they are
+      // just not painted — five of them across a phone would either wrap or
+      // shrink to unreadable.
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onSelected,
+      destinations: [
+        for (final destination in _destinations(l10n))
           NavigationDestination(
-            icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(Icons.home),
-            label: l10n.feedTabLabel,
+            icon: destination.iconBuilder?.call(24) ?? Icon(destination.icon),
+            selectedIcon:
+                destination.iconBuilder?.call(24) ??
+                (destination.selectedIcon == null
+                    ? null
+                    : Icon(destination.selectedIcon)),
+            label: destination.label,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.add_circle_outline),
-            label: l10n.newPostTitle,
+      ],
+    );
+  }
+}
+
+/// One tappable entry in [_BottomBar]. Either a Material [icon] (with an
+/// optional [selectedIcon] variant), or a fully custom [iconWidget] (the
+/// profile avatar) — never both.
+class _BottomBarDestination {
+  const _BottomBarDestination({
+    this.icon,
+    this.selectedIcon,
+    this.iconBuilder,
+    required this.label,
+  }) : assert(
+         icon != null || iconBuilder != null,
+         'a destination needs either icon or iconBuilder',
+       );
+
+  final IconData? icon;
+  final IconData? selectedIcon;
+  final Widget Function(double iconSize)? iconBuilder;
+  final String label;
+}
+
+/// A from-scratch bottom tab bar, replacing Material's [NavigationBar].
+///
+/// [NavigationBar] bakes in an asymmetric icon row: it reserves space below
+/// the icon for a label even with [NavigationDestinationLabelBehavior
+/// .alwaysHide], so the icon row itself sits closer to the top than the
+/// bottom no matter how the surrounding padding or safe area is adjusted
+/// (IMM-195). Building the bar directly gives full control over that
+/// spacing: an explicit, symmetric [_verticalPadding] around the icon row,
+/// with the bottom safe area reserved *outside* it via [SafeArea] and zero
+/// gap in between.
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.destinations,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final List<_BottomBarDestination> destinations;
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  static const _verticalPadding = 12.0;
+  static const _phoneIconSize = 26.0;
+  static const _tabletIconSize = 38.0;
+  // iPad's own multitasking-window breakpoint (see Scaffold.of usage
+  // elsewhere); anything narrower is a phone, however large its pixel count.
+  static const _tabletShortestSide = 600.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final navBarTheme = NavigationBarTheme.of(context);
+    final colorScheme = ColorScheme.of(context);
+    final backgroundColor =
+        navBarTheme.backgroundColor ?? colorScheme.surfaceContainer;
+    final indicatorColor =
+        navBarTheme.indicatorColor ?? colorScheme.secondaryContainer;
+    final selectedColor =
+        navBarTheme.iconTheme?.resolve({WidgetState.selected})?.color ??
+        colorScheme.onSecondaryContainer;
+    final unselectedColor =
+        navBarTheme.iconTheme?.resolve(const {})?.color ??
+        colorScheme.onSurfaceVariant;
+    final isTablet =
+        MediaQuery.sizeOf(context).shortestSide >= _tabletShortestSide;
+    final iconSize = isTablet ? _tabletIconSize : _phoneIconSize;
+    return ColoredBox(
+      color: backgroundColor,
+      // Reserves the bottom inset (home indicator / iPad window chrome)
+      // *outside* the padded icon row below, rather than growing the row's
+      // own padding — that is what keeps the space above and below the
+      // icons equal regardless of the device's safe area.
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.only(
+            // A hair more on top than bottom: at this padding scale the
+            // rendered result reads as visually equal — matching pixels
+            // exactly left the top looking very slightly shy (Madrus,
+            // IMM-195 verification pass).
+            top: _verticalPadding + 8,
+            bottom: _verticalPadding,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.forum_outlined),
-            selectedIcon: const Icon(Icons.forum),
-            label: l10n.roomsTitle,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              for (final (index, destination) in destinations.indexed)
+                _BottomBarIcon(
+                  destination: destination,
+                  selected: index == selectedIndex,
+                  iconSize: iconSize,
+                  indicatorColor: indicatorColor,
+                  selectedColor: selectedColor,
+                  unselectedColor: unselectedColor,
+                  onTap: () => onDestinationSelected(index),
+                ),
+            ],
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.people_outline),
-            selectedIcon: const Icon(Icons.people),
-            label: l10n.connectionsTitle,
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomBarIcon extends StatelessWidget {
+  const _BottomBarIcon({
+    required this.destination,
+    required this.selected,
+    required this.iconSize,
+    required this.indicatorColor,
+    required this.selectedColor,
+    required this.unselectedColor,
+    required this.onTap,
+  });
+
+  final _BottomBarDestination destination;
+  final bool selected;
+  final double iconSize;
+  final Color indicatorColor;
+  final Color selectedColor;
+  final Color unselectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon =
+        destination.iconBuilder?.call(iconSize) ??
+        Icon(
+          selected
+              ? (destination.selectedIcon ?? destination.icon)
+              : destination.icon,
+          size: iconSize,
+          color: selected ? selectedColor : unselectedColor,
+        );
+    // Fixed width/height rather than symmetric padding: padding only
+    // guarantees centering if nothing upstream (InkResponse's own minimum
+    // tap-target inset, in particular) nudges the box afterwards. A pinned
+    // size plus `Center` centers the icon unconditionally, independent of
+    // whatever wraps it outside — which is what "not vertically centered"
+    // on the selected pill turned out to need (IMM-195).
+    final pillWidth = iconSize * 2;
+    final pillHeight = iconSize * 1.5;
+    return Tooltip(
+      message: destination.label,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: destination.label,
+        child: InkResponse(
+          onTap: onTap,
+          radius: iconSize,
+          child: Container(
+            width: pillWidth,
+            height: pillHeight,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? indicatorColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(pillHeight),
+            ),
+            child: icon,
           ),
-          NavigationDestination(icon: _profileIcon(), label: l10n.profileTitle),
-        ],
+        ),
       ),
     );
   }
