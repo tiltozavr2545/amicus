@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -141,54 +143,99 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               child: CreatePostScreen(onClose: _closeCompose),
             )
           : navigationShell,
-      bottomNavigationBar: _BottomBar(
-        selectedIndex: _composing
-            ? _addPostDestinationIndex
-            : MainShellScreen._destinationIndexForBranch(
-                navigationShell.currentIndex,
-              ),
-        onDestinationSelected: (index) {
-          if (index == _addPostDestinationIndex) {
-            setState(() => _composing = true);
-            return;
-          }
-          // Leaving the tab underneath the composer without saving; there is
-          // no draft to preserve once it's gone from screen.
-          if (_composing) setState(() => _composing = false);
-          final branchIndex = index < _addPostDestinationIndex
-              ? index
-              : index - 1;
-          navigationShell.goBranch(
-            branchIndex,
-            initialLocation: branchIndex == navigationShell.currentIndex,
-          );
-        },
-        destinations: [
-          _BottomBarDestination(
-            icon: Icons.home_outlined,
-            selectedIcon: Icons.home,
-            label: l10n.feedTabLabel,
+      bottomNavigationBar: _bottomNavigationBar(l10n, navigationShell),
+    );
+  }
+
+  int _selectedIndex(StatefulNavigationShell navigationShell) => _composing
+      ? _addPostDestinationIndex
+      : MainShellScreen._destinationIndexForBranch(
+          navigationShell.currentIndex,
+        );
+
+  void _onDestinationSelected(
+    int index,
+    StatefulNavigationShell navigationShell,
+  ) {
+    if (index == _addPostDestinationIndex) {
+      setState(() => _composing = true);
+      return;
+    }
+    // Leaving the tab underneath the composer without saving; there is
+    // no draft to preserve once it's gone from screen.
+    if (_composing) setState(() => _composing = false);
+    final branchIndex = index < _addPostDestinationIndex ? index : index - 1;
+    navigationShell.goBranch(
+      branchIndex,
+      initialLocation: branchIndex == navigationShell.currentIndex,
+    );
+  }
+
+  /// The bottom bar's icons/labels, shared between the iOS-only [_BottomBar]
+  /// and Android's stock [NavigationBar] below — only the *container*
+  /// differs per platform, not what's in it.
+  List<_BottomBarDestination> _destinations(AppLocalizations l10n) => [
+    _BottomBarDestination(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home,
+      label: l10n.feedTabLabel,
+    ),
+    _BottomBarDestination(
+      icon: Icons.add_circle_outline,
+      label: l10n.newPostTitle,
+    ),
+    _BottomBarDestination(
+      icon: Icons.forum_outlined,
+      selectedIcon: Icons.forum,
+      label: l10n.roomsTitle,
+    ),
+    _BottomBarDestination(
+      icon: Icons.people_outline,
+      selectedIcon: Icons.people,
+      label: l10n.connectionsTitle,
+    ),
+    _BottomBarDestination(iconBuilder: _profileIcon, label: l10n.profileTitle),
+  ];
+
+  /// iOS gets the custom [_BottomBar] (IMM-195: [NavigationBar] bakes in an
+  /// asymmetric icon row that no wrapping can fix — see its doc comment).
+  /// Android's [NavigationBar] never had that asymmetry (no home-indicator
+  /// safe-area to expose it) and the IMM-195 ticket required Android's bar
+  /// to stay unchanged, so Android keeps using the stock widget.
+  Widget _bottomNavigationBar(
+    AppLocalizations l10n,
+    StatefulNavigationShell navigationShell,
+  ) {
+    final selectedIndex = _selectedIndex(navigationShell);
+    void onSelected(int index) =>
+        _onDestinationSelected(index, navigationShell);
+    if (Platform.isIOS) {
+      return _BottomBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onSelected,
+        destinations: _destinations(l10n),
+      );
+    }
+    return NavigationBar(
+      // Icons only. The labels stay in the tree (`label` is what a screen
+      // reader announces and what the long-press tooltip shows), they are
+      // just not painted — five of them across a phone would either wrap or
+      // shrink to unreadable.
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onSelected,
+      destinations: [
+        for (final destination in _destinations(l10n))
+          NavigationDestination(
+            icon: destination.iconBuilder?.call(24) ?? Icon(destination.icon),
+            selectedIcon:
+                destination.iconBuilder?.call(24) ??
+                (destination.selectedIcon == null
+                    ? null
+                    : Icon(destination.selectedIcon)),
+            label: destination.label,
           ),
-          _BottomBarDestination(
-            icon: Icons.add_circle_outline,
-            label: l10n.newPostTitle,
-          ),
-          _BottomBarDestination(
-            icon: Icons.forum_outlined,
-            selectedIcon: Icons.forum,
-            label: l10n.roomsTitle,
-          ),
-          _BottomBarDestination(
-            icon: Icons.people_outline,
-            selectedIcon: Icons.people,
-            label: l10n.connectionsTitle,
-          ),
-          _BottomBarDestination(
-            iconBuilder: _profileIcon,
-            label: l10n.profileTitle,
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

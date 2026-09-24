@@ -52,8 +52,13 @@ to the Report Navigator:
 Already committed at `app/ios/ci_scripts/ci_post_clone.sh` — Xcode Cloud
 picks it up automatically because it sits next to `Runner.xcworkspace`. It:
 
-1. Installs Flutter 3.32.8 (pinned to match `app/pubspec.yaml`'s SDK
-   constraint) into the build VM.
+1. Installs Flutter 3.47.5 into the build VM. This pin is now
+   **independent** of `AGENTS.md`'s shared Android-constrained Flutter
+   version (3.32.8) — iOS 27 requires UIScene lifecycle support that only
+   landed in newer Flutter, while the Android colleague's machine cannot
+   run past 3.32.8 (see AGENTS.md's "Ограничения среды"). Bump this pin for
+   iOS/Xcode Cloud needs only; it no longer has to match `pubspec.yaml`'s
+   `sdk:` constraint or AGENTS.md's shared pin.
 2. Reconstitutes `GoogleService-Info.plist` and `.env` from Environment
    Variables (see step 4) — both are gitignored, so Xcode Cloud's clone
    never has them.
