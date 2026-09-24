@@ -100,9 +100,13 @@ Same workflow → **Environment Variables** tab → add:
 ## 5. Trigger and verify a build
 
 Push to the start-condition branch, or use **Start Build** in App Store
-Connect to trigger one on demand without waiting for a push. Watch the build
-log for the `ci_post_clone.sh` output first — a failure there (missing env
-var, Flutter clone failing) shows up before the archive step even starts.
+Connect to trigger one on demand without waiting for a push. To trigger a
+build programmatically instead (from a script, CI, or an agent with no
+browser access to App Store Connect), see
+[app-store-connect-api-automation.md](app-store-connect-api-automation.md).
+Watch the build log for the `ci_post_clone.sh` output first — a failure
+there (missing env var, Flutter clone failing) shows up before the archive
+step even starts.
 
 Once it succeeds and reaches **Ready to Submit** under TestFlight (or gets
 auto-attached, if step 3's post-action is configured), the resulting build
