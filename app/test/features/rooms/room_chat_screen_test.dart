@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
@@ -219,6 +220,21 @@ RoomMessageReplyPreview? replyPreviewFor(
   return null;
 }
 
+/// `_LinkifiedMessageText`'s rendered text — a `Text.rich`, distinguished
+/// from every other `Text` on screen (all plain `Text.data`) by carrying a
+/// `textSpan` instead.
+Finder _linkifiedText() => find.byWidgetPredicate(
+  (widget) => widget is Text && widget.textSpan != null,
+);
+
+/// A live message's own body text, wherever it appears on screen. Every
+/// other `find.text(...)` target in this file — buttons, labels, a
+/// tombstone, a reply preview's quote — still renders as exactly the string
+/// it shows; only `_LinkifiedMessageText` no longer does, since it now ends
+/// in an invisible separator marker (`_messageSeparator`; see there) that
+/// makes an exact match fail.
+Finder _messageText(String text) => find.textContaining(text);
+
 final _room = Room(
   id: 'room-1',
   name: 'Дача',
@@ -269,8 +285,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Дача'), findsOneWidget);
-    expect(find.text('моё сообщение'), findsOneWidget);
-    expect(find.text('её сообщение'), findsOneWidget);
+    expect(_messageText('моё сообщение'), findsOneWidget);
+    expect(_messageText('её сообщение'), findsOneWidget);
     // Someone else's message is signed; one's own is not — which side of the
     // screen it sits on already says who wrote it.
     expect(find.text('Аня'), findsOneWidget);
@@ -484,7 +500,7 @@ void main() {
     repo.onInsert!(_message(id: 'live-1', authorId: 'anya', text: 'и ещё'));
     await tester.pumpAndSettle();
 
-    expect(find.text('и ещё'), findsOneWidget);
+    expect(_messageText('и ещё'), findsOneWidget);
     expect(repo.signedBatches, hasLength(1));
   });
 
@@ -498,7 +514,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.sentTexts, ['до встречи']);
-    expect(find.text('до встречи'), findsOneWidget);
+    expect(_messageText('до встречи'), findsOneWidget);
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       isEmpty,
@@ -545,7 +561,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('только что пришло'), findsOneWidget);
+    expect(_messageText('только что пришло'), findsOneWidget);
     // Reading a room while looking at it is what silences its pushes.
     expect(repo.markReadCalls, 2);
   });
@@ -567,7 +583,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('одно сообщение'), findsOneWidget);
+    expect(_messageText('одно сообщение'), findsOneWidget);
   });
 
   testWidgets('day separators use relative labels for recent days', (
@@ -633,14 +649,14 @@ void main() {
     expect(find.text('Today'), findsOneWidget);
   });
 
-  testWidgets('long-pressing a message offers to reply to it', (tester) async {
+  testWidgets('tapping a message offers to reply to it', (tester) async {
     final repo = _FakeRoomsRepository(
       messages: [_message(id: 'm1', authorId: 'anya', text: 'оригинал')],
     );
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.text('оригинал'));
+    await tester.tap(_messageText('оригинал'));
     await tester.pumpAndSettle();
 
     expect(find.text('Reply'), findsOneWidget);
@@ -662,7 +678,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.text('оригинал'));
+    await tester.tap(_messageText('оригинал'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Reply'));
     await tester.pumpAndSettle();
@@ -674,7 +690,7 @@ void main() {
     expect(find.text('Replying to: Аня'), findsNothing);
   });
 
-  testWidgets('a deleted message offers no long-press actions', (tester) async {
+  testWidgets('a deleted message offers no tap actions', (tester) async {
     final repo = _FakeRoomsRepository(
       messages: [
         _message(
@@ -688,12 +704,139 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.text('Message deleted'));
+    await tester.tap(find.text('Message deleted'));
     await tester.pumpAndSettle();
 
     expect(find.text('Reply'), findsNothing);
     expect(find.text('Delete'), findsNothing);
   });
+
+  testWidgets('long-pressing message text does not open the actions sheet', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'оригинал')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(_messageText('оригинал'));
+    await tester.pumpAndSettle();
+
+    // A long press is what the list's `SelectionArea` listens for to start a
+    // word selection — a tap is what opens the sheet (see the comment on
+    // `_MessageBubble`'s `GestureDetector`), and the two gestures resolve
+    // independently, so this must not also open it.
+    expect(find.text('Reply'), findsNothing);
+    expect(find.text('Delete'), findsNothing);
+  });
+
+  testWidgets('a URL in message text is styled distinctly and tappable', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(id: 'm1', authorId: 'anya', text: 'https://example.com'),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    final richText = tester.widget<Text>(_linkifiedText());
+    // The link span, then the invisible separator marker every message ends
+    // in (see `_LinkifiedMessageText._buildSpans`) — not part of this check.
+    final span = (richText.textSpan! as TextSpan).children!.first as TextSpan;
+    expect(span.text, 'https://example.com');
+    expect(span.recognizer, isNotNull);
+    expect(span.style?.decoration, TextDecoration.underline);
+  });
+
+  testWidgets('tapping a link opens it, not the actions sheet', (tester) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(id: 'm1', authorId: 'anya', text: 'https://example.com'),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    // The link's own recognizer wins the tap over the bubble's — a pointer
+    // gesture resolves to exactly one recognizer — so this must not also
+    // open the sheet. `url_launcher` itself isn't mocked here, but
+    // `_LinkifiedMessageText._openLink` catches a failed launch, so the tap
+    // settling without the sheet appearing is what this checks.
+    await tester.tap(_messageText('https://example.com'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reply'), findsNothing);
+    expect(find.text('Delete'), findsNothing);
+  });
+
+  testWidgets(
+    'copying a selection spanning two messages joins them with a real '
+    'line break',
+    (tester) async {
+      String? copiedText;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          switch (call.method) {
+            case 'Clipboard.setData':
+              copiedText = (call.arguments as Map)['text'] as String?;
+            case 'Clipboard.getData':
+              return <String, dynamic>{'text': copiedText};
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+
+      // Newest first, same as every other fixture in this file: with
+      // `reverse: true` that's what puts the newest message at the bottom
+      // of the screen, oldest at the top — ordinary chat reading order.
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm2',
+            authorId: 'anya',
+            text: 'второе',
+            createdAt: DateTime.utc(2026, 8, 26, 19),
+          ),
+          _message(
+            id: 'm1',
+            authorId: 'anya',
+            text: 'первое',
+            createdAt: DateTime.utc(2026, 8, 26, 18),
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      // Drag from inside the older message to inside the newer one — top to
+      // bottom on screen, same as the app always shows them.
+      final startPos =
+          tester.getTopLeft(_messageText('первое')) + const Offset(2, 8);
+      final endPos =
+          tester.getBottomRight(_messageText('второе')) - const Offset(2, 4);
+      final gesture = await tester.startGesture(startPos);
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveTo(endPos);
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Copy'));
+      await tester.pumpAndSettle();
+
+      expect(copiedText, 'первое\nвторое');
+    },
+  );
 
   testWidgets('sending a reply carries its target and quotes it', (
     tester,
@@ -704,7 +847,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.text('оригинал'));
+    await tester.tap(_messageText('оригинал'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Reply'));
     await tester.pumpAndSettle();
@@ -716,10 +859,10 @@ void main() {
     expect(repo.sentReplyToIds, ['m1']);
     // Sending clears reply mode, same as it clears the text field.
     expect(find.text('Replying to: Аня'), findsNothing);
-    expect(find.text('ответ'), findsOneWidget);
+    expect(_messageText('ответ'), findsOneWidget);
     // The quote appears twice: the original message's own bubble, and the
     // snippet quoted inside the new reply's bubble.
-    expect(find.text('оригинал'), findsNWidgets(2));
+    expect(_messageText('оригинал'), findsNWidgets(2));
   });
 
   testWidgets('a reply whose target has not been loaded shows "unavailable"', (
@@ -792,10 +935,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.firstPageFetches, 2);
-    expect(find.text('пока тебя не было'), findsOneWidget);
+    expect(_messageText('пока тебя не было'), findsOneWidget);
     // Stitched, not replaced: the message that was already here is still
     // here, exactly once.
-    expect(find.text('до'), findsOneWidget);
+    expect(_messageText('до'), findsOneWidget);
   });
 
   testWidgets('a deletion that happened while away lands as a tombstone', (
@@ -806,7 +949,7 @@ void main() {
     );
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
-    expect(find.text('зря написал'), findsOneWidget);
+    expect(_messageText('зря написал'), findsOneWidget);
 
     // A delete arrives as an edit to a row already on screen, so it is not
     // something a "what is newer than my newest" query would ever find —
@@ -822,7 +965,7 @@ void main() {
     repo.onResubscribed!();
     await tester.pumpAndSettle();
 
-    expect(find.text('зря написал'), findsNothing);
+    expect(_messageText('зря написал'), findsNothing);
     expect(find.text('Message deleted'), findsOneWidget);
   });
 
@@ -845,9 +988,9 @@ void main() {
     repo.onResubscribed!();
     await tester.pumpAndSettle();
 
-    expect(find.text('первое новое'), findsOneWidget);
-    expect(find.text('второе новое'), findsOneWidget);
-    expect(find.text('старое'), findsNothing);
+    expect(_messageText('первое новое'), findsOneWidget);
+    expect(_messageText('второе новое'), findsOneWidget);
+    expect(_messageText('старое'), findsNothing);
   });
 
   testWidgets('arriving messages do not refetch the room list; leaving does', (

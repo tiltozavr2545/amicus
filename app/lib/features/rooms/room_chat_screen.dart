@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -932,50 +935,80 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                       ),
                     ),
                   )
-                : ScrollablePositionedList.builder(
-                    itemScrollController: _itemScrollController,
-                    itemPositionsListener: _itemPositionsListener,
-                    reverse: true,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    itemCount: chatItems.length + (_isLoading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= chatItems.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: CircularProgressIndicator()),
+                // One `SelectionArea` over the whole list rather than one
+                // `SelectableText` per bubble: it's what gives "tap another
+                // bubble, or empty space between them, and the previous
+                // selection clears" for free — a lone `SelectableText` has
+                // no idea a tap ever happened outside its own render box, so
+                // a selection made in it would otherwise outlive the tap
+                // that was supposed to end it. It also leaves ordinary taps
+                // on descendants (a bubble's own `GestureDetector`, below)
+                // alone — `SelectionArea` only steps in for long-press/drag
+                // text selection, never for a plain tap a widget under it
+                // already claims.
+                : SelectionArea(
+                    contextMenuBuilder: _chatSelectionToolbarBuilder,
+                    child: ScrollablePositionedList.builder(
+                      itemScrollController: _itemScrollController,
+                      itemPositionsListener: _itemPositionsListener,
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      itemCount: chatItems.length + (_isLoading ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= chatItems.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final item = chatItems[index];
+                        if (item.day case final day?) {
+                          // "Today"/a date, not a message — nothing here
+                          // belongs in a copied selection. `disabled` alone
+                          // stops it from being selected, but the list's
+                          // `SelectionArea` still owns long presses across
+                          // its whole area regardless of what ends up
+                          // selectable under the finger, so a long press
+                          // here started a (fruitless) selection attempt —
+                          // no menu, but still the haptic buzz that opening
+                          // one gives. A no-op `onLongPress`, being the
+                          // deeper recognizer, wins that gesture first and
+                          // leaves `SelectionArea` nothing to attempt.
+                          return GestureDetector(
+                            onLongPress: () {},
+                            child: SelectionContainer.disabled(
+                              child: _DateSeparator(day: day),
+                            ),
+                          );
+                        }
+                        final message = item.message!;
+                        return _MessageBubble(
+                          message: message,
+                          isMine: message.authorId == viewerId,
+                          authorName:
+                              room?.memberById(message.authorId)?.name ??
+                              message.authorName ??
+                              l10n.formerMemberLabel,
+                          room: room,
+                          receipts: _receipts,
+                          replyPreview: _resolveReplyPreview(message, room),
+                          isHighlighted: message.id == _highlightedMessageId,
+                          onDelete:
+                              message.authorId == viewerId && !message.isDeleted
+                              ? () => _delete(message)
+                              : null,
+                          onReply: message.isDeleted
+                              ? null
+                              : () => _startReply(message),
+                          onTapReply: message.replyToId == null
+                              ? null
+                              : () => _scrollToMessage(message.replyToId!),
                         );
-                      }
-                      final item = chatItems[index];
-                      if (item.day case final day?) {
-                        return _DateSeparator(day: day);
-                      }
-                      final message = item.message!;
-                      return _MessageBubble(
-                        message: message,
-                        isMine: message.authorId == viewerId,
-                        authorName:
-                            room?.memberById(message.authorId)?.name ??
-                            message.authorName ??
-                            l10n.formerMemberLabel,
-                        room: room,
-                        receipts: _receipts,
-                        replyPreview: _resolveReplyPreview(message, room),
-                        isHighlighted: message.id == _highlightedMessageId,
-                        onDelete:
-                            message.authorId == viewerId && !message.isDeleted
-                            ? () => _delete(message)
-                            : null,
-                        onReply: message.isDeleted
-                            ? null
-                            : () => _startReply(message),
-                        onTapReply: message.replyToId == null
-                            ? null
-                            : () => _scrollToMessage(message.replyToId!),
-                      );
-                    },
+                      },
+                    ),
                   ),
           ),
           if (_errorMessage != null && _messages.isNotEmpty)
@@ -1250,6 +1283,230 @@ class _ReplyQuote extends StatelessWidget {
   }
 }
 
+/// URLs recognized inside message text: an explicit `http://`/`https://`, or
+/// a bare `www.` — the same prefixes a phone keyboard's own autolinking
+/// already knows, so a pasted address reads as a link exactly where the
+/// sender expects it to.
+final RegExp _messageUrlPattern = RegExp(
+  r'(?:https?://|www\.)\S+',
+  caseSensitive: false,
+);
+
+/// Trailing characters trimmed off a matched URL. `\S+` is deliberately
+/// greedy — an address can legitimately end mid-path with no trailing slash
+/// — so it has no way to tell sentence punctuation from the address itself:
+/// the period closing the sentence, the comma before "и", the bracket around
+/// "(see example.com)".
+const Set<String> _messageUrlTrailingPunctuation = {
+  '.',
+  ',',
+  '!',
+  '?',
+  ':',
+  ';',
+  ')',
+  ']',
+  '}',
+  '"',
+  "'",
+};
+
+/// [text] split into alternating plain and link runs, in order — the shape
+/// [_LinkifiedMessageText] renders as spans. A message with no URL comes back
+/// as its own single, non-link run.
+List<(String, bool)> _linkifyMessageText(String text) {
+  final matches = _messageUrlPattern.allMatches(text);
+  if (matches.isEmpty) return [(text, false)];
+
+  final segments = <(String, bool)>[];
+  var cursor = 0;
+  for (final match in matches) {
+    var end = match.end;
+    while (end > match.start &&
+        _messageUrlTrailingPunctuation.contains(text[end - 1])) {
+      end--;
+    }
+    if (match.start > cursor) {
+      segments.add((text.substring(cursor, match.start), false));
+    }
+    segments.add((text.substring(match.start, end), true));
+    cursor = end;
+  }
+  if (cursor < text.length) {
+    segments.add((text.substring(cursor), false));
+  }
+  return segments;
+}
+
+/// Marks the end of one message's text within the selectable list, invisible
+/// on screen (a zero-width character, and not a line break — see
+/// [_LinkifiedMessageText] on why not) but present in copied text. A real
+/// `\n` there instead would be the honest way to write this, but this
+/// Flutter build does two things that rule it out: a hard line break costs a
+/// full extra line of height regardless of that run's own font size (an
+/// empty line still renders at the paragraph's normal line height, not
+/// whatever tiny size its own style asks for), and a `\n` sitting at the
+/// very end of a selectable's text is silently trimmed from what actually
+/// gets copied, so it would not even have shown up in the pasted result.
+/// [_chatSelectionToolbarBuilder] turns this marker into the real `\n` the
+/// clipboard should have carried all along, once the text has already left
+/// the paragraph that couldn't afford it.
+const String _messageSeparator = '​';
+
+/// Rewrites [_messageSeparator] markers already on the clipboard into real
+/// line breaks. Called right after the selection toolbar's own "Copy" —
+/// see [_chatSelectionToolbarBuilder] — has written the selected text (each
+/// message's markers included, since they're ordinary, if invisible,
+/// characters) verbatim.
+///
+/// Reads back what was just written rather than composing the text itself:
+/// nothing public exposes the selected content directly (`SelectableRegion`
+/// keeps `getSelectedContent()` to itself), and the default "Copy" already
+/// computed it correctly — including matching the exact substring the user
+/// dragged over. Safe to call unconditionally after any copy, message
+/// selections included, since it is a no-op without a marker to replace.
+Future<void> _rewriteClipboardMessageSeparators() async {
+  final data = await Clipboard.getData(Clipboard.kTextPlain);
+  final text = data?.text;
+  if (text == null || !text.contains(_messageSeparator)) return;
+  await Clipboard.setData(
+    ClipboardData(text: text.replaceAll(_messageSeparator, '\n')),
+  );
+}
+
+/// The message list's selection toolbar — the platform default (`Copy`,
+/// `Select all`, ...), except "Copy" also runs
+/// [_rewriteClipboardMessageSeparators] afterward.
+Widget _chatSelectionToolbarBuilder(
+  BuildContext context,
+  SelectableRegionState state,
+) {
+  final items = [
+    for (final item in state.contextMenuButtonItems)
+      if (item.type == ContextMenuButtonType.copy && item.onPressed != null)
+        item.copyWith(
+          onPressed: () {
+            item.onPressed!();
+            unawaited(_rewriteClipboardMessageSeparators());
+          },
+        )
+      else
+        item,
+  ];
+  return AdaptiveTextSelectionToolbar.buttonItems(
+    anchors: state.contextMenuAnchors,
+    buttonItems: items,
+  );
+}
+
+/// A message's text, with any URL inside it underlined and tappable.
+///
+/// Deliberately a plain `Text.rich`, not a `SelectableText`: selection comes
+/// from the `SelectionArea` the message list is wrapped in (see there), one
+/// shared selection instead of one per bubble — a `SelectableText` has no
+/// way to know a tap ever landed outside its own render box, so a selection
+/// started in one bubble would never clear just because the next tap was on
+/// a different bubble, or on nothing at all.
+///
+/// A [TapGestureRecognizer] per link is the only way [TextSpan] exposes a tap
+/// target, and [TextSpan]'s own docs say whoever creates one must dispose it
+/// — the reason this is a [StatefulWidget] rather than the plain function the
+/// rest of this file would otherwise use for something this small.
+class _LinkifiedMessageText extends StatefulWidget {
+  const _LinkifiedMessageText({
+    required this.text,
+    required this.style,
+    required this.linkColor,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final Color linkColor;
+
+  @override
+  State<_LinkifiedMessageText> createState() => _LinkifiedMessageTextState();
+}
+
+class _LinkifiedMessageTextState extends State<_LinkifiedMessageText> {
+  /// Rebuilt fresh in every [build] — see there — and disposed on the way
+  /// out, whichever of the two ends this `State`'s life: a text change, or
+  /// this widget leaving the tree.
+  final List<TapGestureRecognizer> _recognizers = [];
+
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    super.dispose();
+  }
+
+  void _disposeRecognizers() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
+
+  /// A bare `www.` link has no scheme of its own — `Uri` needs one to treat
+  /// it as absolute rather than a relative path, and `url_launcher` needs an
+  /// absolute one to have anywhere to send it.
+  Future<void> _openLink(String url) async {
+    final normalized = url.startsWith(RegExp('https?://', caseSensitive: false))
+        ? url
+        : 'https://$url';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Nothing on the device can open it, or the platform call itself
+      // failed. There's no in-app fallback for "no browser" — the tap
+      // already told the user this was meant to be a link, and failing
+      // silently beats crashing a chat bubble over it.
+    }
+  }
+
+  /// Old recognizers are disposed and new ones built on every call, rather
+  /// than only when [didUpdateWidget] sees [text] change — simpler, and safe
+  /// regardless of whether this `State` outlives the message it belongs to
+  /// (see the list's own note on that, at [_MessageMedia]).
+  List<InlineSpan> _buildSpans() {
+    _disposeRecognizers();
+    final spans = <InlineSpan>[];
+    for (final (segment, isLink) in _linkifyMessageText(widget.text)) {
+      if (!isLink) {
+        spans.add(TextSpan(text: segment, style: widget.style));
+        continue;
+      }
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => _openLink(segment);
+      _recognizers.add(recognizer);
+      spans.add(
+        TextSpan(
+          text: segment,
+          style: widget.style?.copyWith(
+            color: widget.linkColor,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: recognizer,
+        ),
+      );
+    }
+    // Selecting across bubbles concatenates each one's plain text with
+    // nothing of its own in between — a margin or a bubble's rounded corners
+    // aren't characters a copy can carry, so without this a multi-message
+    // selection pastes as one unbroken run of text. See
+    // [_messageSeparator] for why this is a marker turned into a real line
+    // break after copying, rather than a `\n` here directly.
+    spans.add(const TextSpan(text: _messageSeparator));
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(TextSpan(children: _buildSpans()));
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
@@ -1415,8 +1672,14 @@ class _MessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      // A tap opens the actions sheet — not a long press, which the
+      // `SelectionArea` the message list is wrapped in (see there) already
+      // owns for word selection. The two don't compete: one is a quick
+      // pointer-up, the other only wins after it's been held past the
+      // long-press deadline, so a single gesture unambiguously resolves to
+      // one or the other, on live message text included.
       child: GestureDetector(
-        onLongPress: hasActions ? () => _showActions(context, l10n) : null,
+        onTap: hasActions ? () => _showActions(context, l10n) : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           margin: const EdgeInsets.symmetric(vertical: 4),
@@ -1438,17 +1701,26 @@ class _MessageBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Everything here but the message body itself opts out of the
+              // list's `SelectionArea` — a name, a timestamp, or a
+              // tombstone's placeholder isn't the message, and selecting the
+              // whole bubble's worth of text on a drag that only meant to
+              // grab a couple of words would be its own kind of bug.
               // Own messages don't repeat one's own name: the side of the
               // screen already says who wrote them.
               if (!isMine)
-                Text(
-                  authorName,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.primary,
+                SelectionContainer.disabled(
+                  child: Text(
+                    authorName,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: scheme.primary,
+                    ),
                   ),
                 ),
               if (message.replyToId != null)
-                _ReplyQuote(preview: replyPreview, onTap: onTapReply),
+                SelectionContainer.disabled(
+                  child: _ReplyQuote(preview: replyPreview, onTap: onTapReply),
+                ),
               if (message.media.isNotEmpty)
                 _MessageMedia(
                   // Per message, so a test can point at one bubble's
@@ -1457,31 +1729,42 @@ class _MessageBubble extends StatelessWidget {
                   media: message.media,
                 ),
               // A message can be attachments alone — an empty line under them
-              // would only add height.
-              if (message.isDeleted || message.text.isNotEmpty)
-                Text(
-                  message.isDeleted ? l10n.deletedMessageLabel : message.text,
-                  style: message.isDeleted
-                      ? theme.textTheme.bodyMedium?.copyWith(
-                          fontStyle: FontStyle.italic,
-                          color: scheme.onSurfaceVariant,
-                        )
-                      : theme.textTheme.bodyMedium,
-                ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    DateFormat.Hm().format(message.createdAt),
-                    style: theme.textTheme.labelSmall?.copyWith(
+              // would only add height. A tombstone has nothing worth
+              // selecting or linking, so it stays a plain, non-selectable
+              // `Text` — same as before, and the reason the sheet still opens
+              // straight off a deleted message.
+              if (message.isDeleted)
+                SelectionContainer.disabled(
+                  child: Text(
+                    l10n.deletedMessageLabel,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontStyle: FontStyle.italic,
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
-                  if (_buildStatus(context) case final status?) ...[
-                    const SizedBox(width: 4),
-                    status,
+                )
+              else if (message.text.isNotEmpty)
+                _LinkifiedMessageText(
+                  text: message.text,
+                  style: theme.textTheme.bodyMedium,
+                  linkColor: scheme.primary,
+                ),
+              SelectionContainer.disabled(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      DateFormat.Hm().format(message.createdAt),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (_buildStatus(context) case final status?) ...[
+                      const SizedBox(width: 4),
+                      status,
+                    ],
                   ],
-                ],
+                ),
               ),
             ],
           ),
