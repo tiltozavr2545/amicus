@@ -105,7 +105,7 @@ class _FakeFeedRepository implements FeedRepository {
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// A post's slides, only the first of which arrives already signed — exactly
@@ -150,7 +150,7 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// [container], when given, lets a test poke providers from the outside —

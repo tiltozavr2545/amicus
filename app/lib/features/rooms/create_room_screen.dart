@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -61,8 +63,18 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       // Straight into the new room's chat: the room was created to be used,
       // and coming back to a list to find it again is a wasted tap. Replacing
       // this route rather than stacking on it keeps Back going to the list.
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: roomId)),
+      //
+      // `unawaited`, и `await` здесь был бы ошибкой: Future от
+      // `pushReplacement()` завершается только когда уйдут уже с ЧАТА, а
+      // `finally` ниже снимает `_isSubmitting` — то есть экран, которого к
+      // тому моменту нет, и `mounted` там уже false. Ждать нечего: этот
+      // маршрут заменяется, и продолжения у функции нет.
+      unawaited(
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => RoomChatScreen(roomId: roomId),
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;

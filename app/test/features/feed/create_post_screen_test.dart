@@ -74,7 +74,7 @@ class _FakeFeedRepository implements FeedRepository {
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Widget _wrap(_FakeFeedRepository repo, {Post? existingPost}) {

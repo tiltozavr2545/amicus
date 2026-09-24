@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,12 +46,18 @@ class ThemeToggleSwitch extends ConsumerWidget {
       return;
     }
     if (!context.mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FriendProfileScreen(
-          friendId: profile.id,
-          friendName: profile.name,
-          avatarPath: profile.avatarPath,
+    // `unawaited`, а не `await`: Future от `push()` завершается, когда с
+    // открытого экрана УЙДУТ, а не когда его откроют. Здесь после перехода
+    // делать нечего, так что ждать этого нечем и незачем — а слово говорит,
+    // что Future брошен намеренно.
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => FriendProfileScreen(
+            friendId: profile.id,
+            friendName: profile.name,
+            avatarPath: profile.avatarPath,
+          ),
         ),
       ),
     );

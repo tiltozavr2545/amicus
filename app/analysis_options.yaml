@@ -9,6 +9,49 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Два режима, которые по умолчанию выключены и каждый из которых закрывает
+  # класс ошибок, уже встречавшийся в этом проекте на границе «строка из
+  # PostgREST → модель»:
+  #
+  #   strict-casts     — запрещает неявное `dynamic` -> T. Каждая строка от
+  #                      PostgREST приходит как `Map<String, dynamic>`, и без
+  #                      этого режима `row['position']` молча сходит за `int`,
+  #                      а падает уже в рантайме на первом `num`, который
+  #                      приехал как `double`. Отсюда весь явный
+  #                      `(row['position'] as num).toInt()` в feed_repository —
+  #                      режим делает это правило обязательным, а не привычкой.
+  #   strict-raw-types — запрещает `List`/`Map` без параметров типа, то есть
+  #                      ещё один способ вернуть `dynamic` в код, который от
+  #                      него избавились.
+  #
+  # Оба включены бесплатно: на момент включения ни одного нарушения в проекте
+  # не было, то есть это не разбор долга, а запрет на его появление.
+  #
+  # `strict-inference` НЕ включён, и это решение, а не недосмотр. Он даёт 20
+  # предупреждений, и все они — про отсутствующий параметр типа у чужого API:
+  # `MaterialPageRoute` (пустой `<T>` у маршрута, с которого ничего не
+  # возвращают) и `SupabaseClient.rpc` (13 мест). Первое — чистая церемония.
+  # Второе хуже: чтобы проставить `rpc<T>`, надо выбрать T по фактическому
+  # ответу сервера, и ошибка в выборе превращается в падение приведения там,
+  # где сегодня его нет вовсе — граница и так разбирается явными `as` на месте
+  # использования. Режим, который заставляет добавить риск, чтобы стало
+  # строже, свою цену не оправдывает.
+  language:
+    strict-casts: true
+    strict-raw-types: true
+
+  errors:
+    # Забытый `await` в этом коде — не стилистика. Он уже стоил бага: на
+    # неожиданной ошибке незавершённый Future уходит в
+    # `FlutterError.onError` необработанным, и именно так «тихо не работала»
+    # запись пуш-токена (см. `registerDevice`). Из подсказки в предупреждение.
+    unawaited_futures: error
+    # `context` после `await` без проверки `mounted` — тринадцатый аудит
+    # закрывал ровно это на трёх экранах. Пусть в следующий раз падает CI, а
+    # не экран.
+    use_build_context_synchronously: error
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
@@ -21,8 +64,26 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    # Ниже — только то, что ловит ошибки, а не расставляет запятые:
+    # форматирование целиком отдано `dart format`, и правила про стиль тут
+    # просто дублировали бы его.
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_slow_async_io
+    - cancel_subscriptions
+    - close_sinks
+    # `discarded_futures` намеренно НЕ включён. Он ругается на любой вызов,
+    # возвращающий Future, из не-async функции — то есть на `onPressed: () =>
+    # _send()`, самую обычную форму обработчика во Flutter (25 мест). Опасный
+    # случай — брошенный Future в async-функции, чьё исключение уходит в
+    # `FlutterError.onError`, — ловит `unawaited_futures` выше, и он ловит его
+    # без этих двадцати пяти.
+    - only_throw_errors
+    - test_types_in_equals
+    - throw_in_finally
+    - unawaited_futures
+    - unnecessary_statements
+    - use_build_context_synchronously
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

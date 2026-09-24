@@ -176,7 +176,7 @@ class _FakeRoomsRepository implements RoomsRepository {
   }) => () {};
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 RoomMessage _message({
