@@ -198,9 +198,7 @@ class _FriendListItem extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.block),
-            color: friend.isBlocked
-                ? Theme.of(context).colorScheme.error
-                : null,
+            color: friend.isBlocked ? const Color(0xFFD32F2F) : null,
             tooltip: friend.isBlocked
                 ? l10n.unblockButton
                 : l10n.blockFriendTooltip,
