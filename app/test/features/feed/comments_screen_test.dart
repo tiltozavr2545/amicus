@@ -101,7 +101,7 @@ class _FakeFeedRepository implements FeedRepository {
   }) async {}
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Comment _comment(

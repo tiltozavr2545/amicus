@@ -12,7 +12,7 @@ import 'package:amicus/l10n/app_localizations.dart';
 
 class _FakeRoomsRepository implements RoomsRepository {
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Room _room({

@@ -237,7 +237,10 @@ final pushRegistrationProvider = FutureProvider<void>((ref) async {
       .read(pushNotificationsRepositoryProvider)
       .registerDevice(userId: userId, locale: locale, version: version, os: os);
   if (!ref.mounted) {
-    subscription?.cancel();
+    // Дождаться отмены, а не бросить её: провайдер уже снят, и это последнее
+    // место, где о брошенном Future кто-либо узнает — исключение из него
+    // ушло бы в `FlutterError.onError` без обработчика.
+    await subscription?.cancel();
     return;
   }
   ref.onDispose(() => subscription?.cancel());

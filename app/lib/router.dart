@@ -17,10 +17,11 @@ import 'features/shell/main_shell_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authChanges = ref.watch(supabaseClientProvider).auth.onAuthStateChange;
+  final refresh = _GoRouterRefreshStream(authChanges);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
-    refreshListenable: _GoRouterRefreshStream(authChanges),
+    refreshListenable: refresh,
     redirect: (context, state) {
       // Read the session straight off the SDK client rather than through
       // currentUserIdProvider: that provider only recomputes once Riverpod's
@@ -92,6 +93,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+
+  // Оба владельца ресурсов, и оба раньше не освобождались: подписка на
+  // `onAuthStateChange` внутри `refresh` и собственные слушатели `GoRouter`.
+  // Провайдер не autoDispose и в норме живёт весь процесс, поэтому в
+  // приложении это не росло — но `ProviderScope` пересоздаётся в каждом
+  // виджет-тесте, и брошенная подписка на поток Supabase переживает тест, в
+  // котором её завели.
+  //
+  // Порядок внутри важен: роутер подписан на `refresh`, поэтому сначала
+  // отпускает слушателя он, и только потом уходит сам слушаемый.
+  ref.onDispose(() {
+    router.dispose();
+    refresh.dispose();
+  });
+
+  return router;
 });
 
 /// Where `redirect` should send the user, or `null` to stay put. A pure

@@ -20,7 +20,7 @@ class _FakeRoomsRepository implements RoomsRepository {
   }) async => mutedSent.add(muted);
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Room _room({
@@ -53,7 +53,7 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Widget _wrap(

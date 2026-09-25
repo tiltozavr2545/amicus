@@ -30,7 +30,7 @@ class _FakeProfileRepository implements ProfileRepository {
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 List<ProfilePhoto> _photos(int n) => [

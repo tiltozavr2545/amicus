@@ -22,15 +22,21 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # Пришпилено по SHA, как и во всех остальных workflow этого репозитория,
+      # и здесь это было нужнее всего: у джоба `contents: write`, то есть
+      # переставленный тег `v4` получил бы право на запись в репозиторий. Это
+      # ровно та причина, которой deploy-closed-testing.yml объясняет свои
+      # пины, — а единственный workflow, который её пропустил, оказался
+      # пишущим.
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
           sparse-checkout: docs/gh-pages
           sparse-checkout-cone-mode: false
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: gh-pages
           path: gh-pages

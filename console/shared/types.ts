@@ -172,9 +172,17 @@ export type ReportsResponse = {
 
 export type NewsMedia = {
   mediaType: string;
+  /**
+   * Путь объекта в бакете — у всего, что уже опубликовано. У ещё не
+   * опубликованного это `staged:<имя>`: файл лежит на диске консоли и уедет в
+   * бакет при публикации (см. STAGING в `server/news.ts`).
+   */
   storagePath: string;
   posterPath: string | null;
-  /** Подписанные ссылки живут час; у черновика их нет, пока он не открыт. */
+  /**
+   * Чем это показать. Для объекта в бакете — подписанная ссылка, живёт час;
+   * для staged-файла — `/api/news/media/<имя>`, и она не протухает.
+   */
   url?: string | null;
   posterUrl?: string | null;
 };

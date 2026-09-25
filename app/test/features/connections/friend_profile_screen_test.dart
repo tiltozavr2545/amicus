@@ -20,7 +20,7 @@ class _FakeProfileRepository implements ProfileRepository {
   }
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// The screen embeds PostListView for the friend's posts; an empty page keeps
@@ -34,7 +34,7 @@ class _FakeFeedRepository implements FeedRepository {
   }) async => const [];
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Widget _wrap(_FakeProfileRepository repo) => ProviderScope(

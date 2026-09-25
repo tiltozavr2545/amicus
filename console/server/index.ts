@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { env } from './env.ts';
+import { localOnly } from './local_only.ts';
 import { broadcastRouter } from './routes/broadcast.ts';
 import { moderationRouter } from './routes/moderation.ts';
 import { newsRouter } from './routes/news.ts';
@@ -8,6 +9,10 @@ import { overviewRouter } from './routes/overview.ts';
 import { usersRouter } from './routes/users.ts';
 
 const app = express();
+// Перед разбором тела: проверка смотрит только на заголовки, и незачем
+// парсить мегабайт JSON из запроса, который сейчас отклонят. Про то, что
+// петлевой биндинг ниже сам по себе этого не закрывает, — в local_only.ts.
+app.use(localOnly);
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', overviewRouter);

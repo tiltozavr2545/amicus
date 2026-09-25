@@ -1,16 +1,28 @@
 import { randomUUID } from 'node:crypto';
 import { Router, raw } from 'express';
-import type { NewsMedia, NewsPost, NewsResponse } from '../../shared/types.ts';
+import type {
+  NewsDraft,
+  NewsMedia,
+  NewsPost,
+  NewsResponse,
+} from '../../shared/types.ts';
 import { systemAccountIds } from '../aggregate.ts';
 import { fetchOnce } from '../db.ts';
 import type { Draft } from '../news.ts';
 import {
   ALLOWED_MIME,
-  extensionFor,
+  extensionForMime,
+  isStaged,
   MAX_FILE_BYTES,
   MAX_MEDIA_PER_POST,
+  mimeForExtension,
+  pruneStaging,
   readDrafts,
+  readStaged,
+  stagedName,
+  stagedRef,
   writeDrafts,
+  writeStaged,
 } from '../news.ts';
 import { admin } from '../supabase.ts';
 
@@ -35,12 +47,45 @@ type IncomingMedia = {
   posterPath?: unknown;
 };
 
+/// Заливает staged-файл в бакет и отдаёт его настоящий путь.
+///
+/// Имя объекта — само имя staged-файла, то есть стабильное: опубликовать один
+/// и тот же черновик дважды значит второй раз прийти по тому же пути с теми же
+/// байтами, и 409 здесь — это «уже там», а не отказ. Тот же вывод и то же
+/// послабление, что у `uploadTolerant` в приложении.
+async function materialise(name: string, author: string): Promise<string> {
+  const path = `posts/${author}/${name}`;
+  const contentType = mimeForExtension(name);
+  if (contentType === null) {
+    throw new Error(`Файл ${name} — неизвестный тип, бакет его не примет`);
+  }
+  const { error } = await admin.storage
+    .from('media')
+    .upload(path, await readStaged(name), { contentType, upsert: false });
+  if (error === null) return path;
+  // `upsert: false` и повторная публикация того же черновика — штатная пара,
+  // а не сбой. Код смотрим и в `statusCode`, и в тексте: у StorageError форма
+  // ответа зависит от версии storage-api, а обозначает оба одно и то же.
+  const status = (error as { statusCode?: string }).statusCode;
+  if (status === '409' || /already exists/i.test(error.message)) return path;
+  throw new Error(`storage: ${error.message}`);
+}
+
 // Повторяет проверки `create_post_with_media()`, потому что сама она здесь
 // неприменима: она берёт автора из `auth.uid()`, а консоль ходит под
 // service_role без JWT — auth.uid() там null, и функция сразу отказывает.
 // Значит вставка идёт напрямую, и всё, что RPC проверяла, надо проверить
 // тут же: иначе в базу попадёт то, чего клиент туда положить не мог.
-async function normalise(
+//
+// Здесь же staged-файлы превращаются в объекты бакета — публикация и есть тот
+// момент, когда байтам там место (см. STAGING в news.ts). До него путь в
+// присланном элементе указывает на диск консоли, после — в бакет, и дальше по
+// коду разницы уже нет.
+//
+// Путь для нового объекта минтит сервер, а не клиент: единственное, что
+// приходит снаружи, — имя staged-файла, и оно проверено шаблоном. Прежняя
+// редакция принимала `storage_path` строкой и проверяла у неё только префикс.
+async function prepareMedia(
   text: unknown,
   media: unknown,
 ): Promise<{ text: string | null; media: Required<NewsMedia>[] }> {
@@ -56,23 +101,77 @@ async function normalise(
     throw new Error('Посту нужен текст или медиа');
   }
 
-  const prefix = `posts/${await systemId()}/`;
-  const normalised = items.map((item, index) => {
+  const author = await systemId();
+  const prefix = `posts/${author}/`;
+
+  /// Один путь: staged-файл заливается, путь в бакет проверяется.
+  const resolvePath = async (raw: string, what: string): Promise<string> => {
+    if (isStaged(raw)) {
+      const name = stagedName(raw);
+      if (name === null) throw new Error(`${what}: испорченная ссылка`);
+      return materialise(name, author);
+    }
+    if (!raw.startsWith(prefix)) {
+      throw new Error(`${what} лежит вне префикса ${prefix}`);
+    }
+    return raw;
+  };
+
+  const normalised: Required<NewsMedia>[] = [];
+  for (const [index, item] of items.entries()) {
     const mediaType = item.mediaType === 'video' ? 'video' : 'image';
-    const storagePath = String(item.storagePath ?? '');
-    const posterPath = item.posterPath ? String(item.posterPath) : null;
-    if (!storagePath.startsWith(prefix)) {
-      throw new Error(`Файл ${index + 1} лежит вне префикса ${prefix}`);
-    }
-    if (posterPath !== null && !posterPath.startsWith(prefix)) {
-      throw new Error(`Постер файла ${index + 1} лежит вне префикса ${prefix}`);
-    }
-    return { mediaType, storagePath, posterPath, url: null, posterUrl: null };
-  });
+    const storagePath = await resolvePath(
+      String(item.storagePath ?? ''),
+      `Файл ${index + 1}`,
+    );
+    const posterPath = item.posterPath
+      ? await resolvePath(String(item.posterPath), `Постер файла ${index + 1}`)
+      : null;
+    normalised.push({
+      mediaType,
+      storagePath,
+      posterPath,
+      url: null,
+      posterUrl: null,
+    });
+  }
 
   // Пустая строка от клиента — это отсутствие текста, а не текст: тот же
   // nullif(btrim(...)), что стоит в posts_text_not_blank.
   return { text: trimmed === '' ? null : trimmed, media: normalised };
+}
+
+/// Чем показать медиа черновика.
+///
+/// Staged-файл отдаёт сама консоль, и такая ссылка не протухает — в отличие от
+/// подписанной, которая живёт час, так что миниатюры сохранённого черновика
+/// были битыми уже к обеду. Настоящий путь (черновик, сохранённый до перехода
+/// на стейджинг) всё ещё подписывается, чтобы такие черновики не ослепли
+/// разом; если объекта уже нет — `null`, и плитка просто пустая.
+async function draftMediaUrls(drafts: Draft[]): Promise<NewsDraft[]> {
+  const legacy = new Set<string>();
+  for (const draft of drafts) {
+    for (const item of draft.media) {
+      for (const path of [item.storagePath, item.posterPath]) {
+        if (path && !isStaged(path)) legacy.add(path);
+      }
+    }
+  }
+  const urls = await signed([...legacy]);
+  const urlFor = (path: string | null): string | null => {
+    if (!path) return null;
+    const name = stagedName(path);
+    if (name !== null) return `/api/news/media/${name}`;
+    return urls.get(path) ?? null;
+  };
+  return drafts.map((draft) => ({
+    ...draft,
+    media: draft.media.map((item) => ({
+      ...item,
+      url: urlFor(item.storagePath),
+      posterUrl: urlFor(item.posterPath),
+    })),
+  }));
 }
 
 async function signed(paths: string[]): Promise<Map<string, string>> {
@@ -166,6 +265,22 @@ newsRouter.get('/news', async (_req, res, next) => {
     const commentCount = tally(comments);
     const reactionCount = tally(reactions);
 
+    // Уборка стейджинга висит здесь, а не на своём расписании: раздел новостей
+    // — единственное место, откуда туда что-то попадает, и открыть его до
+    // того, как файл станет лишним, невозможно. То, на что ссылается хоть один
+    // черновик, не трогается вовсе; остальное сносится по возрасту.
+    const drafts = await readDrafts();
+    const referenced = new Set<string>();
+    for (const draft of drafts) {
+      for (const item of draft.media) {
+        for (const path of [item.storagePath, item.posterPath]) {
+          const name = path === null ? null : stagedName(path);
+          if (name !== null) referenced.add(name);
+        }
+      }
+    }
+    await pruneStaging(referenced);
+
     const body: NewsResponse = {
       generatedAt: new Date().toISOString(),
       authorId: author,
@@ -186,7 +301,7 @@ newsRouter.get('/news', async (_req, res, next) => {
             posterUrl: m.poster_path ? (urls.get(m.poster_path) ?? null) : null,
           })),
       })),
-      drafts: await readDrafts(),
+      drafts: await draftMediaUrls(drafts),
     };
     res.json(body);
   } catch (error) {
@@ -195,15 +310,24 @@ newsRouter.get('/news', async (_req, res, next) => {
 });
 
 // Файл приходит сырым телом, а не multipart: разбирать multipart значит
-// тащить зависимость ради одного поля. Имя и тип едут в query — их и надо-то
-// знать, чтобы выбрать расширение и проверить, примет ли бакет.
+// тащить зависимость ради одного поля. Тип едет в query — его и надо-то знать,
+// чтобы проверить, примет ли бакет, и выбрать расширение.
+//
+// Файл ложится на диск консоли, а НЕ в бакет: в бакет он уедет из
+// `prepareMedia()`, когда из него будут делать пост. Почему так — см. STAGING
+// в news.ts; коротко: у объекта без строки в `post_media` нет ничего, что
+// удержало бы его от `reap-orphaned-media`, поэтому сохранённый черновик
+// терял свои картинки ровно через сутки.
+//
+// `name` больше не читается. Расширение берётся из типа по таблице, то есть
+// путь целиком минтит сервер: имя файла из браузера в него не попадает ни
+// одним символом — а оно попадало, и вместе с ним `..` в имя на диске.
 newsRouter.post(
   '/news/media',
   raw({ type: '*/*', limit: MAX_FILE_BYTES + 1024 * 1024 }),
   async (req, res, next) => {
     try {
       const mime = String(req.query.type ?? '');
-      const name = String(req.query.name ?? 'file');
       const body = req.body as Buffer;
 
       if (!ALLOWED_MIME.has(mime)) {
@@ -223,18 +347,11 @@ newsRouter.post(
         return;
       }
 
-      // Тот же префикс, что требует `create_post_with_media()` и storage-политика.
-      const path = `posts/${await systemId()}/${randomUUID()}.${extensionFor(mime, name)}`;
-      const { error } = await admin.storage.from('media').upload(path, body, {
-        contentType: mime,
-        upsert: false,
-      });
-      if (error) throw new Error(`storage: ${error.message}`);
-
-      const url = (await signed([path])).get(path) ?? null;
+      const name = `${randomUUID()}.${extensionForMime(mime)}`;
+      await writeStaged(name, body);
       res.json({
-        path,
-        url,
+        path: stagedRef(name),
+        url: `/api/news/media/${name}`,
         mediaType: mime.startsWith('video/') ? 'video' : 'image',
       });
     } catch (error) {
@@ -243,9 +360,37 @@ newsRouter.post(
   },
 );
 
+// Превью staged-файла. Ссылка не подписанная и не протухает — в отличие от
+// той, что раньше сохранялась внутрь черновика и переставала работать через
+// час.
+//
+// `stagedName()` — единственное, что стоит между параметром маршрута и
+// `resolve()` по файловой системе, поэтому отказ здесь 404, а не попытка
+// что-нибудь прочитать.
+newsRouter.get('/news/media/:name', async (req, res, next) => {
+  try {
+    const name = stagedName(stagedRef(req.params.name));
+    const contentType = name === null ? null : mimeForExtension(name);
+    if (name === null || contentType === null) {
+      res.status(404).json({ error: 'Нет такого файла' });
+      return;
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await readStaged(name);
+    } catch {
+      res.status(404).json({ error: 'Нет такого файла' });
+      return;
+    }
+    res.type(contentType).send(bytes);
+  } catch (error) {
+    next(error);
+  }
+});
+
 newsRouter.post('/news', async (req, res, next) => {
   try {
-    const { text, media } = await normalise(req.body?.text, req.body?.media);
+    const { text, media } = await prepareMedia(req.body?.text, req.body?.media);
     const author = await systemId();
 
     const inserted = await admin
@@ -282,9 +427,13 @@ newsRouter.patch('/news/:id', async (req, res, next) => {
       });
       return;
     }
-    const { text, media } = await normalise(req.body?.text, req.body?.media);
+    // Проверка владельца — ДО `prepareMedia`, а не после. Раньше порядок был
+    // обратный и ничего не стоил, потому что `normalise` только смотрела на
+    // строки. Теперь она заливает staged-файлы в бакет, и правка поста,
+    // которого нет, успевала бы оставить там объекты, на которые уже некому
+    // сослаться, — то есть ровно тех сирот, от которых этот раздел только что
+    // ушёл.
     const author = await systemId();
-
     const existing = await fetchOnce<{ id: string }>('posts', 'id', (q) =>
       q.eq('id', req.params.id).eq('author_id', author),
     );
@@ -294,6 +443,8 @@ newsRouter.patch('/news/:id', async (req, res, next) => {
       });
       return;
     }
+
+    const { text, media } = await prepareMedia(req.body?.text, req.body?.media);
 
     const { error } = await admin
       .from('posts')

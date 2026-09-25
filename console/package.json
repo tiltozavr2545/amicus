@@ -10,6 +10,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "node --import tsx --test server/*.test.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --write ."
   },

@@ -5,6 +5,11 @@ import type {
   ReportRow,
   ReportsResponse,
 } from '../../shared/types.ts';
+import {
+  authBanDuration,
+  parseBanDays,
+  writeBanUntil,
+} from '../ban_duration.ts';
 import { fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
 import { admin } from '../supabase.ts';
 
@@ -335,11 +340,17 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
       return;
     }
 
+    // Разбор и границы — в `ban_duration.ts`, вместе с тем, почему они там
+    // вообще есть.
+    const parsed = parseBanDays(days);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+
     if (mode === 'write' || mode === 'none') {
       const until =
-        mode === 'none'
-          ? null
-          : new Date(Date.now() + Number(days ?? 7) * 864e5).toISOString();
+        mode === 'none' ? null : writeBanUntil(parsed.days, Date.now());
       const { error } = await admin
         .from('users')
         .update({ write_banned_until: until })
@@ -360,9 +371,8 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
       // Бан входа живёт в GoTrue, не в нашей схеме: своей копии этого факта
       // заводить не стоит — разошлась бы с настоящей при первом же снятии
       // через дашборд.
-      const hours = Math.max(1, Math.round(Number(days ?? 3650) * 24));
       const { error } = await admin.auth.admin.updateUserById(userId, {
-        ban_duration: `${hours}h`,
+        ban_duration: authBanDuration(parsed.days),
       });
       if (error) throw new Error(`auth: ${error.message}`);
     } else {

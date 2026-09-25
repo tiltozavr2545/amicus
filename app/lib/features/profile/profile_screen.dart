@@ -85,10 +85,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .updateName(userId: userId, name: name);
       container.invalidate(myProfileProvider);
     } catch (e) {
+      // Запрет писать теперь распространяется и на смену имени
+      // (20260924100000: `update of name` на `users`), то есть отсюда стал
+      // достижим AMB01. Без этой ветки забанённому показывалось «попробуйте
+      // ещё раз» — приглашение повторить то, что до конца срока не выйдет.
+      // Та же причина и та же форма, что у остальных шести мест с
+      // `writeBanUntil` (см. `_addPhotos` ниже про порядок строк и `ignore`).
+      final bannedUntil = writeBanUntil(e);
+      String message(AppLocalizations l10n) => bannedUntil != null
+          ? l10n.writeRestrictedError(bannedUntil)
+          : l10n.failedToSaveNameError;
       // _showError checks context.mounted itself before touching context —
       // the analyzer can't see across that call, only into this function.
       // ignore: use_build_context_synchronously
-      _showError(context, (l10n) => l10n.failedToSaveNameError);
+      _showError(context, message);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

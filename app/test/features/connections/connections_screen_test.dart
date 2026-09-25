@@ -73,7 +73,11 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   }
 
   /// Thrown instead of activating, so a test can drive the error branch.
-  Object? activateError;
+  // `Exception?`, а не `Object?`: сюда кладут только `PostgrestException`
+  // (см. вызовы ниже), а широкий тип разрешал бы `throw` чем угодно — включая
+  // строку, которую `catch (e)` на экране обработает, а человек увидит как
+  // текст ошибки неизвестного происхождения.
+  Exception? activateError;
 
   @override
   Future<ActivatedConnection> activateInviteLink(String code) async {
