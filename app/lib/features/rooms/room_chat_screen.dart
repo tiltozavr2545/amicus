@@ -199,6 +199,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// continuous.
   DateTime? _lastLoadFailure;
 
+  /// The page request currently on its way, or null when none is.
+  ///
+  /// [_isLoading] says the same thing to `build`, but only as a flag — this
+  /// is the handle a second caller can *wait on*. Without it, a caller that
+  /// arrives mid-request has only two moves, and both are wrong: issue a
+  /// duplicate request for the same slice, or give up on a page that was
+  /// about to arrive anyway.
+  Future<void>? _pageInFlight;
+
   @override
   void initState() {
     super.initState();
@@ -488,6 +497,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
             if (!mounted) return;
             setState(() => _receipts[receipt.userId] = receipt);
           },
+          // The channel was down, so somebody's mark may have moved without
+          // this screen being told. Re-reading them is the receipts' half of
+          // what [_catchUp] does for the messages themselves — and
+          // [_loadReceipts] merges rather than assigns, so an event that
+          // arrives while the fetch is in flight is not overwritten by the
+          // older values it was already carrying.
+          onResubscribed: _loadReceipts,
         );
   }
 
@@ -515,8 +531,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   Future<void> _catchUp() async {
     if (_isCatchingUp || _isLoading) return;
     // Nothing loaded to reconcile against: this is the first load's job, and
-    // it may be the one that failed while the app was away.
-    if (_messages.isEmpty) return _loadMore();
+    // it may be the one that failed while the app was away. Awaited rather
+    // than returned: [_loadMore] answers whether it moved anything, and that
+    // answer is for callers that loop on it — there is nothing to decide here.
+    if (_messages.isEmpty) {
+      await _loadMore();
+      return;
+    }
     _isCatchingUp = true;
     try {
       final page = await ref
@@ -554,16 +575,57 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_isLoading || !_hasMore) return;
+  /// Pages in the next slice of older history.
+  ///
+  /// Returns whether waiting on this call moved anything: `true` when a page
+  /// was fetched, or when one was already on its way and this call waited it
+  /// out; `false` when nothing was done and nothing more can be right now —
+  /// the history is exhausted, or the retry backoff after a failure is still
+  /// open.
+  ///
+  /// That answer is not decoration. [_scrollToMessage] pages in a loop until
+  /// the message it wants appears, and while this returned `void` a no-op was
+  /// indistinguishable there from a page that simply didn't contain it: the
+  /// backoff branch below returned on an already-completed future every
+  /// iteration, so offline the loop became a spin on the event loop — 100% of
+  /// a core for as long as the chat stayed open, healing only if the network
+  /// came back. **Anything that loops on this has to stop on `false`.**
+  ///
+  /// The in-flight branch counts as progress rather than as "nothing can be
+  /// done", and that distinction is what keeps the loop both terminating and
+  /// honest. Whatever the awaited page brings, the caller's next turn sees a
+  /// list that grew, a [_hasMore] that is now false, or a [_lastLoadFailure]
+  /// that stops it — so the loop still ends, without giving up a round trip
+  /// early on a page that was already coming.
+  Future<bool> _loadMore() async {
+    final inFlight = _pageInFlight;
+    if (inFlight != null) {
+      await inFlight;
+      return true;
+    }
+    if (!_hasMore) return false;
     // See [_lastLoadFailure]: the scroll trigger fires every frame, so
     // without this a failure turned into a request every [networkTimeout],
     // forever.
     final failedAt = _lastLoadFailure;
     if (failedAt != null &&
         DateTime.now().difference(failedAt) < _loadRetryBackoff) {
-      return;
+      return false;
     }
+    final request = _fetchOlderPage();
+    _pageInFlight = request;
+    try {
+      await request;
+    } finally {
+      _pageInFlight = null;
+    }
+    return true;
+  }
+
+  /// The request half of [_loadMore], with every early return already made.
+  /// Split out so [_loadMore] can hand the future to a concurrent caller
+  /// before this one's first `await`.
+  Future<void> _fetchOlderPage() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -813,11 +875,18 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       (item) => item.message?.id == messageId,
     );
     while (index == -1 && _hasMore) {
-      await _loadMore();
+      // Stopping on `false` is what makes this a loop rather than a spin: see
+      // [_loadMore]. It reports that it did nothing AND can do nothing right
+      // now — the backoff after a failed page is still open — and since that
+      // branch returns on an already-completed future, going round again
+      // would burn a core until the connection came back rather than page
+      // anything in.
+      final moved = await _loadMore();
       if (!mounted) return;
       index = _chatListItems.indexWhere(
         (item) => item.message?.id == messageId,
       );
+      if (!moved) break;
     }
     if (!mounted) return;
     if (index == -1) {
@@ -1861,13 +1930,27 @@ class _MessageMedia extends ConsumerStatefulWidget {
 
 class _MessageMediaState extends ConsumerState<_MessageMedia> {
   late List<RoomMessageMedia> _items;
-  bool _resolving = false;
 
   /// Bumped whenever [_items] is replaced by a different message's
   /// attachments, so a signing round trip started against the previous list
   /// is dropped rather than writing indices that no longer mean the same
   /// slides. Same guard, for the same reason, as the feed carousel's.
   int _generation = 0;
+
+  /// The [_generation] whose signing round trip is in flight, or null when
+  /// none is.
+  ///
+  /// Deliberately not a bare `bool`, and that is the whole point of it.
+  /// [didUpdateWidget] replaces [_items] while a request for the *previous*
+  /// message can still be out, and a flag that only says "busy" then refuses
+  /// the new list's own request at the guard in [_resolve] — so the old
+  /// answer was thrown away by the generation check and the new one was never
+  /// asked for at all. Nothing re-triggers a resolve on a surviving `State`,
+  /// so that bubble's photographs sat on a spinner for good. Keyed by
+  /// generation, "busy" means busy *with this list*, and a new one is always
+  /// allowed through. The feed carousel says the same thing by clearing its
+  /// `_resolving` set on the generation bump (`post_list_view.dart`).
+  int? _resolvingGeneration;
 
   @override
   void initState() {
@@ -1925,12 +2008,12 @@ class _MessageMediaState extends ConsumerState<_MessageMedia> {
   /// here. Returns without a request at all when the cache covered
   /// everything, which is the ordinary case after the first view.
   Future<void> _resolve() async {
-    if (_resolving) return;
+    final generation = _generation;
+    if (_resolvingGeneration == generation) return;
     final indices = [for (var i = 0; i < _items.length; i++) i];
     final paths = pathsToSign(_items, indices);
     if (paths.isEmpty) return;
-    final generation = _generation;
-    _resolving = true;
+    _resolvingGeneration = generation;
     try {
       final signed = await ref
           .read(roomsRepositoryProvider)
@@ -1942,7 +2025,10 @@ class _MessageMediaState extends ConsumerState<_MessageMedia> {
       // spinner; reopening the chat asks again, and there is nothing to say
       // here that the missing photo doesn't already say.
     } finally {
-      _resolving = false;
+      // Only if this generation is still the one holding the slot: a newer
+      // [_resolve] may already have claimed it while this request was out,
+      // and clearing it then would let a third call issue a duplicate.
+      if (_resolvingGeneration == generation) _resolvingGeneration = null;
     }
   }
 

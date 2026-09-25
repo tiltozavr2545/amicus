@@ -941,15 +941,32 @@ class RoomsRepository {
   /// Live updates to [fetchMemberReceipts] — fires whenever any member's read
   /// or delivered mark moves, so a tick can flip while the sender is still
   /// looking at the screen. Same shape as [subscribeToMessages].
+  ///
+  /// [onResubscribed] fires when the channel comes back after having been up
+  /// once already — never on the first join — and it is here for exactly the
+  /// reason it is on [subscribeToMessages]: Postgres Changes is a stream, not
+  /// a log, so a mark that moved while the socket was down is never delivered
+  /// and never replayed. This channel went without one, and the gap it left
+  /// was real rather than theoretical: the chat screen only re-read the marks
+  /// on `AppLifecycleState.resumed`, so a plain connection blip with the app
+  /// still in the foreground left the sender's own messages showing
+  /// "delivered" over a message the other side had already read — until the
+  /// app was backgrounded or the chat reopened.
+  ///
+  /// Fired on re-subscription rather than on resume for the same reason as
+  /// there: the catch-up query then runs *after* the subscription is live, so
+  /// it cannot leave a second hole between the two.
   void Function() subscribeToMemberReceipts({
     required String roomId,
     required void Function(RoomMemberReceipt receipt) onUpdate,
+    required void Function() onResubscribed,
   }) {
     final filter = PostgresChangeFilter(
       type: PostgresChangeFilterType.eq,
       column: 'room_id',
       value: roomId,
     );
+    var everSubscribed = false;
     final channel = _client
         .channel('room_members_receipts:$roomId')
         .onPostgresChanges(
@@ -960,7 +977,14 @@ class RoomsRepository {
           callback: (payload) =>
               onUpdate(RoomMemberReceipt.fromRow(payload.newRecord)),
         )
-        .subscribe();
+        .subscribe((status, error) {
+          if (status != RealtimeSubscribeStatus.subscribed) return;
+          if (!everSubscribed) {
+            everSubscribed = true;
+            return;
+          }
+          onResubscribed();
+        });
     return () => channel.unsubscribe();
   }
 

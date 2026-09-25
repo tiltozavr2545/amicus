@@ -165,15 +165,31 @@ class _FakeRoomsRepository implements RoomsRepository {
     );
   }
 
+  /// How many times the screen has re-read everyone's marks. The marks
+  /// themselves stay empty — what the catch-up test asks is whether the read
+  /// happened at all, not what it found.
+  int receiptFetches = 0;
+
   @override
-  Future<List<RoomMemberReceipt>> fetchMemberReceipts(String roomId) async =>
-      const [];
+  Future<List<RoomMemberReceipt>> fetchMemberReceipts(String roomId) async {
+    receiptFetches++;
+    return const [];
+  }
+
+  /// The receipts channel's own catch-up hook, captured for the same reason
+  /// [onResubscribed] is: a test has to be able to play the part of a channel
+  /// that dropped and came back.
+  void Function()? onReceiptsResubscribed;
 
   @override
   void Function() subscribeToMemberReceipts({
     required String roomId,
     required void Function(RoomMemberReceipt receipt) onUpdate,
-  }) => () {};
+    required void Function() onResubscribed,
+  }) {
+    onReceiptsResubscribed = onResubscribed;
+    return () {};
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -991,6 +1007,63 @@ void main() {
     expect(_messageText('первое новое'), findsOneWidget);
     expect(_messageText('второе новое'), findsOneWidget);
     expect(_messageText('старое'), findsNothing);
+  });
+
+  testWidgets('hunting for a reply target gives up instead of spinning', (
+    tester,
+  ) async {
+    // A full page, so the first load leaves `_hasMore` true — there is more
+    // history, and the screen is right to go looking for it.
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'm0',
+          authorId: 'anya',
+          text: 'ответ на очень старое',
+          replyToId: 'missing-id',
+        ),
+        for (var i = 1; i < 50; i++)
+          _message(id: 'm$i', authorId: 'anya', text: 'сообщение $i'),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    // ...and now the connection is gone, which is the whole point: paging in
+    // the target can no longer succeed, but `_hasMore` stays true, because a
+    // failed request says nothing about whether more history exists.
+    repo.fetchThrows = true;
+    await tester.tap(find.text('Original message unavailable'));
+    await tester.pumpAndSettle();
+
+    // Reaching this line at all is the assertion. The loop behind the tap
+    // asked for older pages until the target turned up, and a `_loadMore`
+    // that had backed off after the failure returned on an already-completed
+    // future — so the loop went round again on the next microtask, forever,
+    // burning a core for as long as the chat stayed open. `pumpAndSettle`
+    // never returns while that is happening.
+    expect(repo.olderPageFetches, lessThan(5));
+  });
+
+  testWidgets('a receipts channel that came back re-reads the marks', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'me', text: 'моё')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    expect(repo.receiptFetches, 1);
+
+    // The marks channel carries read/delivered, and it drops with the socket
+    // like any other. Until this hook existed only `AppLifecycleState.resumed`
+    // re-read them, so a plain connection blip with the app still in the
+    // foreground left the sender's own message showing "delivered" over one
+    // the other side had already read.
+    repo.onReceiptsResubscribed!();
+    await tester.pumpAndSettle();
+
+    expect(repo.receiptFetches, 2);
   });
 
   testWidgets('arriving messages do not refetch the room list; leaving does', (
