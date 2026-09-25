@@ -17,6 +17,7 @@
 | отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
 | сборка и деплой iOS, push через APNs (на английском — шаги идут по Xcode/App Store Connect, там всё на английском) | [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md), [docs/ios-push-apns-setup.md](docs/ios-push-apns-setup.md) |
 | сборка iOS через Xcode Cloud вместо локальной машины (на английском, по той же причине) | [docs/xcode-cloud-setup.md](docs/xcode-cloud-setup.md) |
+| запуск Xcode Cloud билда через App Store Connect API вместо веб-интерфейса, без входа по паролю/2FA (на английском, по той же причине) | [docs/app-store-connect-api-automation.md](docs/app-store-connect-api-automation.md) |
 | опубликованные privacy policy и terms of use, страницы подтверждения email и сброса пароля | [docs/gh-pages/](docs/gh-pages/) — правится здесь, а не в ветке `gh-pages`: её переписывает CI при пуше в `main` |
 | черновик листинга App Store (на английском, по той же причине) | [docs/review/app-store-listing-draft.md](docs/review/app-store-listing-draft.md) |
 | историческое: замысел, как шёл MVP, старый список отложенного | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
