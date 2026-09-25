@@ -9,6 +9,23 @@ export const broadcastRouter = Router();
 
 const UPDATE_KINDS = ['app_update', 'app_update_important'];
 
+/// Чем сортировать строку истории, у которой сборка — строка.
+///
+/// `?` подставляется там, где в payload сборки не оказалось, и он-то и был
+/// проблемой: `Number('?')` — это NaN, а компаратор, возвращающий NaN, не
+/// задаёт порядка вообще. `sort` принимает такой ответ за «оставить как есть»,
+/// и ОДНОЙ такой строки хватало, чтобы вся таблица истории выехала в порядке,
+/// который зависит от реализации, — молча, потому что сама строка рисуется
+/// нормально. Дефолт `?? '?'` показывает, что строки без сборки ждали; не
+/// обновили вторую половину.
+///
+/// -1, а не 0: «сборка неизвестна» — это самое старое, что может быть, и в
+/// таблице, отсортированной от новых к старым, ему место в конце.
+function buildOrder(build: string): number {
+  const parsed = Number(build);
+  return Number.isFinite(parsed) ? parsed : -1;
+}
+
 // Повторяет отбор `enqueue_app_update_notifications()` слово в слово, чтобы
 // показать список ДО отправки. Источник истины — сама функция; это её
 // зеркало, и если они разойдутся, права будет функция. Поэтому же ниже
@@ -91,7 +108,7 @@ async function audience(targetBuild: number) {
           return map;
         }, new Map<string, { build: string; kind: string; users: number }>())
         .values(),
-    ].sort((a, b) => Number(b.build) - Number(a.build)),
+    ].sort((a, b) => buildOrder(b.build) - buildOrder(a.build)),
   };
 }
 

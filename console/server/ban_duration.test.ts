@@ -51,6 +51,20 @@ describe('parseBanDays', () => {
     assert.equal(parseBanDays(Number.POSITIVE_INFINITY).ok, false);
     assert.equal(parseBanDays('1e400').ok, false);
   });
+
+  // Конечное, но абсурдное число доходило до `new Date(...)` за пределом
+  // диапазона, и `writeBanUntil` падал ровно тем `RangeError`, ради которого
+  // этот модуль заведён. `authBanDuration` от этого прикрывал собственный
+  // кламп, у запрета писать клампа не было.
+  it('отказывает на конечном, но невозможном сроке', () => {
+    for (const bad of [1e8, 1e9, '1e12', 36_501]) {
+      assert.equal(parseBanDays(bad).ok, false, `принял ${bad}`);
+    }
+  });
+
+  it('пропускает сто лет — верхнюю границу включительно', () => {
+    assert.deepEqual(parseBanDays(36_500), { ok: true, days: 36_500 });
+  });
 });
 
 describe('writeBanUntil', () => {
@@ -69,6 +83,21 @@ describe('writeBanUntil', () => {
 
   it('всегда отдаёт момент в будущем относительно now', () => {
     assert.ok(new Date(writeBanUntil(1, now)).getTime() > now);
+  });
+
+  // Всё, что `parseBanDays` пропускает, обязано разбираться в дату. Раньше
+  // этого не проверял никто, и верхний край диапазона был как раз тем местом,
+  // где не разбиралось.
+  it('разбирается в дату на всём, что проходит разбор', () => {
+    for (const days of [1, 7, 365, 36_500]) {
+      const parsed = parseBanDays(days);
+      assert.equal(parsed.ok, true);
+      assert.match(
+        writeBanUntil(days, now),
+        /^\d{4}-\d{2}-\d{2}T/,
+        `${days} суток не превратились в дату`,
+      );
+    }
   });
 });
 

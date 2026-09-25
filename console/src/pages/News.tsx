@@ -29,13 +29,18 @@ async function send(
   return parsed;
 }
 
-async function upload(file: File, name = file.name, type = file.type) {
-  const query = `name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`;
-  const response = await fetch(`/api/news/media?${query}`, {
-    method: 'POST',
-    headers: { 'Content-Type': type },
-    body: file,
-  });
+// Имя файла не шлётся: путь целиком минтит сервер по типу, и имя из браузера
+// в него не попадает (см. `POST /news/media`). Ответный `path` — ссылка на
+// стейджинг консоли, а не на бакет: туда файл уедет при публикации.
+async function upload(file: File, type = file.type) {
+  const response = await fetch(
+    `/api/news/media?type=${encodeURIComponent(type)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': type },
+      body: file,
+    },
+  );
   const parsed = await response.json().catch(() => ({}));
   if (!response.ok)
     throw new Error(
@@ -168,7 +173,7 @@ export function News() {
             const posterFile = new File([poster], 'poster.jpg', {
               type: 'image/jpeg',
             });
-            const up = await upload(posterFile, 'poster.jpg', 'image/jpeg');
+            const up = await upload(posterFile, 'image/jpeg');
             posterPath = up.path;
             posterUrl = up.url;
           }

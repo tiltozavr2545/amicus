@@ -22,6 +22,23 @@ export const defaultAuthBanDays = 3650;
 /// `1e21h` он уже не разбирает.
 const maxAuthBanHours = 876_000;
 
+/// Те же сто лет, но сутками — и это потолок на ВХОДЕ, общий для обоих сроков.
+///
+/// Он тут не для симметрии. `Number.isFinite` пропускает `1e9`, а `1e9` суток
+/// — это `8.64e16` миллисекунд, то есть за пределом диапазона `Date`, и
+/// `writeBanUntil` падал на `toISOString()` тем самым `RangeError: Invalid
+/// time value`, ради которого этот модуль и заведён (см. заголовок).
+/// `authBanDuration` от этого прикрыт — он клампится о `maxAuthBanHours`, и
+/// это проверено тестом на `1e9`, — а у запрета писать клампа не было,
+/// потому что не было и общего места, где его поставить.
+///
+/// Поставлено отказом, а не клампом, и это разница по смыслу: «навсегда» —
+/// законное намерение для бана входа, и у него для этого есть свой дефолт
+/// ([defaultAuthBanDays]). А `days: 1e9` в запросе — не «навсегда», а мусор,
+/// и молча превратить его в наказание на сто лет хуже, чем сказать, что
+/// число не годится.
+const maxBanDays = 36_500;
+
 export type BanDays =
   | { ok: true; days: number | null }
   | { ok: false; error: string };
@@ -34,10 +51,17 @@ export function parseBanDays(raw: unknown): BanDays {
   if (!Number.isFinite(days) || days <= 0) {
     return { ok: false, error: 'days: положительное число суток' };
   }
+  if (days > maxBanDays) {
+    return { ok: false, error: `days: не больше ${maxBanDays} суток` };
+  }
   return { ok: true, days };
 }
 
 /// Момент, до которого запрещено писать.
+///
+/// Верхняя граница снята с входа ([maxBanDays]), а не проверяется здесь: этой
+/// функции достаётся уже разобранное число, и второй потолок в двух местах
+/// разошёлся бы с первым.
 export function writeBanUntil(days: number | null, now: number): string {
   return new Date(now + (days ?? defaultWriteBanDays) * 864e5).toISOString();
 }
