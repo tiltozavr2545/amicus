@@ -9,6 +9,7 @@ import type {
 import { loadDevices, systemAccountIds } from '../aggregate.ts';
 import { countOf, fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
 import { admin } from '../supabase.ts';
+import { isUuid } from '../uuid.ts';
 
 export const usersRouter = Router();
 
@@ -144,6 +145,10 @@ usersRouter.get('/users', async (_req, res, next) => {
 usersRouter.get('/users/:id', async (req, res, next) => {
   try {
     const id = req.params.id;
+    if (!isUuid(id)) {
+      res.status(400).json({ error: 'id должен быть uuid' });
+      return;
+    }
     const rows = await buildRows();
     const user = rows.find((u) => u.id === id);
     if (!user) {
