@@ -39,6 +39,12 @@ fi
 # match it: no non-digits anywhere, and the colon is not leading. So the one
 # check that guarantees every PR carries a build number approved a version
 # that had none.
+#
+# Digits alone are not enough either: a run of 19+ digits overflows `[`'s
+# integer type, which is the same usage error and the same silent pass. So
+# the length is capped first (ten digits always fit), and only then is the
+# value compared — against Play's own ceiling, past which the upload would be
+# rejected anyway.
 for code in "$base_code" "$current_code"; do
 	case "$code" in
 		'' | *[!0-9]*)
@@ -46,6 +52,10 @@ for code in "$base_code" "$current_code"; do
 			exit 1
 			;;
 	esac
+	if [ "${#code}" -gt 10 ] || [ "$code" -gt 2100000000 ]; then
+		echo "versionCode must not exceed 2100000000 (the Google Play limit), got '$code'" >&2
+		exit 1
+	fi
 done
 
 # versionName (the "0.18.8" part) is a display string only - neither Google
