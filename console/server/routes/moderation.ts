@@ -12,9 +12,10 @@ import {
 } from '../ban_duration.ts';
 import { fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
 import { admin } from '../supabase.ts';
-import { isUuid } from '../uuid.ts';
+import { isUuid, uuidParam } from '../uuid.ts';
 
 export const moderationRouter = Router();
+moderationRouter.param('id', uuidParam);
 
 // Таблица и колонка, в которых живёт объект каждого вида. Одно место вместо
 // трёх веток в каждом обработчике.
@@ -412,10 +413,6 @@ const MANUAL_KINDS: Record<string, { needsBuild: boolean; title: string }> = {
 // выключается (то же правило, что у заявок в знакомые).
 moderationRouter.post('/users/:id/notify', async (req, res, next) => {
   try {
-    if (!isUuid(req.params.id)) {
-      res.status(400).json({ error: 'id должен быть uuid' });
-      return;
-    }
     const kind = String(req.body?.kind ?? '');
     const spec = MANUAL_KINDS[kind];
     if (!spec) {
@@ -491,10 +488,6 @@ moderationRouter.post('/users/:id/notify', async (req, res, next) => {
 
 moderationRouter.post('/reports/:id/resolve', async (req, res, next) => {
   try {
-    if (!isUuid(req.params.id)) {
-      res.status(400).json({ error: 'id должен быть uuid' });
-      return;
-    }
     const { status, resolution, notifyReporter, note } = req.body ?? {};
     if (status !== 'resolved' && status !== 'rejected') {
       res.status(400).json({ error: 'status: resolved или rejected' });

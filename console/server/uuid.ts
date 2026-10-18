@@ -16,8 +16,23 @@
 /// urn-префикса: ничто в этом проекте таких не порождает, а принимать больше,
 /// чем порождаешь, — это принимать за базу решение, которого она не просила.
 /// Регистр не важен: Postgres сравнивает uuid по значению, не по написанию.
+import type { RequestParamHandler } from 'express';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
 }
+
+/// `router.param('id', uuidParam)` — проверка `:id` один раз на роутер, а не
+/// копией в каждом обработчике. Копия держится, пока её не забудут в новой
+/// ручке, и забытая молча возвращает ровно тот 500 с текстом драйвера, ради
+/// которого `isUuid` и заведён. Срабатывает для каждого маршрута роутера, в
+/// пути которого есть `:id`, включая те, что появятся потом.
+export const uuidParam: RequestParamHandler = (_req, res, next, value) => {
+  if (!isUuid(value)) {
+    res.status(400).json({ error: 'id должен быть uuid' });
+    return;
+  }
+  next();
+};

@@ -25,9 +25,10 @@ import {
   writeStaged,
 } from '../news.ts';
 import { admin } from '../supabase.ts';
-import { isUuid } from '../uuid.ts';
+import { uuidParam } from '../uuid.ts';
 
 export const newsRouter = Router();
+newsRouter.param('id', uuidParam);
 
 // Id системного аккаунта спрашивается у базы (`system_account_ids()`), а не
 // лежит копией в коде консоли — по той же причине, по которой его не носит в
@@ -415,10 +416,6 @@ newsRouter.post('/news', async (req, res, next) => {
 
 newsRouter.patch('/news/:id', async (req, res, next) => {
   try {
-    if (!isUuid(req.params.id)) {
-      res.status(400).json({ error: 'id должен быть uuid' });
-      return;
-    }
     // `media` обязателен явным списком, и это не придирка к форме запроса.
     // Правка переписывает набор медиа целиком (иначе `position` раздать
     // нечем), поэтому отсутствующее поле означает «медиа больше нет» — то
@@ -465,10 +462,6 @@ newsRouter.patch('/news/:id', async (req, res, next) => {
 
 newsRouter.delete('/news/:id', async (req, res, next) => {
   try {
-    if (!isUuid(req.params.id)) {
-      res.status(400).json({ error: 'id должен быть uuid' });
-      return;
-    }
     const author = await systemId();
     const { error } = await admin
       .from('posts')
