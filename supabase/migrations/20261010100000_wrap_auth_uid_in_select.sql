@@ -106,6 +106,12 @@ begin
 
   -- Развёрнутая обратно обёртка обязана дать ровно прежнее выражение.
   -- `( SELECT auth.uid() AS uid)` — так её печатает pg_get_expr.
+  --
+  -- Разворачиваются ОБЕ стороны, а не только «после»: политика, обёрнутая
+  -- ещё до наката (повторный прогон, ручная правка живой схемы), цикл не
+  -- трогает, и её «до» уже содержит обёртку. Сравнение развёрнутого «после»
+  -- с сырым «до» валило миграцию на каждой такой политике — то есть ровно
+  -- на повторном накате, который шапка обещает безвредным.
   select string_agg(a.tablename || '.' || a.policyname, ', ') into v_diff
     from pg_policies a
     join _policies_before b using (schemaname, tablename, policyname)
@@ -113,10 +119,14 @@ begin
      and (
        regexp_replace(coalesce(a.qual, ''),
                       '\( SELECT auth\.uid\(\) AS uid\)', 'auth.uid()', 'g')
-         is distinct from coalesce(b.qual, '')
+         is distinct from
+       regexp_replace(coalesce(b.qual, ''),
+                      '\( SELECT auth\.uid\(\) AS uid\)', 'auth.uid()', 'g')
        or regexp_replace(coalesce(a.with_check, ''),
                          '\( SELECT auth\.uid\(\) AS uid\)', 'auth.uid()', 'g')
-         is distinct from coalesce(b.with_check, '')
+         is distinct from
+          regexp_replace(coalesce(b.with_check, ''),
+                         '\( SELECT auth\.uid\(\) AS uid\)', 'auth.uid()', 'g')
      );
   if v_diff is not null then
     raise exception 'условие изменилось не только обёрткой: %', v_diff;
