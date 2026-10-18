@@ -59,7 +59,22 @@ function posterFor(file: File): Promise<Blob | null> {
   return new Promise((resolve) => {
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
+    // Первый ответ выигрывает, остальные — ничего.
+    //
+    // Их тут бывает больше одного по построению: таймаут ниже не снимался
+    // при успехе, так что после снятого постера он всё равно срабатывал и
+    // звал `done` второй раз. Промису это безразлично — settled есть settled,
+    // — а вот `revokeObjectURL` выполнялся дважды, и до самого срабатывания
+    // таймер держал живыми и замыкание, и `<video>`, и blob-URL. Сегодня
+    // безвредно ровно потому, что в `done` больше ничего нет; флаг и
+    // `clearTimeout` здесь для того, чтобы это перестало зависеть от того,
+    // что в неё не добавят настоящей уборки.
+    let settled = false;
+    let bailOut: ReturnType<typeof setTimeout>;
     const done = (blob: Blob | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(bailOut);
       URL.revokeObjectURL(url);
       resolve(blob);
     };
@@ -84,7 +99,7 @@ function posterFor(file: File): Promise<Blob | null> {
       }
     };
     // Не ждём вечно: битый или экзотический файл не должен подвесить форму.
-    setTimeout(() => done(null), 10000);
+    bailOut = setTimeout(() => done(null), 10000);
   });
 }
 

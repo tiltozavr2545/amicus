@@ -12,8 +12,10 @@ import {
 } from '../ban_duration.ts';
 import { fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
 import { admin } from '../supabase.ts';
+import { isUuid, uuidParam } from '../uuid.ts';
 
 export const moderationRouter = Router();
+moderationRouter.param('id', uuidParam);
 
 // Таблица и колонка, в которых живёт объект каждого вида. Одно место вместо
 // трёх веток в каждом обработчике.
@@ -269,8 +271,8 @@ moderationRouter.get('/reports', async (req, res, next) => {
 moderationRouter.post('/moderation/content', async (req, res, next) => {
   try {
     const { kind, targetId, action, notifyAuthor, note } = req.body ?? {};
-    if (!isTargetKind(kind) || typeof targetId !== 'string') {
-      res.status(400).json({ error: 'Нужны kind и targetId' });
+    if (!isTargetKind(kind) || !isUuid(targetId)) {
+      res.status(400).json({ error: 'Нужны kind и targetId (uuid)' });
       return;
     }
     const { table, author } = TARGETS[kind];
@@ -335,8 +337,8 @@ moderationRouter.post('/moderation/content', async (req, res, next) => {
 moderationRouter.post('/moderation/ban', async (req, res, next) => {
   try {
     const { userId, mode, days, notify, note } = req.body ?? {};
-    if (typeof userId !== 'string') {
-      res.status(400).json({ error: 'Нужен userId' });
+    if (!isUuid(userId)) {
+      res.status(400).json({ error: 'Нужен userId (uuid)' });
       return;
     }
 

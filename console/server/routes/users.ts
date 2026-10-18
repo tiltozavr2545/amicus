@@ -9,8 +9,10 @@ import type {
 import { loadDevices, systemAccountIds } from '../aggregate.ts';
 import { countOf, fetchAll, fetchAuthUsers, fetchOnce } from '../db.ts';
 import { admin } from '../supabase.ts';
+import { uuidParam } from '../uuid.ts';
 
 export const usersRouter = Router();
+usersRouter.param('id', uuidParam);
 
 type PublicUser = { id: string; name: string; created_at: string };
 

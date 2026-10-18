@@ -25,8 +25,10 @@ import {
   writeStaged,
 } from '../news.ts';
 import { admin } from '../supabase.ts';
+import { uuidParam } from '../uuid.ts';
 
 export const newsRouter = Router();
+newsRouter.param('id', uuidParam);
 
 // Id системного аккаунта спрашивается у базы (`system_account_ids()`), а не
 // лежит копией в коде консоли — по той же причине, по которой его не носит в
