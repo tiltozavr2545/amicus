@@ -351,13 +351,22 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
     }
 
     if (mode === 'write' || mode === 'none') {
-      const until =
-        mode === 'none' ? null : writeBanUntil(parsed.days, Date.now());
-      const { error } = await admin
-        .from('users')
-        .update({ write_banned_until: until })
-        .eq('id', userId);
-      if (error) throw new Error(`users: ${error.message}`);
+      // Запрет писать живёт не в `users`, а в `user_moderation` (IMM-541):
+      // `users` клиент читает целиком, и колонка оттуда утекала. Строка
+      // есть только у тех, кого банили, поэтому бан — апсерт, а снятие —
+      // обычный UPDATE: нет строки — снимать нечего, заводить её ради NULL
+      // незачем.
+      const { error } =
+        mode === 'none'
+          ? await admin
+              .from('user_moderation')
+              .update({ write_banned_until: null })
+              .eq('user_id', userId)
+          : await admin.from('user_moderation').upsert({
+              user_id: userId,
+              write_banned_until: writeBanUntil(parsed.days, Date.now()),
+            });
+      if (error) throw new Error(`user_moderation: ${error.message}`);
       // Снятие запрета писать снимает и бан входа: иначе «none» означало бы
       // разное в зависимости от того, чем банили, а из консоли это не видно.
       if (mode === 'none') {

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/rooms/room_chat_screen.dart';
@@ -93,6 +94,43 @@ class _FakeRoomsRepository implements RoomsRepository {
   @override
   Future<void> deleteMessage(String messageId) async =>
       deletedIds.add(messageId);
+
+  /// Every edit the screen saved: which message, the new text, the
+  /// attachments it kept and the ones it added.
+  final List<
+    ({
+      String id,
+      String text,
+      List<RoomMessageMedia> kept,
+      List<PickedMedia> added,
+    })
+  >
+  edits = [];
+
+  /// What the next edit throws, if anything — the server's refusal.
+  Exception? editError;
+
+  @override
+  Future<RoomMessage> editMessage({
+    required RoomMessage message,
+    required String text,
+    required List<RoomMessageMedia> kept,
+    required String editToken,
+    List<PickedMedia> added = const [],
+  }) async {
+    edits.add((id: message.id, text: text, kept: kept, added: added));
+    if (editError case final error?) throw error;
+    return RoomMessage(
+      id: message.id,
+      roomId: message.roomId,
+      authorId: message.authorId,
+      text: text,
+      createdAt: message.createdAt,
+      media: kept,
+      editedAt: DateTime.now(),
+      replyToId: message.replyToId,
+    );
+  }
 
   @override
   Future<void> markRoomRead(String roomId) async => markReadCalls++;
@@ -201,6 +239,7 @@ RoomMessage _message({
   String text = 'привет',
   DateTime? createdAt,
   DateTime? deletedAt,
+  DateTime? editedAt,
   List<RoomMessageMedia> media = const [],
   String? replyToId,
   RoomMessageReplyPreview? replyToPreview,
@@ -211,6 +250,7 @@ RoomMessage _message({
   text: text,
   createdAt: createdAt ?? DateTime.utc(2026, 8, 26, 18),
   deletedAt: deletedAt,
+  editedAt: editedAt,
   media: media,
   replyToId: replyToId,
   replyToPreview: replyToPreview,
@@ -704,6 +744,286 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Replying to: Аня'), findsNothing);
+  });
+
+  group('editing a sent message (IMM-208)', () {
+    // Inside the 48-hour window: an hour old, whatever today is.
+    DateTime recent() => DateTime.now().subtract(const Duration(hours: 1));
+
+    Future<void> openActions(WidgetTester tester, String text) async {
+      await tester.tap(_messageText(text));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('own recent message: edit, save, and it reads "edited"', (
+      tester,
+    ) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'me',
+            text: 'опечатка',
+            createdAt: recent(),
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await openActions(tester, 'опечатка');
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Editing message'), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, 'опечатка');
+
+      await tester.enterText(find.byType(TextField), 'исправлено');
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(repo.edits.single.id, 'm1');
+      expect(repo.edits.single.text, 'исправлено');
+      expect(repo.sentTexts, isEmpty);
+      expect(_messageText('исправлено'), findsOneWidget);
+      expect(find.text('edited'), findsOneWidget);
+      expect(find.text('Editing message'), findsNothing);
+    });
+
+    testWidgets('no edit for someone else\'s message', (tester) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'anya',
+            text: 'чужое',
+            createdAt: recent(),
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await openActions(tester, 'чужое');
+      expect(find.text('Reply'), findsOneWidget);
+      expect(find.text('Edit'), findsNothing);
+    });
+
+    testWidgets('no edit once 48 hours have passed', (tester) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'me',
+            text: 'давнее',
+            createdAt: DateTime.now().subtract(const Duration(hours: 49)),
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await openActions(tester, 'давнее');
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('Edit'), findsNothing);
+    });
+
+    testWidgets('cancelling an edit gives the half-written draft back', (
+      tester,
+    ) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'me',
+            text: 'старое',
+            createdAt: recent(),
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'черновик');
+      await openActions(tester, 'старое');
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Cancel editing'));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, 'черновик');
+      expect(repo.edits, isEmpty);
+    });
+
+    testWidgets('saving without a change edits nothing', (tester) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'me',
+            text: 'как было',
+            createdAt: recent(),
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await openActions(tester, 'как было');
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(repo.edits, isEmpty);
+      expect(find.text('Editing message'), findsNothing);
+      expect(find.text('edited'), findsNothing);
+    });
+
+    testWidgets('a removed attachment is left out of the saved edit', (
+      tester,
+    ) async {
+      const photo = RoomMessageMedia(
+        storagePath: 'messages/room-1/me/t/a.jpg',
+        isVideo: false,
+      );
+      const other = RoomMessageMedia(
+        storagePath: 'messages/room-1/me/t/b.jpg',
+        isVideo: false,
+      );
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'me',
+            text: 'два фото',
+            createdAt: recent(),
+            media: const [photo, other],
+          ),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await openActions(tester, 'два фото');
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Remove attachment').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(repo.edits.single.kept.map((m) => m.storagePath), [
+        other.storagePath,
+      ]);
+    });
+
+    testWidgets('the server closing the window is said in words', (
+      tester,
+    ) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'm1',
+            authorId: 'me',
+            text: 'почти',
+            createdAt: recent(),
+          ),
+        ],
+      )..editError = const PostgrestException(message: 'late', code: 'AME01');
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      await openActions(tester, 'почти');
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'поздно');
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('A message can only be edited within 48 hours of sending.'),
+        findsOneWidget,
+      );
+      // The edit stays in the composer, like a failed send's draft.
+      expect(find.text('Editing message'), findsOneWidget);
+    });
+
+    testWidgets(
+      'an edit arriving over realtime keeps the author and marks it',
+      (tester) async {
+        final original = RoomMessage(
+          id: 'm1',
+          roomId: 'room-1',
+          authorId: 'ghost',
+          text: 'до',
+          createdAt: DateTime.utc(2026, 8, 26, 18),
+          authorName: 'Бывший',
+        );
+        final repo = _FakeRoomsRepository(messages: [original]);
+        await tester.pumpWidget(_wrap(repo));
+        await tester.pumpAndSettle();
+        expect(find.text('Бывший'), findsOneWidget);
+
+        // Realtime hands over the bare row: no embedded author name.
+        repo.onUpdate!(
+          RoomMessage(
+            id: 'm1',
+            roomId: 'room-1',
+            authorId: 'ghost',
+            text: 'после',
+            createdAt: original.createdAt,
+            editedAt: DateTime.utc(2026, 8, 26, 18, 10),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(_messageText('после'), findsOneWidget);
+        expect(find.text('edited'), findsOneWidget);
+        expect(find.text('Бывший'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a reply\'s quote follows an edit of its original', (
+      tester,
+    ) async {
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(
+            id: 'reply',
+            authorId: 'me',
+            text: 'ответ',
+            replyToId: 'orig',
+            // The embed as fetched: a snapshot of the original's old words.
+            replyToPreview: const RoomMessageReplyPreview(
+              id: 'orig',
+              text: 'старые слова',
+              hasMedia: false,
+              authorName: 'Аня',
+              isDeleted: false,
+            ),
+          ),
+          _message(id: 'orig', authorId: 'anya', text: 'старые слова'),
+        ],
+      );
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+
+      repo.onUpdate!(
+        _message(
+          id: 'orig',
+          authorId: 'anya',
+          text: 'новые слова',
+          editedAt: DateTime.utc(2026, 8, 26, 18, 10),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('старые слова'), findsNothing);
+      expect(find.textContaining('новые слова'), findsNWidgets(2));
+    });
   });
 
   testWidgets('a deleted message offers no tap actions', (tester) async {

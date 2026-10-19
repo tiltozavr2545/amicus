@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'package:amicus/features/rooms/rooms_repository.dart';
 
@@ -58,6 +59,120 @@ void main() {
       final room = _room(name: '', members: const [_me, _anya]);
 
       expect(roomDisplayName(room, 'me', fallback: 'Room'), 'Аня');
+    });
+  });
+
+  group('editing (IMM-208)', () {
+    RoomMessage message({
+      String authorId = 'me',
+      DateTime? createdAt,
+      DateTime? deletedAt,
+      DateTime? editedAt,
+    }) => RoomMessage(
+      id: 'msg-1',
+      roomId: 'room-1',
+      authorId: authorId,
+      text: 'привет',
+      createdAt: createdAt ?? DateTime.utc(2026, 10, 19, 12),
+      deletedAt: deletedAt,
+      editedAt: editedAt,
+    );
+
+    test('reads edited_at off the row', () {
+      final row = {
+        'id': 'msg-1',
+        'room_id': 'room-1',
+        'author_id': 'anya',
+        'text': 'исправлено',
+        'created_at': '2026-10-19T12:00:00+00:00',
+        'edited_at': '2026-10-19T12:05:00+00:00',
+      };
+      final edited = RoomMessage.fromRow(row);
+      expect(edited.editedAt, DateTime.utc(2026, 10, 19, 12, 5).toLocal());
+      expect(edited.isEdited, isTrue);
+
+      expect(
+        RoomMessage.fromRow({...row, 'edited_at': null}).isEdited,
+        isFalse,
+      );
+    });
+
+    test('a tombstone is never "edited"', () {
+      final tombstone = message(
+        editedAt: DateTime.utc(2026, 10, 19, 12, 5),
+        deletedAt: DateTime.utc(2026, 10, 19, 12, 6),
+      );
+      expect(tombstone.isEdited, isFalse);
+    });
+
+    test('only the author, only live, only inside 48 hours', () {
+      final sent = DateTime.utc(2026, 10, 19, 12);
+      final m = message(createdAt: sent);
+      final justBefore = sent.add(const Duration(hours: 47, minutes: 59));
+      final atTheEdge = sent.add(messageEditWindow);
+
+      expect(m.canBeEditedBy('me', justBefore), isTrue);
+      expect(m.canBeEditedBy('me', atTheEdge), isFalse);
+      expect(m.canBeEditedBy('anya', justBefore), isFalse);
+      expect(m.canBeEditedBy(null, justBefore), isFalse);
+      expect(
+        message(
+          createdAt: sent,
+          deletedAt: sent.add(const Duration(minutes: 1)),
+        ).canBeEditedBy('me', justBefore),
+        isFalse,
+      );
+    });
+
+    test('a bare realtime row keeps the joins the screen already had', () {
+      const preview = RoomMessageReplyPreview(
+        id: 'orig',
+        text: 'оригинал',
+        hasMedia: false,
+        authorName: 'Аня',
+        isDeleted: false,
+      );
+      final onScreen = RoomMessage(
+        id: 'msg-1',
+        roomId: 'room-1',
+        authorId: 'anya',
+        text: 'до',
+        createdAt: DateTime.utc(2026, 10, 19, 12),
+        authorName: 'Аня',
+        replyToId: 'orig',
+        replyToPreview: preview,
+      );
+      final bare = RoomMessage(
+        id: 'msg-1',
+        roomId: 'room-1',
+        authorId: 'anya',
+        text: 'после',
+        createdAt: DateTime.utc(2026, 10, 19, 12),
+        editedAt: DateTime.utc(2026, 10, 19, 12, 5),
+        replyToId: 'orig',
+      );
+
+      final merged = bare.withEmbedsFrom(onScreen);
+      expect(merged.text, 'после');
+      expect(merged.isEdited, isTrue);
+      expect(merged.authorName, 'Аня');
+      expect(merged.replyToPreview, same(preview));
+    });
+
+    test('AME01 is the closed window, anything else is not', () {
+      expect(
+        isEditWindowPassed(
+          const PostgrestException(message: 'x', code: 'AME01'),
+        ),
+        isTrue,
+      );
+      expect(
+        isEditWindowPassed(
+          const PostgrestException(message: 'x', code: 'PT404'),
+        ),
+        isFalse,
+      );
+      expect(isEditWindowPassed(Exception('offline')), isFalse);
     });
   });
 
