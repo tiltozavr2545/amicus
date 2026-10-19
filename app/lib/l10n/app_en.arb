@@ -316,6 +316,10 @@
   "removeAttachmentTooltip": "Remove attachment",
   "noMessagesYetMessage": "Quiet in here. Send the first message.",
   "deletedMessageLabel": "Message deleted",
+  "editedMessageLabel": "edited",
+  "editingMessageLabel": "Editing message",
+  "cancelEditTooltip": "Cancel editing",
+  "saveEditTooltip": "Save",
   "deleteMessageDialogTitle": "Delete message?",
   "deleteMessageDialogContent": "It disappears for everyone in the room, leaving only a note.",
   "formerMemberLabel": "Former member",
@@ -339,6 +343,8 @@
   "failedToLoadMessagesError": "Failed to load messages. Please try again.",
   "failedToSendMessageError": "Failed to send. Please try again.",
   "failedToDeleteMessageError": "Failed to delete the message. Please try again.",
+  "failedToEditMessageError": "Failed to save the changes. Please try again.",
+  "editWindowPassedError": "A message can only be edited within 48 hours of sending.",
 
   "notifyRoomMessagesLabel": "Messages in rooms",
 

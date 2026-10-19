@@ -332,6 +332,7 @@ class RoomMessage {
     this.media = const [],
     this.authorName,
     this.deletedAt,
+    this.editedAt,
     this.replyToId,
     this.replyToPreview,
   });
@@ -341,6 +342,12 @@ class RoomMessage {
   final String authorId;
   final String text;
   final DateTime createdAt;
+
+  /// When the author last edited this message, or null if never — what the
+  /// bubble's "edited" mark reads. Set only by the server
+  /// (`edit_own_room_message()`, migration 20261019120000); no earlier
+  /// version is kept anywhere.
+  final DateTime? editedAt;
 
   /// Up to 10 photos/videos, in the order they were picked. Empty for a
   /// text-only message, and always empty on a tombstone — deleting a message
@@ -365,6 +372,42 @@ class RoomMessage {
 
   bool get isDeleted => deletedAt != null;
 
+  /// A tombstone has nothing left to call edited.
+  bool get isEdited => editedAt != null && !isDeleted;
+
+  /// Whether [viewerId] may still edit this message at [now]: own, live, and
+  /// younger than [messageEditWindow]. Only decides whether to OFFER the
+  /// action — the server checks the same rule itself and has the last word.
+  bool canBeEditedBy(String? viewerId, DateTime now) =>
+      viewerId != null &&
+      authorId == viewerId &&
+      !isDeleted &&
+      now.difference(createdAt) < messageEditWindow;
+
+  /// This row with the joins a realtime payload cannot carry filled in from
+  /// [previous], the copy of the same message already on screen.
+  ///
+  /// Postgres Changes hands over the bare row, so an UPDATE — an edit or a
+  /// tombstone — arrives without [authorName] and without [replyToPreview].
+  /// Neither changes with an edit (the author is the author, and
+  /// `reply_to_id` is not something an edit touches), so dropping them would
+  /// only make the bubble forget what it already knew.
+  RoomMessage withEmbedsFrom(RoomMessage previous) => RoomMessage(
+    id: id,
+    roomId: roomId,
+    authorId: authorId,
+    text: text,
+    createdAt: createdAt,
+    media: media,
+    authorName: authorName ?? previous.authorName,
+    deletedAt: deletedAt,
+    editedAt: editedAt,
+    replyToId: replyToId,
+    replyToPreview:
+        replyToPreview ??
+        (previous.replyToId == replyToId ? previous.replyToPreview : null),
+  );
+
   factory RoomMessage.fromRow(Map<String, dynamic> row) => RoomMessage(
     id: row['id'] as String,
     roomId: row['room_id'] as String,
@@ -379,6 +422,9 @@ class RoomMessage {
     deletedAt: row['deleted_at'] == null
         ? null
         : parseTimestamp(row['deleted_at'] as String),
+    editedAt: row['edited_at'] == null
+        ? null
+        : parseTimestamp(row['edited_at'] as String),
     replyToId: row['reply_to_id'] as String?,
     replyToPreview: _parseReplyToPreview(row['reply_to']),
   );
@@ -498,6 +544,22 @@ String roomMessageMediaPath({
   required String mediaToken,
   required String ext,
 }) => 'messages/$roomId/$authorId/$clientToken/$mediaToken.$ext';
+
+/// How long after sending a message its author may still edit it (IMM-208).
+/// The server enforces the same 48 hours in `edit_own_room_message()`,
+/// counted from `created_at` rather than from the last edit — otherwise one
+/// edit every two days would keep the window open forever.
+const messageEditWindow = Duration(hours: 48);
+
+/// SQLSTATE `edit_own_room_message()` answers once [messageEditWindow] has
+/// passed — its own code, for the same reason a write ban has one (see
+/// `shared/write_ban.dart`): "the time is up" is a different sentence from
+/// "something went wrong".
+const _editWindowPassedSqlState = 'AME01';
+
+/// Whether [error] is the server refusing an edit because the window passed.
+bool isEditWindowPassed(Object error) =>
+    error is PostgrestException && error.code == _editWindowPassedSqlState;
 
 /// Path of a video's poster frame — same prefix as its video, own file.
 String roomMessagePosterPath({
@@ -726,9 +788,9 @@ class RoomsRepository {
   ///    same idempotency trick because their indexes are not partial.
   ///  * even with a matching index, an upsert resolves to `DO UPDATE`, and
   ///    `room_messages` has neither an UPDATE grant nor an UPDATE policy on
-  ///    purpose: editing a message is not a feature, and an UPDATE policy
-  ///    cannot restrict *which* columns change — it would open `created_at`,
-  ///    which is what unread counts are measured against.
+  ///    purpose: an UPDATE policy cannot restrict *which* columns change — it
+  ///    would open `created_at`, which is what unread counts are measured
+  ///    against. Editing goes through its own RPC instead ([editMessage]).
   ///
   /// So the duplicate is answered where it actually shows up: 23505 from the
   /// unique index means this exact submission already landed, and the row it
@@ -784,6 +846,77 @@ class RoomsRepository {
           .timeout(networkTimeout);
       return RoomMessage.fromRow(row);
     }
+  }
+
+  /// Edits own message: [text] and the attachments, which become [kept] (the
+  /// ones it already had and still should) followed by [added] (picked now).
+  ///
+  /// The same order as [sendMessage] and [deleteMessage] combined: new files
+  /// go up first, because the row must not name bytes that are not there
+  /// yet; the row is rewritten; and only then are the attachments the edit
+  /// dropped removed — the server hands their paths back, and bytes nobody
+  /// names are just bytes, while a row naming bytes that are gone is a hole
+  /// every member sees. An edit that dies after the uploads leaves objects
+  /// nothing points at, which `reap_orphaned_media()` collects a day later.
+  ///
+  /// [editToken] takes the place of a send's `client_token` in the new
+  /// files' paths. It identifies nothing on the row — the edit is not
+  /// idempotent by key, it is idempotent by content: sending the same text
+  /// and attachments again is a no-op on the server.
+  ///
+  /// Returns the stored row, re-read with its joins, so the bubble keeps its
+  /// quote and author name.
+  Future<RoomMessage> editMessage({
+    required RoomMessage message,
+    required String text,
+    required List<RoomMessageMedia> kept,
+    required String editToken,
+    List<PickedMedia> added = const [],
+  }) async {
+    final items = [...kept];
+    for (final item in added) {
+      items.add(
+        await _uploadMessageMedia(
+          roomId: message.roomId,
+          authorId: message.authorId,
+          clientToken: editToken,
+          item: item,
+        ),
+      );
+    }
+    var orphaned = const <String>[];
+    await deleteRowsThenObjects(
+      rows: () async {
+        final rows = await _client
+            .rpc(
+              'edit_own_room_message',
+              params: {
+                'p_message_id': message.id,
+                'p_text': text,
+                'p_media': [for (final item in items) item.toJson()],
+              },
+            )
+            .timeout(networkTimeout);
+        orphaned = [
+          for (final row in (rows as List<dynamic>? ?? const []))
+            (row as Map<String, dynamic>)['storage_path'] as String,
+        ];
+      },
+      objects: () async {
+        if (orphaned.isEmpty) return;
+        await _client.storage
+            .from(mediaBucket)
+            .remove(orphaned)
+            .timeout(networkTimeout);
+      },
+    );
+    final row = await _client
+        .from('room_messages')
+        .select('*, author:users(name), $_replyToColumns')
+        .eq('id', message.id)
+        .single()
+        .timeout(networkTimeout);
+    return RoomMessage.fromRow(row);
   }
 
   /// Uploads one picked file and returns the attachment that will name it in

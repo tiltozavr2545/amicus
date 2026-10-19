@@ -793,6 +793,18 @@ class AppLocalizationsRu extends AppLocalizations {
   String get deletedMessageLabel => 'Сообщение удалено';
 
   @override
+  String get editedMessageLabel => 'изменено';
+
+  @override
+  String get editingMessageLabel => 'Редактирование';
+
+  @override
+  String get cancelEditTooltip => 'Отменить редактирование';
+
+  @override
+  String get saveEditTooltip => 'Сохранить';
+
+  @override
   String get deleteMessageDialogTitle => 'Удалить сообщение?';
 
   @override
@@ -832,6 +844,14 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToDeleteMessageError =>
       'Не удалось удалить сообщение. Попробуйте ещё раз.';
+
+  @override
+  String get failedToEditMessageError =>
+      'Не удалось сохранить изменения. Попробуйте ещё раз.';
+
+  @override
+  String get editWindowPassedError =>
+      'Сообщение можно изменить только в течение 48 часов после отправки.';
 
   @override
   String get notifyRoomMessagesLabel => 'Сообщения в комнатах';

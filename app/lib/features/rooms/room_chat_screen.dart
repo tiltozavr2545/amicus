@@ -157,6 +157,28 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// [_pendingSendToken], which this also resets for.
   RoomMessage? _replyTarget;
 
+  /// The own message the composer is editing, or null when it is writing a
+  /// new one (IMM-208). While set, the input holds that message's text,
+  /// [_editKept] its attachments, [_attachments] whatever is added to them,
+  /// and send saves the edit instead of posting.
+  RoomMessage? _editTarget;
+
+  /// The attachments [_editTarget] already has and should keep. Removing one
+  /// here drops it from the message on save; the server then hands back its
+  /// path and the object goes after the row (see [RoomsRepository.editMessage]).
+  final _editKept = <RoomMessageMedia>[];
+
+  /// Names the folder the edit's new files go into. Kept for the whole edit
+  /// rather than minted per attempt: a retry after a timeout that actually
+  /// landed then re-uploads to the same paths and sends the same content,
+  /// which the server answers as a no-op instead of a second edit.
+  String? _pendingEditToken;
+
+  /// The draft that was in the composer when an edit began, put back when
+  /// the edit ends — editing an old message should not cost the half-written
+  /// new one.
+  _ComposerDraft? _stashedDraft;
+
   /// The message [_scrollToMessage] most recently landed on, briefly tinted
   /// so the jump has something to land ON rather than just moving the list.
   String? _highlightedMessageId;
@@ -338,7 +360,16 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
             if (!mounted) return;
             final index = _messages.indexWhere((m) => m.id == message.id);
             if (index == -1) return;
-            _updateMessages(() => _messages[index] = message);
+            // An edit or a tombstone arrives as the bare row — keep the
+            // author name and quote this screen already had for it.
+            _updateMessages(
+              () => _messages[index] = message.withEmbedsFrom(_messages[index]),
+            );
+            // Deleted from another device mid-edit: there is nothing left to
+            // save the edit into.
+            if (message.isDeleted && _editTarget?.id == message.id) {
+              _endEdit();
+            }
           },
           // The channel came back after having been down — so there is a
           // stretch of the conversation nobody told this screen about. See
@@ -384,7 +415,10 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     // The draft just changed (including being cleared after a send), so a
     // token minted for whatever it said before no longer describes it.
     _pendingSendToken = null;
-    final typing = _textController.text.trim().isNotEmpty;
+    // Rewording an old message is not "typing" to anyone watching — what
+    // they would be waiting for never arrives as a new message.
+    final typing =
+        _editTarget == null && _textController.text.trim().isNotEmpty;
     _typingTimer?.cancel();
     if (typing) {
       _typingTimer = Timer(_typingIdleTimeout, () => _announceTyping(false));
@@ -665,7 +699,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
 
   Future<void> _pickAttachments() async {
     final l10n = AppLocalizations.of(context)!;
-    final remaining = _maxAttachments - _attachments.length;
+    final remaining = _maxAttachments - _attachments.length - _editKept.length;
     if (remaining <= 0) {
       ScaffoldMessenger.of(
         context,
@@ -807,11 +841,121 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           ),
         );
       }
+      if (_editTarget?.id == message.id) _endEdit();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.failedToDeleteMessageError)));
+    }
+  }
+
+  /// Puts own [message] into the composer for editing: its text in the
+  /// field, its attachments in the strip. Whatever draft was there is set
+  /// aside and comes back when the edit ends, saved or not.
+  void _startEdit(RoomMessage message) {
+    final stash =
+        _stashedDraft ??
+        _ComposerDraft(
+          text: _textController.text,
+          attachments: List.of(_attachments),
+          replyTarget: _replyTarget,
+        );
+    setState(() {
+      _stashedDraft = stash;
+      _editTarget = message;
+      _pendingEditToken = null;
+      _editKept
+        ..clear()
+        ..addAll(message.media);
+      _attachments.clear();
+      _replyTarget = null;
+      _errorMessage = null;
+    });
+    // After [_editTarget] is set, so [_onTyping] already knows not to
+    // announce this as typing.
+    _textController.text = message.text;
+  }
+
+  /// Leaves edit mode and puts the set-aside draft back.
+  void _endEdit() {
+    final stash = _stashedDraft;
+    setState(() {
+      _editTarget = null;
+      _pendingEditToken = null;
+      _editKept.clear();
+      _attachments
+        ..clear()
+        ..addAll(stash?.attachments ?? const []);
+      _replyTarget = stash?.replyTarget;
+      _stashedDraft = null;
+      _pendingSendToken = null;
+    });
+    _textController.text = stash?.text ?? '';
+  }
+
+  /// Saves the edit in the composer. An edit that changes nothing just
+  /// leaves edit mode; one that would leave the message empty is refused
+  /// here the same way an empty send is — removing everything is what
+  /// delete is for.
+  Future<void> _saveEdit() async {
+    final target = _editTarget;
+    if (target == null || _isSending) return;
+    final l10n = AppLocalizations.of(context)!;
+    final text = _textController.text.trim();
+    if (text.isEmpty && _editKept.isEmpty && _attachments.isEmpty) return;
+
+    final unchanged =
+        text == target.text &&
+        _attachments.isEmpty &&
+        _editKept.length == target.media.length &&
+        [
+          for (var i = 0; i < _editKept.length; i++)
+            _editKept[i].storagePath == target.media[i].storagePath,
+        ].every((same) => same);
+    if (unchanged) {
+      _endEdit();
+      return;
+    }
+
+    setState(() {
+      _isSending = true;
+      _errorMessage = null;
+    });
+    final editToken = _pendingEditToken ??= const Uuid().v4();
+    try {
+      final edited = await ref
+          .read(roomsRepositoryProvider)
+          .editMessage(
+            message: target,
+            text: text,
+            kept: List.of(_editKept),
+            added: List.of(_attachments),
+            editToken: editToken,
+          );
+      if (!mounted) return;
+      final index = _messages.indexWhere((m) => m.id == edited.id);
+      if (index != -1) {
+        _updateMessages(
+          () => _messages[index] = edited.withEmbedsFrom(_messages[index]),
+        );
+      }
+      _endEdit();
+      // The room's last-message preview may be the line just reworded.
+      _roomListIsStale = true;
+    } catch (e) {
+      if (!mounted) return;
+      // The edit stays in the composer, same as a failed send's draft.
+      final bannedUntil = writeBanUntil(e);
+      setState(
+        () => _errorMessage = bannedUntil != null
+            ? l10n.writeRestrictedError(bannedUntil)
+            : isEditWindowPassed(e)
+            ? l10n.editWindowPassedError
+            : l10n.failedToEditMessageError,
+      );
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -837,22 +981,21 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// What a reply's quote should show for the message it answers, or null
   /// when nothing usable is known about it.
   ///
-  /// [RoomMessage.replyToPreview] answers this outright for anything read
-  /// through `fetchMessages`/`sendMessage`, which embed it. A message that
-  /// arrived over realtime carries only the raw `reply_to_id` column — no
-  /// join, because Postgres Changes payloads never embed relations — so this
-  /// falls back to whatever [_messages] already holds for that id, the same
-  /// way the bubble resolves [RoomMessage.authorName]. If that comes up empty
-  /// too (the original is older than anything paged in yet), the quote shows
-  /// "unavailable" rather than a blank — [_scrollToMessage] still knows how
-  /// to look further before giving up.
+  /// The original as [_messages] holds it comes first, and the embedded
+  /// [RoomMessage.replyToPreview] only after it. The loaded copy is the live
+  /// one — realtime keeps it current when the original is edited or deleted
+  /// (IMM-208) — while the embed is a snapshot taken when the reply was
+  /// fetched, and would go on quoting the words the author has since taken
+  /// back. The embed still answers for an original older than anything paged
+  /// in. If neither knows it, the quote shows "unavailable" rather than a
+  /// blank — [_scrollToMessage] still knows how to look further before giving
+  /// up.
   RoomMessageReplyPreview? _resolveReplyPreview(
     RoomMessage message,
     Room? room,
   ) {
     final replyToId = message.replyToId;
     if (replyToId == null) return null;
-    if (message.replyToPreview != null) return message.replyToPreview;
     for (final candidate in _messages) {
       if (candidate.id != replyToId) continue;
       return RoomMessageReplyPreview(
@@ -864,7 +1007,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
         isDeleted: candidate.isDeleted,
       );
     }
-    return null;
+    return message.replyToPreview;
   }
 
   /// Scrolls to and briefly highlights the message a reply's quote points at.
@@ -1069,7 +1212,19 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                               message.authorId == viewerId && !message.isDeleted
                               ? () => _delete(message)
                               : null,
-                          onReply: message.isDeleted
+                          // Offered while the window is open; the server
+                          // checks it again and has the last word.
+                          onEdit:
+                              !_isSending &&
+                                  message.canBeEditedBy(
+                                    viewerId,
+                                    DateTime.now(),
+                                  )
+                              ? () => _startEdit(message)
+                              : null,
+                          // Not while editing: the reply would belong to the
+                          // draft set aside for the edit, not to the edit.
+                          onReply: message.isDeleted || _editTarget != null
                               ? null
                               : () => _startReply(message),
                           onTapReply: message.replyToId == null
@@ -1088,9 +1243,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-          if (_attachments.isNotEmpty)
+          if (_attachments.isNotEmpty || _editKept.isNotEmpty)
             _AttachmentStrip(
+              kept: _editKept,
               attachments: _attachments,
+              onRemoveKept: _isSending
+                  ? null
+                  : (item) => setState(() => _editKept.remove(item)),
               onRemove: _isSending
                   ? null
                   : (item) => setState(() {
@@ -1098,12 +1257,26 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                       _pendingSendToken = null;
                     }),
             ),
+          if (_editTarget case final target?)
+            _ComposerBanner(
+              title: l10n.editingMessageLabel,
+              snippet: _replyPreviewSnippet(
+                l10n,
+                isDeleted: false,
+                text: target.text,
+                hasMedia: target.media.isNotEmpty,
+              ),
+              cancelTooltip: l10n.cancelEditTooltip,
+              onCancel: _isSending ? null : _endEdit,
+            ),
           if (_replyTarget != null)
-            _ReplyComposerPreview(
-              authorName:
-                  room?.memberById(_replyTarget!.authorId)?.name ??
-                  _replyTarget!.authorName ??
-                  l10n.formerMemberLabel,
+            _ComposerBanner(
+              title: l10n.replyingToLabel(
+                room?.memberById(_replyTarget!.authorId)?.name ??
+                    _replyTarget!.authorName ??
+                    l10n.formerMemberLabel,
+              ),
+              cancelTooltip: l10n.cancelReplyTooltip,
               snippet: _replyPreviewSnippet(
                 l10n,
                 isDeleted: _replyTarget!.isDeleted,
@@ -1150,9 +1323,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                             width: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.send),
-                    tooltip: l10n.sendMessageTooltip,
-                    onPressed: _isSending ? null : _send,
+                        : Icon(_editTarget == null ? Icons.send : Icons.check),
+                    tooltip: _editTarget == null
+                        ? l10n.sendMessageTooltip
+                        : l10n.saveEditTooltip,
+                    onPressed: _isSending
+                        ? null
+                        : (_editTarget == null ? _send : _saveEdit),
                   ),
                 ],
               ),
@@ -1213,28 +1390,44 @@ class _DateSeparator extends StatelessWidget {
   }
 }
 
-/// The reply banner above the composer: who is being answered, a one-line
-/// quote of what they said, and a way out of reply mode. Same slot and same
-/// shape as [_AttachmentStrip] — both are "what this draft carries besides
-/// its text", shown above the input row only while there is one.
-class _ReplyComposerPreview extends StatelessWidget {
-  const _ReplyComposerPreview({
-    required this.authorName,
+/// What was in the composer when an edit began — see
+/// [_RoomChatScreenState._stashedDraft].
+class _ComposerDraft {
+  const _ComposerDraft({
+    required this.text,
+    required this.attachments,
+    required this.replyTarget,
+  });
+
+  final String text;
+  final List<PickedMedia> attachments;
+  final RoomMessage? replyTarget;
+}
+
+/// The banner above the composer that says what the draft is besides its
+/// text: a reply ("Replying to: …" and a quote of the original) or an edit
+/// ("Editing message" and the text being reworded), with a way out of that
+/// mode. Same slot and same shape as [_AttachmentStrip], shown above the
+/// input row only while there is one.
+class _ComposerBanner extends StatelessWidget {
+  const _ComposerBanner({
+    required this.title,
     required this.snippet,
+    required this.cancelTooltip,
     required this.onCancel,
   });
 
-  final String authorName;
+  final String title;
   final String snippet;
+  final String cancelTooltip;
 
   /// Null while a send is in flight — same reasoning as
-  /// [_AttachmentStrip.onRemove]: the reply is already part of the request
-  /// that's going out.
+  /// [_AttachmentStrip.onRemove]: the reply or edit is already part of the
+  /// request that's going out.
   final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
@@ -1254,7 +1447,7 @@ class _ReplyComposerPreview extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  l10n.replyingToLabel(authorName),
+                  title,
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.primary,
                   ),
@@ -1271,7 +1464,7 @@ class _ReplyComposerPreview extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.close),
             iconSize: 18,
-            tooltip: l10n.cancelReplyTooltip,
+            tooltip: cancelTooltip,
             onPressed: onCancel,
           ),
         ],
@@ -1586,6 +1779,7 @@ class _MessageBubble extends StatelessWidget {
     required this.replyPreview,
     this.isHighlighted = false,
     this.onDelete,
+    this.onEdit,
     this.onReply,
     this.onTapReply,
   });
@@ -1614,6 +1808,10 @@ class _MessageBubble extends StatelessWidget {
   final bool isHighlighted;
 
   final VoidCallback? onDelete;
+
+  /// Puts this message into the composer for editing. Null unless it is the
+  /// viewer's own, live, and still inside [messageEditWindow].
+  final VoidCallback? onEdit;
 
   /// Starts a reply addressed to this message. Null on a tombstone — see
   /// [_RoomChatScreenState._startReply].
@@ -1682,10 +1880,8 @@ class _MessageBubble extends StatelessWidget {
     return null;
   }
 
-  /// Long-press menu: reply (any live message) and delete (own, live
-  /// messages only) — the same two actions the old bare `onLongPress: onDelete`
-  /// offered, minus the ambiguity of overloading one gesture for both once
-  /// there were two things to do with a bubble.
+  /// Actions sheet: reply (any live message), edit (own, live, within 48
+  /// hours), delete (own, live) and report (someone else's live message).
   void _showActions(BuildContext context, AppLocalizations l10n) {
     showModalBottomSheet<void>(
       context: context,
@@ -1700,6 +1896,15 @@ class _MessageBubble extends StatelessWidget {
                 onTap: () {
                   Navigator.of(sheetContext).pop();
                   onReply!();
+                },
+              ),
+            if (onEdit != null)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: Text(l10n.editButton),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onEdit!();
                 },
               ),
             if (onDelete != null)
@@ -1737,7 +1942,7 @@ class _MessageBubble extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final hasActions = onReply != null || onDelete != null;
+    final hasActions = onReply != null || onEdit != null || onDelete != null;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -1822,6 +2027,19 @@ class _MessageBubble extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Before the time, the way messengers put it: the time
+                    // stays the sending time, the mark says the words since
+                    // changed.
+                    if (message.isEdited) ...[
+                      Text(
+                        l10n.editedMessageLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
                     Text(
                       DateFormat.Hm().format(message.createdAt),
                       style: theme.textTheme.labelSmall?.copyWith(
@@ -1843,72 +2061,136 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-/// The picked-but-not-yet-sent files, above the input.
+/// The draft's attachments, above the input: while editing, first the ones
+/// the message already has ([kept]), then the ones picked now
+/// ([attachments]).
 ///
-/// They are shown from the bytes already in hand (a video from its poster
-/// frame), so nothing here waits on the network: the upload happens on send.
+/// Picked files are shown from the bytes already in hand (a video from its
+/// poster frame), so nothing here waits on the network: the upload happens
+/// on send. Kept ones are already in the bucket and show whatever signature
+/// this session holds for them — the bubble being edited just drew them, so
+/// that is the ordinary case.
 class _AttachmentStrip extends StatelessWidget {
-  const _AttachmentStrip({required this.attachments, this.onRemove});
+  const _AttachmentStrip({
+    required this.attachments,
+    this.kept = const [],
+    this.onRemove,
+    this.onRemoveKept,
+  });
 
+  final List<RoomMessageMedia> kept;
   final List<PickedMedia> attachments;
 
   /// Null while a send is in flight — those files are already going up, and
   /// removing one then would leave the message and the bucket disagreeing.
   final void Function(PickedMedia item)? onRemove;
 
+  /// Same rule as [onRemove], for an attachment the edited message already
+  /// has.
+  final void Function(RoomMessageMedia item)? onRemoveKept;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    Widget removable({
+      required Widget thumbnail,
+      required bool isVideo,
+      required VoidCallback? onRemove,
+    }) => Stack(
+      children: [
+        ClipRRect(borderRadius: BorderRadius.circular(8), child: thumbnail),
+        if (isVideo)
+          const Positioned.fill(
+            child: Center(
+              child: Icon(
+                Icons.play_circle_fill,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+          ),
+        if (onRemove != null)
+          Positioned(
+            top: -8,
+            right: -8,
+            child: IconButton(
+              icon: const Icon(Icons.cancel),
+              iconSize: 20,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              tooltip: l10n.removeAttachmentTooltip,
+              onPressed: onRemove,
+            ),
+          ),
+      ],
+    );
+
     return SizedBox(
       height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: attachments.length,
+        itemCount: kept.length + attachments.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final item = attachments[index];
-          return Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image(
-                  image: sizedMemoryImage(
-                    context,
-                    item.previewBytes,
-                    logicalWidth: 80,
-                  ),
-                  width: 80,
-                  height: 80,
-                  fit: BoxFit.cover,
-                ),
+          if (index < kept.length) {
+            final item = kept[index];
+            return removable(
+              thumbnail: _KeptAttachmentThumbnail(item: item),
+              isVideo: item.isVideo,
+              onRemove: onRemoveKept == null ? null : () => onRemoveKept!(item),
+            );
+          }
+          final item = attachments[index - kept.length];
+          return removable(
+            thumbnail: Image(
+              image: sizedMemoryImage(
+                context,
+                item.previewBytes,
+                logicalWidth: 80,
               ),
-              if (item.isVideo)
-                const Positioned.fill(
-                  child: Center(
-                    child: Icon(
-                      Icons.play_circle_fill,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              if (onRemove != null)
-                Positioned(
-                  top: -8,
-                  right: -8,
-                  child: IconButton(
-                    icon: const Icon(Icons.cancel),
-                    iconSize: 20,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    tooltip: l10n.removeAttachmentTooltip,
-                    onPressed: () => onRemove!(item),
-                  ),
-                ),
-            ],
+              width: 80,
+              height: 80,
+              fit: BoxFit.cover,
+            ),
+            isVideo: item.isVideo,
+            onRemove: onRemove == null ? null : () => onRemove!(item),
           );
         },
       ),
+    );
+  }
+}
+
+/// An attachment the message being edited already has, as an 80×80
+/// thumbnail in [_AttachmentStrip]. Reads the signature from the session's
+/// cache only: the bubble this edit started from has just signed it, and a
+/// miss just means a grey square for a file that is still there.
+class _KeptAttachmentThumbnail extends ConsumerWidget {
+  const _KeptAttachmentThumbnail({required this.item});
+
+  final RoomMessageMedia item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final path = item.isVideo
+        ? (item.posterPath ?? item.storagePath)
+        : item.storagePath;
+    final url = ref.read(roomsRepositoryProvider).cachedMediaUrls([path])[path];
+    if (url == null) {
+      return const SizedBox(
+        width: 80,
+        height: 80,
+        child: ColoredBox(color: Colors.black12),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      // Keyed on the path, as in the bubble: the signature's query string
+      // changes on every signing.
+      cacheKey: path,
+      width: 80,
+      height: 80,
+      fit: BoxFit.cover,
     );
   }
 }
@@ -1974,9 +2256,9 @@ class _MessageMediaState extends ConsumerState<_MessageMedia> {
   }
 
   /// Whether two attachment lists describe the same objects. By storage path,
-  /// which is the object's identity for its whole life — a message's media is
-  /// never edited, so this only ever answers "a different message landed in
-  /// this slot".
+  /// which is the object's identity for its whole life. A difference means
+  /// either a different message landed in this slot or this one was edited
+  /// (IMM-208) — either way the list has to be signed again.
   static bool _sameMedia(List<RoomMessageMedia> a, List<RoomMessageMedia> b) {
     if (identical(a, b)) return true;
     if (a.length != b.length) return false;

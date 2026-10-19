@@ -275,6 +275,10 @@
   "removeAttachmentTooltip": "Убрать вложение",
   "noMessagesYetMessage": "Здесь пока тихо. Напишите первое сообщение.",
   "deletedMessageLabel": "Сообщение удалено",
+  "editedMessageLabel": "изменено",
+  "editingMessageLabel": "Редактирование",
+  "cancelEditTooltip": "Отменить редактирование",
+  "saveEditTooltip": "Сохранить",
   "deleteMessageDialogTitle": "Удалить сообщение?",
   "deleteMessageDialogContent": "Оно исчезнет у всех в комнате, останется только пометка.",
   "formerMemberLabel": "Бывший участник",
@@ -298,6 +302,8 @@
   "failedToLoadMessagesError": "Не удалось загрузить сообщения. Попробуйте ещё раз.",
   "failedToSendMessageError": "Не удалось отправить. Попробуйте ещё раз.",
   "failedToDeleteMessageError": "Не удалось удалить сообщение. Попробуйте ещё раз.",
+  "failedToEditMessageError": "Не удалось сохранить изменения. Попробуйте ещё раз.",
+  "editWindowPassedError": "Сообщение можно изменить только в течение 48 часов после отправки.",
 
   "notifyRoomMessagesLabel": "Сообщения в комнатах",
 

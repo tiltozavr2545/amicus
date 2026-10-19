@@ -1406,6 +1406,30 @@ abstract class AppLocalizations {
   /// **'Message deleted'**
   String get deletedMessageLabel;
 
+  /// No description provided for @editedMessageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'edited'**
+  String get editedMessageLabel;
+
+  /// No description provided for @editingMessageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Editing message'**
+  String get editingMessageLabel;
+
+  /// No description provided for @cancelEditTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel editing'**
+  String get cancelEditTooltip;
+
+  /// No description provided for @saveEditTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get saveEditTooltip;
+
   /// No description provided for @deleteMessageDialogTitle.
   ///
   /// In en, this message translates to:
@@ -1471,6 +1495,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to delete the message. Please try again.'**
   String get failedToDeleteMessageError;
+
+  /// No description provided for @failedToEditMessageError.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save the changes. Please try again.'**
+  String get failedToEditMessageError;
+
+  /// No description provided for @editWindowPassedError.
+  ///
+  /// In en, this message translates to:
+  /// **'A message can only be edited within 48 hours of sending.'**
+  String get editWindowPassedError;
 
   /// No description provided for @notifyRoomMessagesLabel.
   ///

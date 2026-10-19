@@ -782,6 +782,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deletedMessageLabel => 'Message deleted';
 
   @override
+  String get editedMessageLabel => 'edited';
+
+  @override
+  String get editingMessageLabel => 'Editing message';
+
+  @override
+  String get cancelEditTooltip => 'Cancel editing';
+
+  @override
+  String get saveEditTooltip => 'Save';
+
+  @override
   String get deleteMessageDialogTitle => 'Delete message?';
 
   @override
@@ -820,6 +832,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get failedToDeleteMessageError =>
       'Failed to delete the message. Please try again.';
+
+  @override
+  String get failedToEditMessageError =>
+      'Failed to save the changes. Please try again.';
+
+  @override
+  String get editWindowPassedError =>
+      'A message can only be edited within 48 hours of sending.';
 
   @override
   String get notifyRoomMessagesLabel => 'Messages in rooms';
