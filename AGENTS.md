@@ -51,6 +51,10 @@ SQL/PostgreSQL и C#/.NET. Работать пошагово, не забега�
 
 ## Конвенции работы
 
+- **Write all repo-facing text in English**: commit messages, docs,
+  code comments/docstrings, and GitHub release bodies. Exception:
+  anything genuinely user-facing that the app itself produces, and any
+  real localization resource — those stay as-is.
 - **Миграции применяются вручную** через Supabase Management API
   (`POST /v1/projects/<ref>/database/query`). CI **не** делает `supabase db push`.
   Токен даёт пользователь на время задачи, в репозиторий и в память не пишется.
