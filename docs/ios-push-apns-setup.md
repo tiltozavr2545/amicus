@@ -50,8 +50,8 @@ configuration**. Under the iOS app `com.github.tiltozavr2545.amicus`:
 **The functional check, from the database.** Useful when you cannot get into
 the Firebase console, or want to confirm that delivery actually works rather
 than that a key merely exists. Queue one notification to yourself through the
-Management API (`POST /v1/projects/<ref>/database/query`, see «Конвенции
-работы» in [../AGENTS.md](../AGENTS.md)):
+Management API (`POST /v1/projects/<ref>/database/query`, see "Working
+conventions" in [../AGENTS.md](../AGENTS.md)):
 
 ```sql
 -- Any kind works; `app_update` is the one whose text needs no payload fields.

@@ -325,20 +325,20 @@ class _PostListViewState extends ConsumerState<PostListView> {
       await ref
           .read(feedRepositoryProvider)
           .deletePost(postId: post.id, mediaStoragePaths: mediaPaths);
-      // Убрать из СВОЕГО списка мало. Живых PostListView одновременно
-      // несколько: лента и профиль — две ветки shell'а в IndexedStack, плюс
-      // FriendProfileScreen сверху. Удалили пост из профиля — во вкладке
-      // ленты он остаётся, и остаётся кликабельным: реакцию по нему RLS
-      // отбивает («Users can like posts they can see» требует существования
-      // строки в posts), а [_react] эту ошибку молча откатывает, комментарии
-      // открываются пустыми, повторное «Удалить» задевает ноль строк и
-      // считается успехом.
+      // Removing it from your OWN list is not enough. Several live
+      // PostListViews exist at once: the feed and the profile are two shell
+      // branches in an IndexedStack, plus FriendProfileScreen on top. Delete a
+      // post from the profile and it stays in the feed tab, still tappable: RLS
+      // rejects a reaction on it ("Users can like posts they can see" requires
+      // the row to exist in posts), and [_react] silently rolls that error
+      // back, comments open empty, and a repeated "Delete" touches zero rows
+      // and counts as success.
       //
-      // Ровно та несогласованность, ради которой заведён
-      // [feedRefreshTickProvider] — и правка поста, и mute/block, и новый
-      // пост через него уже проходят. Удаление было единственной мутацией
-      // ленты, которая его не дёргала. Локальное removeWhere ниже при этом
-      // остаётся: оно убирает карточку сразу, не дожидаясь перезапроса.
+      // This is exactly the inconsistency [feedRefreshTickProvider] exists for
+      // — editing a post, mute/block, and a new post already go through it.
+      // Deletion was the only feed mutation that didn't poke it. The local
+      // removeWhere below stays anyway: it removes the card immediately,
+      // without waiting for the refetch.
       container.read(feedRefreshTickProvider.notifier).bump();
       if (!mounted) return;
       // Remove by id, not the captured index: the list may have shifted (a
@@ -365,19 +365,19 @@ class _PostListViewState extends ConsumerState<PostListView> {
     }
   }
 
-  /// Ставит на карточку то число комментариев, которое [CommentsScreen] только
-  /// что увидел у сервера.
+  /// Sets on the card the comment count that [CommentsScreen] has just seen on
+  /// the server.
   ///
-  /// Без этого счётчик не менялся вообще никогда: экран комментариев
-  /// открывался без `.then`, ничего не возвращал и тик обновления не дёргал,
-  /// так что человек писал комментарий, возвращался — и видел прежнее число.
-  /// Удаление своего комментария оставляло число завышенным. До первого
+  /// Without this the counter never changed at all: the comments screen was
+  /// opened without `.then`, returned nothing and didn't poke the refresh tick,
+  /// so a person would write a comment, come back — and see the old number.
+  /// Deleting your own comment left the number too high. Until the first
   /// pull-to-refresh.
   ///
-  /// По id, а не по индексу, и с проверкой [mounted] — экран висит поверх
-  /// списка сколько угодно долго, за это время список мог обновиться целиком
-  /// или уехать вместе с вкладкой (та же причина, что у [_deletePost] и
-  /// [_react]).
+  /// By id, not by index, and with a [mounted] check — the screen sits on top
+  /// of the list for as long as it likes, and in that time the list may have
+  /// been refreshed entirely or gone away with its tab (same reason as in
+  /// [_deletePost] and [_react]).
   void _updateCommentCount(String postId, int count) {
     if (!mounted) return;
     final at = _posts.indexWhere((p) => p.id == postId);
@@ -437,10 +437,11 @@ class _PostListViewState extends ConsumerState<PostListView> {
       // Superseded: a newer tap owns the card now, and this request has no idea
       // what has happened since it went out. Staying quiet is the whole fix.
       if (_reactionSeq[post.id] != seq) return;
-      // Запрет писать — единственный отказ здесь, о котором надо сказать
-      // вслух. Остальные молчат намеренно: реакция откатится, и повторный
-      // тап стоит ничего. Но забанённому откат без объяснения выглядит как
-      // «кнопка сломалась», а он ровно тот человек, которому причина нужна.
+      // A write ban is the only refusal here that has to be said out loud. The
+      // others stay quiet on purpose: the reaction rolls back, and tapping
+      // again costs nothing. But to a banned person a rollback without
+      // explanation looks like "the button is broken", and they are exactly the
+      // person who needs the reason.
       final bannedUntil = writeBanUntil(e);
       if (bannedUntil != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -606,19 +607,19 @@ class _PostCard extends StatelessWidget {
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
-                // Меню есть у каждого поста, но пункты в нём зависят от того,
-                // чей он: своим постом управляют, на чужой жалуются. Пункт
-                // «пожаловаться» на собственном посте был бы не просто
-                // лишним — жалоба на себя отбивается сервером (AMR02), и
-                // предлагать действие, которое заведомо не сработает, хуже,
-                // чем не предлагать его вовсе.
-                // Размер задан рамкой снаружи, а не свойством кнопки:
-                // `PopupMenuButton` не принимает `visualDensity`, а
-                // дефолтный тап-таргет в 48px приносит в шапку КАЖДОЙ
-                // карточки лишние ~28px высоты. Пока меню было только у
-                // своих постов, это касалось единиц из списка; теперь оно у
-                // всех, и лента заметно вытянулась бы. Мельче соседнего
-                // чипа не делаем — по нему и выровнено.
+                // Every post has a menu, but its items depend on whose post it
+                // is: you manage your own post, you report someone else's. A
+                // "report" item on your own post would be not just superfluous
+                // — reporting yourself is rejected by the server (AMR02), and
+                // offering an action that is bound not to work is worse than
+                // not offering it at all. The size is set by an outer frame,
+                // not by a button property: `PopupMenuButton` doesn't accept
+                // `visualDensity`, and the default 48px tap target adds an
+                // extra ~28px of height to the header of EVERY card. While only
+                // your own posts had the menu, that affected a handful in the
+                // list; now everyone's does, and the feed would visibly
+                // stretch. We don't go smaller than the neighbouring chip —
+                // it's what this is aligned to.
                 SizedBox(
                   height: 32,
                   width: 32,

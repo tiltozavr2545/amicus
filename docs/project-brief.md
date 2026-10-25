@@ -1,98 +1,98 @@
-# Бриф проекта: Amicus (ранее «Круг»)
+# Project brief: Amicus (formerly "Круг", "Circle")
 
-> Соцсеть-лента, где ты видишь посты только тех людей, с которыми познакомился по-настоящему — через личную встречу или приглашение от друга.
+> A feed-style social network where you only see posts from people you've genuinely met — in person or through an invite from a friend.
 
-Финальное название — **Amicus** (латынь, «друг»). Изначально проект шёл под рабочим названием «Круг» — в остальном тексте брифа встречаются оба варианта, это один и тот же проект.
+The final name is **Amicus** (Latin for "friend"). The project was originally developed under the working name "Круг" ("Circle") — both names appear in the rest of the brief; it's the same project.
 
-**Документ исторический.** Он описывает MVP (0.1) таким, каким тот задумывался до начала разработки, и оставлен как есть — чтобы было видно, откуда проект вырос и где реальность с замыслом разошлась. Что получилось на самом деле: действующая схема — в [data-model.md](data-model.md), история версий — в [../CHANGELOG.md](../CHANGELOG.md), незакрытое — в [future-development.md](future-development.md), как шёл сам MVP — в [implementation-plan.md](implementation-plan.md).
-
----
-
-## 1. Зачем это вообще нужно (позиционирование)
-
-Большинство соцсетей строятся вокруг публичности и алгоритмической ленты незнакомцев. Amicus — противоположность: доступ в твою ленту получают только те, кого ты реально встретил или кому доверяешь. Это ближе к концепции Path (закрытая лента для близких) и BeReal (антипостановочность), но с уникальной механикой — **верификацией знакомства** (в MVP; **комнаты** как приватные под-пространства внутри общего круга — фича будущих версий *(сделаны в 0.17.0 — см. «Комнаты» в [data-model.md](data-model.md))*).
-
-Для портфолио это хорошая история: есть чёткая идея, есть нетривиальная модель данных (не просто CRUD ленты), есть что показать на собеседовании — «почему я выбрал именно такую архитектуру доступа».
+**This document is historical.** It describes the MVP (0.1) as it was conceived before development started, and is kept as is — to show where the project grew from and where reality diverged from the plan. What actually came out: the current schema is in [data-model.md](data-model.md), the version history is in [../CHANGELOG.md](../CHANGELOG.md), what's still open is in [future-development.md](future-development.md), how the MVP itself went is in [implementation-plan.md](implementation-plan.md).
 
 ---
 
-## 2. Механика продукта (уточнённое описание)
+## 1. Why this is needed at all (positioning)
 
-**Знакомство (Connection).** Два человека становятся «знакомыми» одним из способов:
-- Пригласивший генерирует одноразовую invite-ссылку и присылает её любым способом (Telegram, WhatsApp и т.д.);
-- Сканирование QR-кода при личной встрече (более сильная гарантия, что встреча реальная) — **в MVP не входит, см. future-development.md**.
+Most social networks are built around publicity and an algorithmic feed of strangers. Amicus is the opposite: only people you've actually met or trust get access to your feed. It's closer to the concept of Path (a closed feed for close friends) and BeReal (anti-staged content), but with a unique mechanic — **connection verification** (in the MVP; **rooms** as private sub-spaces inside the shared circle are a feature of future versions *(shipped in 0.17.0 — see "Rooms" in [data-model.md](data-model.md))*).
 
-**Общая лента.** Посты, которые видят все, с кем у тебя есть Connection. У каждого пользователя лента своя — это пересечение его собственных знакомств, а не общий паблик. В MVP это единственная лента — публикация идёт только сюда.
-
-**Комнаты (Rooms)** — приватные под-пространства внутри круга со своей изолированной лентой — **в MVP не входят** *(сделаны позже, в 0.17.0, вместе с чатом комнаты — см. «Комнаты» в [data-model.md](data-model.md))*.
-
-**Реакции на пост.**
-- Лайк со счётчиком (в MVP — единственная реакция);
-- Дополнительные эмоции (набор смайликов) — **в MVP не входит, см. future-development.md**;
-- Комментарии — привязаны к посту (группируются по `post_id`, у каждого поста свой список), **плоские, без тредов** в MVP (ответ на конкретный комментарий — см. future-development.md).
+For a portfolio this is a good story: there's a clear idea, there's a non-trivial data model (not just feed CRUD), there's something to show at an interview — "why I chose exactly this access architecture".
 
 ---
 
-## 3. Модель данных (упрощённо)
+## 2. Product mechanics (refined description)
 
-Ты уже проходил ER-моделирование и нормализацию в рамках лаб по БД — эта модель прямо ложится на то, что ты делал:
+**Connection.** Two people become "connections" in one of these ways:
+- The inviter generates a one-time invite link and sends it by any means (Telegram, WhatsApp, etc.);
+- Scanning a QR code when meeting in person (a stronger guarantee that the meeting was real) — **not in the MVP, see future-development.md**.
 
-| Сущность | Ключевые поля | Комментарий |
+**Main feed.** Posts seen by everyone you have a Connection with. Each user has their own feed — it's the intersection of their own connections, not a shared public page. In the MVP this is the only feed — posts are published only here.
+
+**Rooms** — private sub-spaces inside the circle with their own isolated feed — **not in the MVP** *(shipped later, in 0.17.0, together with room chat — see "Rooms" in [data-model.md](data-model.md))*.
+
+**Post reactions.**
+- A like with a counter (the only reaction in the MVP);
+- Additional emotions (a set of emoji) — **not in the MVP, see future-development.md**;
+- Comments — attached to a post (grouped by `post_id`, each post has its own list), **flat, no threads** in the MVP (replying to a specific comment — see future-development.md).
+
+---
+
+## 3. Data model (simplified)
+
+You've already done ER modeling and normalization in the database labs — this model maps directly onto what you did:
+
+| Entity | Key fields | Comment |
 |---|---|---|
-| **User** | id, name, avatar, created_at | Профиль пользователя |
-| **Connection** | user_a_id, user_b_id, method, created_at | Связь «знакомы»; method = invite_link / qr_code |
-| **InviteLink** | id, owner_id, code, used_by_id, is_used, created_at | Одноразовая ссылка-приглашение |
-| **Post** | id, author_id, text, image_url, created_at | Сам пост |
-| **Reaction** | id, post_id, user_id, type, created_at | Лайк/эмоция |
-| **Comment** | id, post_id, author_id, parent_comment_id (nullable), text, created_at | Комментарий; `post_id` — группировка по постам (индекс для быстрой выборки списка комментариев конкретного поста), parent — для тредов (в реальную схему MVP это поле, вопреки этой строке, не попало: добавлено только в 0.10.0, см. CHANGELOG.md) |
+| **User** | id, name, avatar, created_at | User profile |
+| **Connection** | user_a_id, user_b_id, method, created_at | The "connected" link; method = invite_link / qr_code |
+| **InviteLink** | id, owner_id, code, used_by_id, is_used, created_at | One-time invite link |
+| **Post** | id, author_id, text, image_url, created_at | The post itself |
+| **Reaction** | id, post_id, user_id, type, created_at | Like/emotion |
+| **Comment** | id, post_id, author_id, parent_comment_id (nullable), text, created_at | Comment; `post_id` — grouping by post (an index for quickly fetching the comment list of a given post), parent — for threads (contrary to this row, this field didn't make it into the actual MVP schema: it was added only in 0.10.0, see CHANGELOG.md) |
 
-Это черновик, не финальная DDL — таблицы и связи дорабатывались по ходу. **Действующая схема — в [data-model.md](data-model.md)**, и она заметно шире: одиночное `image_url` стало таблицей `post_media` (до 20 фото/видео), аватарка — галереей `profile_photos`, добавились mute/block/избранное, уведомления и настройки. Таблицу выше читать как замысел, а не как справку.
-
----
-
-## 4. Что делать в MVP (0.1)
-
-Ты новичок в мобильной разработке, поэтому важно не утонуть — разумно урезать первую версию.
-
-- Регистрация/вход
-- Профиль (имя, аватар)
-- Invite-ссылка: создать и активировать чужую → появляется Connection
-- Общая лента: просмотр + создание поста (текст + одна фотография), публикация видна всем Connections
-- Лайк со счётчиком
-- Комментарии — список на экране поста, сгруппированный по этому посту (`post_id`), без вложенности (плоский список, чтобы не усложнять)
-
-Всё остальное — 1.0 и 2.0+ — в [future-development.md](future-development.md).
+This is a draft, not the final DDL — the tables and relations were refined along the way. **The current schema is in [data-model.md](data-model.md)**, and it's noticeably broader: the single `image_url` became the `post_media` table (up to 20 photos/videos), the avatar became the `profile_photos` gallery, mute/block/favorites, notifications and settings were added. Read the table above as the original intent, not as a reference.
 
 ---
 
-## 5. Рекомендуемый стек
+## 4. What to do in the MVP (0.1)
 
-Ты пишешь, что в мобильной разработке новичок, но уже знаешь SQL/PostgreSQL и C#/.NET из лаб по базам данных — это отличная база, я буду отталкиваться от неё.
+You're new to mobile development, so it's important not to drown — it makes sense to cut down the first version.
 
-**Frontend (само приложение): Flutter**
-- Flutter — фреймворк от Google, пишется на языке Dart. Один код сразу работает и на Android, и на iOS — не нужно писать приложение дважды.
-- Dart синтаксически близок к C# (классы, типизация, ООП) — тебе будет проще перестроиться, чем с чистого JavaScript (это язык альтернативного фреймворка React Native).
-- Огромное количество официальных туториалов и понятная документация — хорошо для первого мобильного проекта.
+- Sign-up/sign-in
+- Profile (name, avatar)
+- Invite link: create one and activate someone else's → a Connection appears
+- Main feed: viewing + creating a post (text + one photo), the post is visible to all Connections
+- A like with a counter
+- Comments — a list on the post screen, grouped by that post (`post_id`), no nesting (a flat list, to keep things simple)
 
-**Backend (сервер + база данных): Supabase**
-- Supabase — это сервис, который даёт тебе готовую PostgreSQL-базу в облаке + авторизацию пользователей + хранилище файлов (для фото) + realtime-обновления (лента обновляется сама, без перезагрузки) — всё это без необходимости самому поднимать сервер.
-- Раз ты уже писал SQL и работал с PostgreSQL напрямую — здесь ты применяешь ровно те же знания: пишешь схему, настраиваешь связи, а Supabase берёт на себя всю "инфраструктурную" рутину (сервер, деплой, безопасность подключения).
-- Row Level Security (правила уровня строк в самой базе — кто что может читать/писать) прекрасно ложится на логику "кто видит какой пост", которую ты и так должен продумать.
-
-Альтернатива на будущее (переход со Supabase на свой backend) — см. [future-development.md](future-development.md).
+Everything else — 1.0 and 2.0+ — is in [future-development.md](future-development.md).
 
 ---
 
-## 6. Дорожная карта по этапам
+## 5. Recommended stack
 
-**Этап 0 — Подготовка.** Установить Flutter, пройти официальный стартовый туториал (простое приложение-счётчик — это стандартный первый шаг у всех новичков), создать проект в Supabase, завести репозиторий на GitHub.
+You say you're new to mobile development, but you already know SQL/PostgreSQL and C#/.NET from the database labs — that's a great foundation, and I'll build on it.
 
-**Этап 1 — Скелет.** Экран регистрации/входа, подключение Supabase Auth, экран профиля, сохранение пользователя в базе.
+**Frontend (the app itself): Flutter**
+- Flutter is a framework from Google, written in the Dart language. One codebase runs on both Android and iOS — no need to write the app twice.
+- Dart is syntactically close to C# (classes, typing, OOP) — it'll be easier for you to adapt than with plain JavaScript (the language of the alternative framework, React Native).
+- A huge number of official tutorials and clear documentation — good for a first mobile project.
 
-**Этап 2 — Знакомства.** Генерация invite-ссылки, активация чужой ссылки (для начала можно просто вводом кода вручную, без диплинков — это сложнее), таблица Connection.
+**Backend (server + database): Supabase**
+- Supabase is a service that gives you a ready-made PostgreSQL database in the cloud + user authentication + file storage (for photos) + realtime updates (the feed refreshes on its own, without reloading) — all without having to run a server yourself.
+- Since you've already written SQL and worked with PostgreSQL directly — here you apply exactly the same knowledge: you write the schema, set up relations, and Supabase takes care of all the "infrastructure" routine (server, deployment, connection security).
+- Row Level Security (row-level rules in the database itself — who can read/write what) maps perfectly onto the "who sees which post" logic that you have to think through anyway.
 
-**Этап 3 — Общая лента.** Модель поста, список постов, экран создания поста, загрузка фото в Supabase Storage.
+An alternative for the future (moving from Supabase to your own backend) — see [future-development.md](future-development.md).
 
-**Этап 4 — Реакции и комментарии.** Лайк + счётчик, плоские комментарии.
+---
 
-**Этап 5 — Полировка под портфолио.** Причёсать интерфейс, обработать пустые состояния и ошибки, написать README, записать короткое демо-видео, при желании — собрать тестовую сборку (TestFlight / Play Internal Testing), чтобы друзья реально могли попробовать.
+## 6. Stage-by-stage roadmap
+
+**Stage 0 — Setup.** Install Flutter, go through the official getting-started tutorial (a simple counter app — the standard first step for every beginner), create a Supabase project, set up a GitHub repository.
+
+**Stage 1 — Skeleton.** Sign-up/sign-in screen, Supabase Auth integration, profile screen, saving the user in the database.
+
+**Stage 2 — Connections.** Generating an invite link, activating someone else's link (to start with, simply by entering the code manually, without deep links — those are harder), the Connection table.
+
+**Stage 3 — Main feed.** Post model, post list, post creation screen, uploading photos to Supabase Storage.
+
+**Stage 4 — Reactions and comments.** Like + counter, flat comments.
+
+**Stage 5 — Portfolio polish.** Tidy up the UI, handle empty states and errors, write a README, record a short demo video, optionally — make a test build (TestFlight / Play Internal Testing) so friends can actually try it.

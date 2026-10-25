@@ -1916,8 +1916,9 @@ class _MessageBubble extends StatelessWidget {
                   onDelete!();
                 },
               ),
-            // Чужое живое сообщение. На заглушку удалённого жаловаться не на
-            // что, на своё — некому: сервер отбивает жалобу на себя (AMR02).
+            // Someone else's live message. There is nothing to report on the
+            // placeholder of a deleted one, and nobody to report on your own: the
+            // server rejects a report against yourself (AMR02).
             if (!isMine && !message.isDeleted)
               ListTile(
                 leading: const Icon(Icons.flag_outlined),

@@ -103,11 +103,11 @@ class FriendProfileScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(friendName),
         actions: [
-          // Жалоба на человека, а не на отдельный пост: для случая, когда
-          // дело не в одной публикации. Экран открывается только для
-          // знакомого, то есть для того, кто и так видим, — проверка
-          // `can_report('user', …)` на сервере это подтвердит, а не узнает
-          // впервые.
+          // A report about the person rather than a single post: for when
+          // the problem isn't one particular post. The screen opens only for
+          // a connection, i.e. someone who is visible anyway — the server's
+          // `can_report('user', …)` check will confirm that rather than
+          // learn it for the first time.
           PopupMenuButton<void>(
             itemBuilder: (context) => [
               PopupMenuItem(

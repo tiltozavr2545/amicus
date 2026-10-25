@@ -72,7 +72,7 @@ export function Broadcast() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount — load is redefined every render (closes over `build`), so adding it would re-trigger on every state change it causes.
   useEffect(() => {
     void load(null);
-    // Первая загрузка берёт цель из pubspec; дальше её меняет только поле.
+    // The first load takes the target from pubspec; after that only the field changes it.
   }, []);
 
   if (error) return <Fail message={error} onRetry={() => load(build)} />;

@@ -64,11 +64,12 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       // and coming back to a list to find it again is a wasted tap. Replacing
       // this route rather than stacking on it keeps Back going to the list.
       //
-      // `unawaited`, и `await` здесь был бы ошибкой: Future от
-      // `pushReplacement()` завершается только когда уйдут уже с ЧАТА, а
-      // `finally` ниже снимает `_isSubmitting` — то есть экран, которого к
-      // тому моменту нет, и `mounted` там уже false. Ждать нечего: этот
-      // маршрут заменяется, и продолжения у функции нет.
+      // `unawaited`, and an `await` here would be a bug: the Future from
+      // `pushReplacement()` completes only once the CHAT has itself been left,
+      // while the `finally` below clears `_isSubmitting` - that is, on a screen
+      // that no longer exists by then, where `mounted` is already false. There
+      // is nothing to wait for: this route is being replaced and the function
+      // has no continuation.
       unawaited(
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(

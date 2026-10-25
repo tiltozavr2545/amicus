@@ -1,256 +1,258 @@
-# Устройство клиента
+# Client architecture
 
-Решения и поведение Flutter-приложения, которых не видно из схемы: чем оно
-собрано, что делает сам клиент и почему именно он. Отдельно от
-[data-model.md](data-model.md), потому что это не схема: там — что гарантирует
-база, здесь — что делает приложение поверх неё.
+Decisions and behaviour of the Flutter app that the schema doesn't show: what
+it's built with, what the client itself does, and why the client is the one
+doing it. Kept separate from [data-model.md](data-model.md) because this isn't
+schema: that file is what the database guarantees, this one is what the app
+does on top of it.
 
-Границу стоит держать в голове при чтении обоих файлов: **всё, что здесь, —
-не гарантия.** Правленый клиент может повести себя иначе, и ни одно правило
-безопасности на этот файл не опирается — они все в RLS, см.
-[data-model.md](data-model.md). Здесь то, что определяет удобство и
-корректность обычной работы, а не то, что кого-то от чего-то защищает.
+Keep the boundary in mind when reading both files: **nothing here is a
+guarantee.** A modified client can behave differently, and no security rule
+relies on this file — they all live in RLS, see
+[data-model.md](data-model.md). This is what determines convenience and
+correctness of normal operation, not what protects anyone from anything.
 
-**Почему** конкретное серверное решение принято так — по-прежнему в
-комментарии соответствующей миграции. Что появилось в какой версии — в
+**Why** a given server-side decision was made the way it was is still in the
+comment of the corresponding migration. What appeared in which version is in
 [../CHANGELOG.md](../CHANGELOG.md).
 
 ---
 
-## Технические решения по умолчанию
+## Default technical choices
 
-Список живой: это то, чем проект собран сейчас, а не то, чем его собирались
-собрать. Отклонения (например, замена Riverpod на что-то другое) стоит
-фиксировать здесь же, чтобы они не расходились с реальностью молча.
+The list is live: it's what the project is built with now, not what it was
+meant to be built with. Deviations (e.g. replacing Riverpod with something
+else) should be recorded here too, so they don't silently drift from reality.
 
 - **State management:** Riverpod
-- **Навигация:** go_router
+- **Navigation:** go_router
 - **Backend SDK:** supabase_flutter
-- **Кеширование картинок:** cached_network_image
-- **Версионирование схемы БД:** файлы миграций в репозитории (не ручные правки
-  в дашборде); накат — вручную через Management API, порядок в разделе
-  «Конвенции работы» [../AGENTS.md](../AGENTS.md), эксплуатационная часть — в
-  [operations.md](operations.md)
-- **Линтинг/форматирование:** flutter_lints + `dart format`, проверяются в CI с
-  первого коммита
-- **Структура репозитория:** `app/` — Flutter-проект (org
-  `com.github.tiltozavr2545`, имя пакета `amicus`), `supabase/` — схема и Edge
-  Function, `docs/` — документация; полное дерево — в
+- **Image caching:** cached_network_image
+- **DB schema versioning:** migration files in the repository (not manual edits
+  in the dashboard); applied manually via the Management API, the procedure is
+  in "Working conventions" in [../AGENTS.md](../AGENTS.md), the operational
+  side in [operations.md](operations.md)
+- **Linting/formatting:** flutter_lints + `dart format`, checked in CI from the
+  first commit
+- **Repository layout:** `app/` — the Flutter project (org
+  `com.github.tiltozavr2545`, package name `amicus`), `supabase/` — schema and
+  Edge Function, `docs/` — documentation; the full tree is in
   [../README.md](../README.md)
-- **Название проекта:** Amicus (переименовано с рабочего «Круг» после старта
-  разработки — см. [project-brief.md](project-brief.md))
-- **Репозиторий:** [github.com/tiltozavr2545/amicus](https://github.com/tiltozavr2545/amicus)
-  (публичный)
-- **Версия Flutter:** закреплена на 3.32.8 (SDK в `~/development/flutter`) —
-  новее нельзя, пока dev-машина на macOS 12; ограничения среды целиком
-  перечислены в [../AGENTS.md](../AGENTS.md)
-- **Supabase API keys:** используется новый формат (Publishable/Secret вместо
-  legacy anon/service_role) — в `SUPABASE_ANON_KEY` кладётся именно Publishable
-  key (`sb_publishable_…`); Secret key нигде в клиентском коде не используется
+- **Project name:** Amicus (renamed from the working title "Круг" after
+  development started — see [project-brief.md](project-brief.md))
+- **Repository:** [github.com/tiltozavr2545/amicus](https://github.com/tiltozavr2545/amicus)
+  (public)
+- **Flutter version:** pinned to 3.32.8 (SDK in `~/development/flutter`) —
+  nothing newer while the dev machine is on macOS 12; the full list of
+  environment constraints is in [../AGENTS.md](../AGENTS.md)
+- **Supabase API keys:** the new format is used (Publishable/Secret instead of
+  legacy anon/service_role) — `SUPABASE_ANON_KEY` holds the Publishable key
+  (`sb_publishable_…`); the Secret key is not used anywhere in client code
 
-## Сначала строки, потом объекты
+## Rows first, then objects
 
-Правило, на которое `data-model.md` ссылается именем
-(`deleteRowsThenObjects`, `lib/shared/delete_order.dart`), а живёт оно здесь,
-потому что исполняет его клиент: **строка, указывающая на удалённый объект, —
-это поломка, которую видят все; объект, на который никто не указывает, — это
-байты, которых не видит никто.** Значит из двух половин удаления первой обязана
-пройти та, что убирает ссылку.
+A rule that `data-model.md` refers to by name
+(`deleteRowsThenObjects`, `lib/shared/delete_order.dart`), but it lives here
+because the client is what enforces it: **a row pointing at a deleted object is
+breakage everyone sees; an object nothing points at is bytes nobody sees.** So
+of the two halves of a deletion, the one that removes the reference must go
+first.
 
-Вторая половина, объектная, при этом всегда best-effort: после того как строки
-закоммичены, операция удалась с точки зрения любого наблюдателя, и сообщить об
-упавшей уборке как о неудавшемся удалении значило бы соврать и позвать на
-повторную попытку того, что уже сделано. Ошибка первой половины, наоборот,
-пробрасывается, и до второй дело не доходит.
+The second, object half is always best-effort: once the rows are committed,
+the operation has succeeded from any observer's point of view, and reporting a
+failed cleanup as a failed deletion would be a lie that invites retrying
+something already done. An error in the first half, on the contrary, is
+rethrown, and the second half never runs.
 
-Порядок был перепутан сразу во всех трёх местах, которые тогда существовали, и
-каждое ломалось по-своему: удаление поста оставляло в ленте у всех знакомых
-битую картинку, удаление фото профиля роняло `users.avatar_path` на
-несуществующий файл (аватарка пропадала разом везде), а удаление аккаунта
-успевало уничтожить все фотографии — и падало, оставляя живой аккаунт без
-единой из них. Сейчас через хелпер проходят
-все семь мест, где удаление задевает обе стороны: публикация и правка поста
-(ретрай по тому же токену может убрать медиа), удаление поста, фото профиля,
-аккаунт, аватарка комнаты и вложения сообщения.
+The order was wrong in all three places that existed at the time, and each
+broke in its own way: deleting a post left a broken image in the feed of all
+the author's connections, deleting a profile photo left `users.avatar_path`
+pointing at a nonexistent file (the avatar vanished everywhere at once), and
+deleting an account managed to destroy every photo — and then failed, leaving a
+live account without a single one of them. Today the helper covers
+all seven places where a deletion touches both sides: publishing and editing a
+post (a retry with the same token may remove media), deleting a post, the
+profile photo, the account, the room avatar, and message attachments.
 
-Последний рубеж, а не первый, — `reap_orphaned_media()`: он забирает объекты
-старше суток и по сотне за запуск, что не тот инструмент для стомегабайтного
-клипа, убранного из черновика секунду назад (см. «Задания по расписанию» в
-[operations.md](operations.md)).
+The last line of defence, not the first, is `reap_orphaned_media()`: it takes
+objects older than a day and a hundred per run, which is not the tool for a
+hundred-megabyte clip removed from a draft a second ago (see "Scheduled jobs"
+in [operations.md](operations.md)).
 
-## Обновление, которое переживает свой экран
+## A refresh that outlives its screen
 
-`ref` — не долгоживущая ручка: он держится на `BuildContext` элемента, и
-каждый его метод начинается с проверки, которая после размонтирования
-**бросает** (`StateError: Using "ref" when a widget is about to or has been
-unmounted is unsafe`), причём и в release-сборке, а не только в debug. Поэтому
-привычная форма «`await`, потом `ref.invalidate(...)`, потом `if (!mounted)
-return`» сломана ровно в том случае, ради которого она написана: человек тапнул,
-запрос медленный, он ушёл с экрана, запрос долетел. Бросок ловит собственный
-`catch` метода, тот выходит по `!mounted`, и **обновление молча не
-происходит** — списки, которые должны были перечитаться, показывают состояние
-до тапа, а их кнопки предлагают действие, которое сервер уже выполнил.
+`ref` is not a long-lived handle: it's tied to the element's `BuildContext`,
+and every one of its methods starts with a check that, after unmounting,
+**throws** (`StateError: Using "ref" when a widget is about to or has been
+unmounted is unsafe`) — in release builds too, not just debug. So the familiar
+shape "`await`, then `ref.invalidate(...)`, then `if (!mounted)
+return`" is broken in exactly the case it was written for: the person taps,
+the request is slow, they leave the screen, the request completes. The throw is
+caught by the method's own `catch`, which exits on `!mounted`, and **the
+refresh silently doesn't happen** — lists that should have been re-read show
+the state from before the tap, and their buttons offer an action the server
+has already performed.
 
-Переставить проверку `mounted` выше `ref` — не лечение: это меняет проглоченный
-бросок на сознательно пропущенное обновление, а устаревшие списки и есть суть
-проблемы. Они принадлежат ДРУГИМ экранам: вкладки ленты, комнат и знакомств
-живут в `IndexedStack` шелла и остаются смонтированными под тем, что сверху.
+Moving the `mounted` check above `ref` is not a fix: it trades a swallowed
+throw for a deliberately skipped refresh, and stale lists are the whole
+problem. They belong to OTHER screens: the feed, rooms and connections tabs
+live in the shell's `IndexedStack` and stay mounted under whatever is on top.
 
-Правило одно: **захватить контейнер ДО `await`** —
+There's one rule: **capture the container BEFORE the `await`** —
 `refreshAfterAwait(context)` (`lib/shared/refresh_after_await.dart`),
-тонкая обёртка над `ProviderScope.containerOf(context, listen: false)`.
-Контейнер принадлежит корневому `ProviderScope` и живёт столько же, сколько
-приложение. Так сделаны все места, где обновление шло после `await`:
-`_run()` и `_askToConnect()` на экране комнаты, `_run()` и ответ на заявку на
-экране знакомств, разблокировка, сохранение имени в профиле и создание
-комнаты.
+a thin wrapper over `ProviderScope.containerOf(context, listen: false)`.
+The container belongs to the root `ProviderScope` and lives as long as the
+app. Every place where a refresh followed an `await` is done this way:
+`_run()` and `_askToConnect()` on the room screen, `_run()` and the reply to a
+connection request on the connections screen, unblocking, saving the name in
+the profile, and creating a room.
 
-Экран чата захватывает контейнер тем же хелпером, но по смежной причине:
-обновлять список комнат ему нужно **на выходе**, а к тому моменту нет ни
-`ref`, ни контекста, из которого его достать. Само обновление при этом ещё и
-отложено на кадр вперёд — Riverpod отказывается менять провайдер из любого
-метода жизненного цикла виджета, `deactivate()` и `dispose()` включительно.
+The chat screen captures the container with the same helper, but for a related
+reason: it needs to refresh the room list **on exit**, and by then there's
+neither a `ref` nor a context to get one from. The refresh itself is also
+deferred by a frame — Riverpod refuses to modify a provider from any widget
+lifecycle method, `deactivate()` and `dispose()` included.
 
-## Тап по пушу
+## Tapping a push
 
-`send-push` кладёт в сообщение FCM ещё и `data`: `kind` плюс те id, что нашлись
-в payload строки очереди (`room_id`, `post_id`, `comment_id`, `author_id`).
-До этого ids доезжали только до Edge Function, а на устройство уходил один
-`notification`, поэтому тап открывал приложение на том экране, где его
-оставили, и о чём был пуш, приходилось искать самому.
+`send-push` also puts `data` into the FCM message: `kind` plus whichever ids
+were found in the queue row's payload (`room_id`, `post_id`, `comment_id`,
+`author_id`). Before that the ids only reached the Edge Function, and the
+device got just the `notification`, so a tap opened the app on whatever screen
+it had been left on, and you had to find what the push was about yourself.
 
-Куда ведёт какой вид — решает одна чистая функция на клиенте
-(`pushTargetFrom()`), и таблица там полная: `room_message` → чат комнаты,
-`post_comment`/`comment_reply` → комментарии поста, `new_post`/`digest`/
-`inactive_week` → лента, `app_update`/`app_update_important` и любой
-неизвестный вид → никуда (приложение и так уже открыто, а обновляются не в
-нём). Вид, у которого id не приехал, тоже никуда не ведёт: пустой экран
-хуже, чем его отсутствие.
+Where each kind leads is decided by a single pure function on the client
+(`pushTargetFrom()`), and its table is complete: `room_message` → room chat,
+`post_comment`/`comment_reply` → the post's comments, `new_post`/`digest`/
+`inactive_week` → feed, `app_update`/`app_update_important` and any unknown
+kind → nowhere (the app is already open anyway, and updating doesn't happen
+inside it). A kind whose id didn't arrive also leads nowhere: an empty screen
+is worse than no screen.
 
-Обрабатывает тап оболочка приложения — единственный виджет, который
-смонтирован всегда, пока есть сессия. Это важно для холодного старта: тап
-приходит раньше, чем существует экран, которому он адресован, и
-`getInitialMessage()` спрашивается ровно один раз (провайдер не autoDispose —
-пересоздание переоткрывало бы тот же экран).
+The tap is handled by the app shell — the only widget that's always mounted
+while there's a session. This matters for a cold start: the tap arrives before
+the screen it's addressed to exists, and `getInitialMessage()` is queried
+exactly once (the provider is not autoDispose — recreating it would reopen the
+same screen).
 
-Сама выкладка `data` — на стороне Edge Function, а она деплоится отдельно от
-приложения: без `supabase functions deploy send-push` тап продолжит просто
-открывать приложение, даже если клиент уже умеет больше. См. «Релиз» в
-[operations.md](operations.md).
+Putting `data` into the message happens in the Edge Function, and that is
+deployed separately from the app: without `supabase functions deploy
+send-push` a tap will keep just opening the app, even if the client already
+knows how to do more. See "Release" in [operations.md](operations.md).
 
-## Присутствие и «печатает…»
+## Presence and "typing…"
 
-Серверная половина — приватный канал Realtime и две политики на
-`realtime.messages`; она описана в «[«Печатает…» и «в сети»](data-model.md)»
-в data-model.md. Клиентская — вот эта.
+The server half — a private Realtime channel and two policies on
+`realtime.messages` — is described in "["Typing…" and "online"](data-model.md)"
+in data-model.md. The client half is this.
 
-Клиент объявляет о себе `track({user_id, typing})` и снимает флаг тремя
-путями: отправкой, уходом с экрана и таймером в 4 секунды после последнего
-нажатия. Последний нужен ровно для случая, когда первых двух не случилось, —
-брошенный на полуслове черновик не должен оставлять лжи на чужом экране.
+The client announces itself with `track({user_id, typing})` and clears the
+flag in three ways: by sending, by leaving the screen, and by a 4-second timer
+after the last keystroke. The last one exists exactly for the case when the
+first two didn't happen — a draft abandoned mid-word shouldn't leave a lie on
+someone else's screen.
 
-**Объявление повторяется на каждом join, и содержимое его спрашивается у
-экрана.** Оба условия появились после того, как «печатает…» оказалось
-показывающимся через раз, и каждое закрывает свою половину:
+**The announcement is repeated on every join, and its content is asked of the
+screen.** Both conditions appeared after "typing…" turned out to show up only
+every other time, and each closes its own half:
 
-- *На каждом join.* Присутствие — не следствие подписки, а следствие
-  `track()`. Сокет при сворачивании приложения рвётся (это делает сам
-  `supabase_flutter` на `paused` и пересоединяется на `resumed`), а
-  пересозданный канал не переносит ничего: пока клиент не объявится заново,
-  его в комнате нет, сколько бы экран ни был открыт.
-- *Спрашивается, а не предполагается.* Раньше на join трекался прибитый
-  `typing: false`. Объявление, сделанное до того, как канал поднялся, не
-  теряется, а **буферизуется** и отправляется на join — хуком, который канал
-  вешает в собственном конструкторе, то есть раньше нашего колбэка. Значит
-  «печатает», поднятое во время присоединения, приходило первым и тут же
-  затиралось следующей за ним ложью, а экран к этому моменту уже считал
-  объявление сделанным и не повторял его ни на одном следующем нажатии:
-  собеседник не видел индикатор весь черновик. Что на самом деле в поле
-  ввода, знает только экран — поэтому спрашивают у него.
+- *On every join.* Presence is a consequence not of subscribing but of
+  `track()`. The socket drops when the app is backgrounded (`supabase_flutter`
+  itself does this on `paused` and reconnects on `resumed`), and a recreated
+  channel carries nothing over: until the client announces itself again, it
+  isn't in the room, however long the screen has been open.
+- *Asked, not assumed.* Previously a hardcoded `typing: false` was tracked on
+  join. An announcement made before the channel came up isn't lost but
+  **buffered** and sent on join — by a hook the channel registers in its own
+  constructor, i.e. before our callback. So "typing" raised while joining
+  arrived first and was immediately overwritten by the lie that followed it,
+  and by then the screen already considered the announcement made and didn't
+  repeat it on any later keystroke: the other person didn't see the indicator
+  for the whole draft. Only the screen knows what's actually in the input
+  field — so it's the one asked.
 
-Обратная сторона того же правила: когда канал перестаёт быть поднятым
-(ошибка, таймаут, закрытие), экран получает два пустых множества и убирает
-строку. Присутствие — утверждение про «прямо сейчас», и список, оставшийся от
-канала, которого больше нет, — это ложь, пережившая единственное, что делало
-её правдой.
+The flip side of the same rule: when the channel stops being up (error,
+timeout, close), the screen receives two empty sets and removes the line.
+Presence is a statement about "right now", and a list left over from a channel
+that no longer exists is a lie that outlived the only thing that made it true.
 
-## Realtime не переигрывает пропущенное
+## Realtime doesn't replay what was missed
 
-Postgres Changes — поток, а не журнал: подписчику приходит то, что случилось,
-пока он подписан, и ничего больше. А сокет рвётся каждый раз, когда приложение
-уходит в фон, — это делает сам `supabase_flutter`. Значит разрыв в переписке не
-краевой случай, а то, что происходит при каждом переключении между
-приложениями.
+Postgres Changes is a stream, not a log: a subscriber receives what happened
+while it was subscribed, and nothing else. And the socket drops every time the
+app goes to the background — `supabase_flutter` itself does this. So a gap in
+the conversation is not an edge case but what happens on every switch between
+apps.
 
-Раньше этого не замечал никто: экран чата умел подгружать только **старее**
-(`before`-курсор), так что всё сказанное, пока приложение было свёрнуто, не
-появлялось в открытом чате никогда — до закрытия и повторного открытия. Туда же
-уходили и удаления: снос сообщения приезжает не вставкой, а правкой уже
-лежащей строки, и её тоже никто не доставлял.
+Nobody noticed this before: the chat screen could only load **older**
+messages (a `before` cursor), so anything said while the app was in the
+background never showed up in an open chat — until it was closed and reopened.
+Deletions were lost the same way: removing a message arrives not as an insert
+but as an update of an existing row, and nothing delivered that either.
 
-Чинится перечитыванием самой свежей страницы, а решает, можно ли её пришить,
-пересечение с уже загруженным:
+The fix is re-reading the newest page, and whether it can be stitched on is
+decided by its overlap with what's already loaded:
 
-- **пересечение есть** — между страницей и списком ничего не потерялось, новые
-  сообщения дописываются сверху, остальные заменяются на месте (это и приносит
-  заглушки удалённых);
-- **пересечения нет** — пришла целая страница, и между ней и списком может быть
-  ещё; пришивать — значит оставить дыру в середине разговора. Список начинается
-  заново с этой страницы: потерянная позиция скролла — неудобство, разговор с
-  молчаливым пропуском — вранье.
+- **there is an overlap** — nothing was lost between the page and the list,
+  new messages are appended on top, the rest are replaced in place (which is
+  what brings in the placeholders of deleted ones);
+- **there is no overlap** — a full page came back, and there may be more
+  between it and the list; stitching it on would leave a hole in the middle of
+  the conversation. The list restarts from this page: a lost scroll position
+  is an inconvenience, a conversation with a silent gap is a lie.
 
-Поводов два, и первый точнее: **переподписка канала** (запрос уходит уже после
-того, как подписка снова живая — обратный порядок оставил бы вторую дыру между
-запросом и join) и **возврат приложения из фона** как страховка на случай, что
-сокет не вернётся вовсе.
+There are two triggers, and the first is more precise: **channel
+resubscription** (the request is sent after the subscription is live again —
+the reverse order would leave a second gap between the request and the join)
+and **the app returning from the background** as a safety net in case the
+socket never comes back.
 
-## Подписанные ссылки живут дольше виджета
+## Signed URLs outlive the widget
 
-Бакет `media` приватный, так что ни одна картинка не показывается, пока её путь
-не подписан, а подписывание — сетевой запрос. Асинхронность тут и была
-проблемой: виджет, подписывающий свои пути в `initState`, до ответа показывает
-спиннер — и делает это заново каждый раз, когда пересоздаётся его `State`.
+The `media` bucket is private, so no image is shown until its path is signed,
+and signing is a network request. The asynchrony was the problem: a widget
+that signs its paths in `initState` shows a spinner until the response — and
+does so again every time its `State` is recreated.
 
-В чате это происходит постоянно. Список вставляет новое сообщение в индекс 0,
-все индексы ниже сдвигаются, а `ScrollablePositionedList` строит через
-`SliverChildBuilderDelegate`, которому пакет не даёт передать
-`findChildIndexCallback`, — так что элемент в слоте получает просто *следующее*
-сообщение. Ключ вложений внутри не совпадает, `State` уходит, и фотография,
-провисевшая на экране десять минут, моргает спиннером и подписывается заново —
-по разу на каждый видимый пузырь, на каждое отправленное или полученное
-сообщение.
+In chat this happens all the time. The list inserts a new message at index 0,
+all indices below shift, and `ScrollablePositionedList` builds through a
+`SliverChildBuilderDelegate` that the package doesn't let you pass a
+`findChildIndexCallback` to — so the element in a slot simply gets the *next*
+message. The attachments key inside doesn't match, the `State` is dropped, and
+a photo that has been on screen for ten minutes flickers a spinner and gets
+signed again — once per visible bubble, for every message sent or received.
 
-Кеш (`lib/shared/signed_url_cache.dart`) закрывает это в корне, а не борется со
-списком: пересозданный `State` спрашивает **синхронно**, до первого кадра, и
-получает ту же ссылку, что была секунду назад; `CachedNetworkImage` рисует из
-своего дискового кеша (ключ — путь в бакете, не строка запроса), и ни моргания,
-ни запроса не происходит. Только в памяти и на время жизни процесса: это
-ссылки на объекты, показанные RLS **этому** аккаунту, поэтому `clear()` на них
-зовётся при выходе из аккаунта вместе с остальным его состоянием.
+The cache (`lib/shared/signed_url_cache.dart`) fixes this at the root instead
+of fighting the list: the recreated `State` asks **synchronously**, before the
+first frame, and gets the same URL it had a second ago; `CachedNetworkImage`
+draws from its disk cache (keyed by the bucket path, not the query string), and
+there's neither a flicker nor a request. In memory only and for the lifetime of
+the process: these are URLs to objects RLS showed to **this** account, so
+`clear()` is called on them on sign-out along with the rest of its state.
 
-## Mute как фильтр ленты
+## Mute as a feed filter
 
-Единственное правило видимости, которое исполняет не база, а приложение, — и
-поэтому оно здесь, а не в [data-model.md](data-model.md).
+The only visibility rule enforced by the app rather than the database — and
+that's why it's here and not in [data-model.md](data-model.md).
 
-С 20260829130000 mute не участвует в RLS вовсе: замьюченный остаётся обычным
-Connection, его профиль открывается и посты в нём видны. Прятать их из **общей
-ленты** — работа самого запроса ленты:
-`ConnectionsRepository.fetchMutedIds()` отдаёт список, а
-`FeedRepository.fetchPage()` подмешивает его в тот же `not.in.(…)`, которым уже
-отсекается системный аккаунт.
+Since 20260829130000 mute plays no part in RLS at all: a muted person stays a
+regular Connection, their profile opens and their posts are visible there.
+Hiding them from the **general feed** is the job of the feed query itself:
+`ConnectionsRepository.fetchMutedIds()` returns the list, and
+`FeedRepository.fetchPage()` mixes it into the same `not.in.(…)` that already
+filters out the system account.
 
-Читается список один раз на цикл загрузки, а не на страницу: все страницы
-прячут одних и тех же людей, и ответ не может измениться посреди скролла.
-Перечитывает его `_refresh()` — а mute/unmute как раз дёргает
-`feedRefreshTickProvider`, то есть refresh. На профиле (`authorId` задан)
-запрос не делается вовсе: там фильтровать нечего, в этом весь смысл.
+The list is read once per load cycle, not per page: all pages hide the same
+people, and the answer can't change mid-scroll. It's re-read by `_refresh()` —
+and mute/unmute triggers exactly `feedRefreshTickProvider`, i.e. a refresh. On
+a profile (`authorId` set) the query isn't made at all: there's nothing to
+filter there, that's the whole point.
 
-Неудача чтения роняет страницу в обычное «не удалось загрузить» с откатом на
-кэш, а не подставляет пустой набор: тихо показать ленту, полную тех, кого
-просили не показывать, — хуже честной ошибки.
+A failed read drops the page into the usual "couldn't load" with a fallback to
+the cache, rather than substituting an empty set: quietly showing a feed full
+of people you asked not to see is worse than an honest error.
 
-Почему это не дыра — в «Правиле видимости» в [data-model.md](data-model.md):
-замьюченный и так остаётся Connection, чью строку `users` и аватарку политики
-показывали всегда. Границей приватности была и остаётся блокировка, и она
-целиком на сервере.
+Why this isn't a hole is in "Visibility rule" in [data-model.md](data-model.md):
+a muted person remains a Connection whose `users` row and avatar the policies
+have always shown. The privacy boundary was and remains blocking, and it lives
+entirely on the server.

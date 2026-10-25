@@ -1,1219 +1,1289 @@
-# Схема и правило видимости
+# Schema and the visibility rule
 
-Снимок текущей схемы и её ключевых инвариантов — для быстрой ориентации, не
-вместо чтения самой схемы. **Почему** так — сначала комментарий в
-`supabase/migrations/20261018000000_baseline_schema.sql`, затем архив истории:
-номера вида `20260822170000`, которыми усыпан этот файл, — это имена миграций
-в теге `pre-baseline-migrations`
+A snapshot of the current schema and its key invariants — for quick
+orientation, not a substitute for reading the schema itself. For **why** things
+are the way they are, start with the comment in
+`supabase/migrations/20261018000000_baseline_schema.sql`, then the history
+archive: numbers like `20260822170000`, scattered throughout this file, are
+migration names in the `pre-baseline-migrations` tag
 (`git show pre-baseline-migrations:supabase/migrations/20260822170000_*.sql`),
-а номера от `20260826000000` до `20261010100000` — в теге
-`pre-baseline-migrations-2`; затем `git log`.
+and numbers from `20260826000000` to `20261010100000` are in the
+`pre-baseline-migrations-2` tag; then `git log`.
 
-Таблицы: `users`, `connections`, `invite_links`, `posts`, `post_media`,
+Tables: `users`, `connections`, `invite_links`, `posts`, `post_media`,
 `profile_photos`, `reactions`, `comments`, `muted_users`, `blocked_users`,
 `favorite_users`, `device_tokens`, `notification_outbox`,
 `notification_preferences`, `user_activity`, `rooms`, `room_members`,
 `room_messages`.
 
-## Версия приложения и уведомление об обновлении
+## App version and the update notification
 
-`device_tokens.app_version`/`.app_build` — версия УСТАНОВКИ, не человека:
-телефон и планшет одного пользователя бывают на разных версиях. Пишутся при
-каждом апсерте токена, то есть на каждый запуск приложения и смену языка
-(`registerDevice`), поэтому всегда свежие. Решения принимаются только по
-`app_build` (versionCode, монотонный); `app_version` — для чтения глазами.
-NULL значит «старее всего известного»: клиент, не умеющий сообщить версию,
-заведомо старее того, который умеет. Клиент нормализует оба поля до формата,
-который принимает CHECK (`shared/app_version.dart`) — иначе отказ по
-ограничению уронил бы саму регистрацию пуш-токена, молча и вместе со всеми
-уведомлениями.
+`device_tokens.app_version`/`.app_build` is the version of the INSTALLATION,
+not of the person: one user's phone and tablet can be on different versions.
+They are written on every token upsert, i.e. on every app launch and every
+language change (`registerDevice`), so they are always fresh. Decisions are
+made only on `app_build` (versionCode, monotonic); `app_version` is for human
+eyes. NULL means "older than anything known": a client that can't report its
+version is by definition older than one that can. The client normalizes both
+fields to the format the CHECK accepts (`shared/app_version.dart`) — otherwise
+a constraint violation would bring down push-token registration itself,
+silently, and every notification with it.
 
-`device_tokens.platform`/`.os_version` (20260912100000) отвечают на тот же
-вопрос про ту же установку: на чём она стоит. `platform` — перечисление
-(`android`, `ios`, `macos`, `windows`, `linux`, `fuchsia`, `web`), а не
-свободный текст: это ключ, по которому собираются аудитории, и
-«iOS»/«ios»/«iPhone» в одной колонке превратили бы любой `group by` в ложь.
-`os_version` — только цифры и точки (`16`, `18.1`, `8.1.0`). Источник —
-`device_info_plus` (`Build.VERSION.RELEASE` на Android, `systemVersion` на
-iOS), и это не вкусовщина: `Platform.operatingSystemVersion` из `dart:io` на
-Android возвращает идентификатор СБОРКИ, а не версию системы. На живом
-телефоне это оказалось `B4.1-260810-1153` при реальном Android 16 — числа 16
-в строке нет вовсе, и разбор «первое число в строке» записывал в базу
-`260810`. Хранить сырой ответ платформы тоже нельзя: он у каждой свой, и
-разбор пришлось бы повторять каждому читателю. Оба поля nullable по той же причине, что и
-`app_build`: выложенные версии про них не знают, NULL читается как «клиент не
-умеет сообщить», а CHECK пропускает NULL, чтобы отказ по ограничению не уронил
-саму регистрацию токена. Нормализует клиент — `shared/device_os.dart`, парой к
-`shared/app_version.dart`. Разбор релиза привязан к началу строки намеренно:
-неякорный вариант того же выражения и был причиной `260810`.
+`device_tokens.platform`/`.os_version` (20260912100000) answer the same
+question about the same installation: what it runs on. `platform` is an
+enumeration (`android`, `ios`, `macos`, `windows`, `linux`, `fuchsia`, `web`),
+not free text: it's the key audiences are built on, and "iOS"/"ios"/"iPhone"
+in one column would turn any `group by` into a lie. `os_version` is digits and
+dots only (`16`, `18.1`, `8.1.0`). The source is `device_info_plus`
+(`Build.VERSION.RELEASE` on Android, `systemVersion` on iOS), and that's not a
+matter of taste: on Android, `Platform.operatingSystemVersion` from `dart:io`
+returns the BUILD identifier, not the OS version. On a real phone it turned
+out to be `B4.1-260810-1153` on what was actually Android 16 — the number 16
+isn't in the string at all, and parsing "the first number in the string" wrote
+`260810` to the database. Storing the platform's raw response isn't an option
+either: every platform has its own, and every reader would have to repeat the
+parsing. Both fields are nullable for the same reason as `app_build`: shipped
+versions don't know about them, NULL reads as "the client can't report it",
+and the CHECK lets NULL through so a constraint violation doesn't bring down
+token registration itself. The client normalizes — `shared/device_os.dart`,
+the counterpart to `shared/app_version.dart`. Parsing the release is anchored
+to the start of the string on purpose: the unanchored variant of the same
+expression was exactly what produced `260810`.
 
-`push_registration_status` (20260913120000) отвечает на вопрос, на который
-`device_tokens` ответить не может по устройству: **почему** у человека нет
-токена. У `registerDevice()` три выхода без строки — отказ в разрешении,
-`getToken()` вернул null, и упавший апсерт, — и снаружи все три выглядели
-одинаково, включая третий, то есть наш собственный сбой. Строка одна на
-человека (при неудаче идентификатора установки просто нет — токен и есть
-идентификатор), переписывается апсертом на каждый запуск, время ставит
-сервер. Колонки `platform`/`os_version`/`app_version`/`app_build` дублируют
-`device_tokens` намеренно: там они появляются только при УСПЕШНОЙ
-регистрации, то есть у тех, про кого и так всё ясно, а здесь это
-единственный способ узнать версию того, у кого токена нет. Ограничения
-повторены дословно, чтобы форматы не разъехались.
+`push_registration_status` (20260913120000) answers a question `device_tokens`
+can't answer per device: **why** a person has no token. `registerDevice()` has
+three exits that leave no row — permission denied, `getToken()` returned null,
+and a failed upsert — and from the outside all three looked the same,
+including the third, i.e. our own failure. There is one row per person (on
+failure there is simply no installation identifier — the token is the
+identifier), it is overwritten by an upsert on every launch, and the server
+sets the time. The `platform`/`os_version`/`app_version`/`app_build` columns
+duplicate `device_tokens` on purpose: there they only appear on SUCCESSFUL
+registration, i.e. for people we already know everything about, while here
+it's the only way to learn the version of someone who has no token. The
+constraints are repeated verbatim so the formats don't drift apart.
 
-Рассылку «обновитесь» (kind `app_update`, настройка `notify_system_account`)
-запускает человек после выкладки — как именно, а заодно перечень заданий
-pg_cron и где лежат секреты, см. [operations.md](operations.md).
+The "please update" broadcast (kind `app_update`, setting
+`notify_system_account`) is triggered by a human after a release — for how,
+plus the list of pg_cron jobs and where the secrets live, see
+[operations.md](operations.md).
 
-## Жалобы и модерация
+## Reports and moderation
 
-`content_reports` — на что пожаловались и чем кончилось (20260913100000).
-Жаловаться можно на пост, комментарий, сообщение в комнате и на человека, и
-только на то, что жалобщик ВИДИТ: политика спрашивает это у `can_report()`,
-единственной функции модерации, выданной наружу. Вызывать `is_post_visible()`
-прямо из политики нельзя — выражение политики исполняется от лица
-вызывающего, а этой функции у `authenticated` нет намеренно; отсюда и
-диспетчер. Одна жалоба на объект от человека (уникальный индекс), повтор
-приходит как 23505 и читается клиентом как «уже отправлено». Читать таблицу
-не может никто: SELECT-политики нет вовсе, как у `notification_outbox`.
-`target_author_id` и `target_snapshot` (500 символов) заполняет триггер —
-жалоба должна оставаться разбираемой после того, как автор сам снёс
-написанное.
+`content_reports` — what was reported and how it ended (20260913100000).
+You can report a post, a comment, a room message, or a person, and only what
+the reporter can SEE: the policy asks `can_report()`, the only moderation
+function exposed to the outside. Calling `is_post_visible()` directly from the
+policy isn't possible — the policy expression runs as the caller, and
+`authenticated` deliberately doesn't have that function; hence the dispatcher.
+One report per object per person (unique index); a repeat comes back as 23505
+and the client reads it as "already sent". Nobody can read the table: there is
+no SELECT policy at all, same as `notification_outbox`. `target_author_id` and
+`target_snapshot` (500 characters) are filled in by a trigger — a report must
+stay reviewable after the author has deleted what they wrote.
 
-`hidden_at` у `posts`, `comments`, `room_messages` — обратимое скрытие.
-Скрытое исчезает у ВСЕХ, включая автора: иначе у одного объекта два ответа на
-вопрос «виден ли он», и правило видимости перестаёт быть одним. Условие стоит
-в `is_post_visible()`/`is_comment_visible()`, и оттуда само расходится на
-комментарии под постом и на storage-политику медиа поста
-(`post_media_path_visible()` ходит через ту же функцию). Медиа СООБЩЕНИЙ
-потребовало отдельной правки: его ветка в storage-политике была префиксной
-(«объект в папке моей комнаты») и про сами сообщения не знала — скрытое
-сообщение исчезло бы из чата, а фотографии остались бы доступны по прямой
-ссылке. Ветка переписана с префикса на объект через
-`room_message_media_visible()` — тот же приём, что `is_room_peer_avatar()` у
-аватарок. В SELECT-политиках `posts`/`comments`/`room_messages` условие стоит
-второй копией сознательно: это литерал на собственной колонке строки, а не
-пересказ правила видимости, и политики правило не вызывают по причинам
-производительности.
+`hidden_at` on `posts`, `comments`, `room_messages` is reversible hiding.
+Hidden content disappears for EVERYONE, including the author: otherwise one
+object would have two answers to "is it visible", and the visibility rule
+would stop being one rule. The condition lives in
+`is_post_visible()`/`is_comment_visible()`, and from there it propagates on
+its own to the comments under a post and to the storage policy for post media
+(`post_media_path_visible()` goes through the same function). MESSAGE media
+needed a separate fix: its branch in the storage policy was prefix-based ("the
+object is in my room's folder") and knew nothing about the messages themselves
+— a hidden message would have vanished from the chat while its photos stayed
+reachable by direct link. The branch was rewritten from prefix to object via
+`room_message_media_visible()` — the same technique as `is_room_peer_avatar()`
+for avatars. In the SELECT policies of `posts`/`comments`/`room_messages` the
+condition sits as a second copy deliberately: it's a literal on the row's own
+column, not a restatement of the visibility rule, and the policies don't call
+the rule for performance reasons.
 
-`user_moderation.write_banned_until` — запрет писать. NULL или отсутствие
-строки значат «не забанен», дата в прошлом — «бан кончился»; чистить её
-незачем, она же и история. Таблица отдельная, а не колонка `users`
-(20261019100000, IMM-541): `grant select` у `users` табличный, и до этой
-миграции дату бана читал каждый, кому RLS показывает профиль. Поколоночный
-грант вместо выноса уронил бы `select=*`, которым клиент грузит профиль.
-У `user_moderation` нет ни грантов для `authenticated`, ни политик — пишет и
-читает её только консоль под service_role и definer-функции.
-**Проверка живёт в триггере `reject_write_when_banned()`, а не в
-INSERT-политиках** — см. «Запрет писать проверяется триггером» в
-[../AGENTS.md](../AGENTS.md); там же, почему иначе нельзя. Триггер висит на
-семи таблицах с одним телом, автор строки берётся из `NEW` через `to_jsonb`
-(колонка называется по-разному) и отбивается своим SQLSTATE `AMB01` с датой
-окончания в DETAIL, чтобы клиент отличил бан от отказа политики и от сетевой
-ошибки и показал дату (`shared/write_ban.dart`).
+`user_moderation.write_banned_until` is the write ban. NULL or a missing row
+means "not banned", a date in the past means "the ban has ended"; there's no
+need to clean it up, it doubles as history. It's a separate table rather than
+a `users` column (20261019100000, IMM-541): the `grant select` on `users` is
+table-wide, and before this migration the ban date was readable by anyone RLS
+showed the profile to. A per-column grant instead of moving it out would have
+broken the `select=*` the client loads profiles with. `user_moderation` has
+neither grants for `authenticated` nor policies — only the console under
+service_role and definer functions read and write it.
+**The check lives in the `reject_write_when_banned()` trigger, not in INSERT
+policies** — see "The write ban is enforced by a trigger" in
+[../AGENTS.md](../AGENTS.md); that's also where it explains why it can't be
+done otherwise. The trigger is attached to seven tables with a single body;
+the row's author is taken from `NEW` via `to_jsonb` (the column is named
+differently in each) and it rejects with its own SQLSTATE `AMB01` with the end
+date in DETAIL, so the client can tell a ban from a policy denial and from a
+network error and show the date (`shared/write_ban.dart`).
 
-Что именно запрещено, с 20260924100000: **создание строки в этих семи
-таблицах и ещё два UPDATE** — `posts.text` и `users.name`. Оба доступны
-прямым PATCH через PostgREST, и до этой миграции забанённый спокойно
-переписывал текст любого своего поста и менял себе имя, которое видно всем
-его Connections и во всех его комнатах. Триггеры на правку поколоночные
-(`before update of text` / `before update of name`), и это не оптимизация:
-`hidden_at` в список не входит, чтобы консоль могла скрыть пост автора,
-которого сама же забанила, а `avatar_path` — чтобы забанённый мог удалить
-собственную фотографию (удаление переписывает колонку триггером синка
-галереи, и полный BEFORE UPDATE отбивал бы его). У `users` автор строки —
-это её `id`, поэтому цепочка `coalesce` в теле функции имеет отдельную
-ветку по `tg_table_name`: безусловный `id` пятым элементом проверял бы «бан
-пользователя с id поста».
+What exactly is banned, since 20260924100000: **creating a row in these seven
+tables, plus two UPDATEs** — `posts.text` and `users.name`. Both are reachable
+via a direct PATCH through PostgREST, and before this migration a banned user
+could freely rewrite the text of any of their posts and change their name,
+which is visible to all their Connections and in all their rooms. The edit
+triggers are per-column (`before update of text` / `before update of name`),
+and that's not an optimization: `hidden_at` isn't in the list so the console
+can hide a post by an author it has itself banned, and neither is
+`avatar_path`, so a banned user can delete their own photo (deletion rewrites
+the column via the gallery-sync trigger, and a full BEFORE UPDATE would reject
+it). For `users` the row's author is its `id`, so the `coalesce` chain in the
+function body has a separate branch on `tg_table_name`: an unconditional `id`
+as the fifth element would check "the ban of the user whose id equals the
+post's".
 
-Чего запрет НЕ покрывает: `rename_room()` и `set_room_avatar()`. У `rooms`
-нет колонки автора вовсе (владелец — наименьший `seq` в `room_members`), то
-есть общее тело функции его не найдёт, а отдельная копия правила — это ровно
-тот путь, которым «правило видимости жило в четырёх копиях». Название
-комнаты видно только её участникам, то есть кругу, который забанённый уже
-собрал сам.
+What the ban does NOT cover: `rename_room()` and `set_room_avatar()`. `rooms`
+has no author column at all (the owner is the lowest `seq` in `room_members`),
+so the shared function body wouldn't find it, and a separate copy of the rule
+is exactly the path by which "the visibility rule lived in four copies". A
+room's name is visible only to its members, i.e. to a circle the banned user
+already assembled themselves.
 
-Бан входа хранится не здесь, а в GoTrue (`ban_duration`), и своей копии этого
-факта в схеме нет намеренно: она разошлась бы с настоящей при первом же
-снятии через дашборд.
+The login ban is stored not here but in GoTrue (`ban_duration`), and the schema
+deliberately keeps no copy of that fact: it would drift from the real one the
+first time a ban was lifted through the dashboard.
 
-Разбирает всё это локальная консоль под service_role. Роли модератора в БД
-нет, и модераторских RPC тоже: каждая функция в `public` — эндпоинт
-PostgREST, а единственному потребителю, который и так ходит мимо RLS,
-эндпоинт не нужен.
+All of this is reviewed in the local console under service_role. There is no
+moderator role in the DB, and no moderator RPCs either: every function in
+`public` is a PostgREST endpoint, and the only consumer, which bypasses RLS
+anyway, doesn't need an endpoint.
 
-## Правило видимости
+## Visibility rule
 
-**Одно правило видимости на весь проект** — `is_author_visible(uuid)`: я сам,
-системный аккаунт Amicus (`is_system_account()`, единственное хардкоженное
-исключение — 20260818150000; сам литерал живёт в `system_account_ids()`,
-которую 20260821160000 завела для клиента, чтобы лента не носила копию этого id
-в APK, а 20260822220000 сделала ещё и единственным источником на сервере:
-`is_system_account()` теперь спрашивает её, а не второй свой литерал), либо
-Connection, с которым нет блока ни в одну сторону. Его спрашивают
-SELECT-политика `posts`, `reaction_summary()`, обе политики `comments` (через
-`is_author_of_comment_visible()` — она возвращает строгий boolean, не NULL,
-иначе `null`/`false` различались бы снаружи и работали оракулом существования
-строки, 20260821130000) и storage-политика на фото постов.
-**Менять только в этой функции.** Раньше правило было размножено на четыре
-копии, две отстали от mute/block и стали дырами — см. 0.11.0 в
-[../CHANGELOG.md](../CHANGELOG.md); третий раз то же самое случилось с mute- и
-connection-половинками правила в отдельных местах — см. 0.13.2 там же.
+**One visibility rule for the whole project** — `is_author_visible(uuid)`:
+myself, the Amicus system account (`is_system_account()`, the only hardcoded
+exception — 20260818150000; the literal itself lives in
+`system_account_ids()`, which 20260821160000 introduced for the client so the
+feed wouldn't carry a copy of that id in the APK, and 20260822220000 also made
+the single source on the server: `is_system_account()` now asks it rather than
+its own second literal), or a Connection with no block in either direction.
+It's consulted by the SELECT policy on `posts`, `reaction_summary()`, both
+`comments` policies (via `is_author_of_comment_visible()` — it returns a
+strict boolean, not NULL, otherwise `null`/`false` would be distinguishable
+from the outside and act as an oracle for row existence, 20260821130000) and
+the storage policy for post photos.
+**Change it only in this function.** The rule used to be duplicated in four
+copies, two of which fell behind on mute/block and became holes — see 0.11.0
+in [../CHANGELOG.md](../CHANGELOG.md); the same thing happened a third time
+with the mute and connection halves of the rule in separate places — see
+0.13.2 there.
 
-**Mute в этом правиле больше не участвует** (20260829130000). До него условие
-читалось «Connection, которого я не замьютил и с которым нет блока», и mute
-прятал человека НАСОВСЕМ — в том числе его собственный профиль: тапаешь по
-аватарке знакомого, открывается пустая страница, которая читается как «у него
-нет постов» или «он меня заблокировал». Врала она из-за моей же личной
-настройки, о которой он не знает и которой не делал.
+**Mute no longer takes part in this rule** (20260829130000). Before that, the
+condition read "a Connection I haven't muted and with no block", and mute hid
+the person COMPLETELY — including their own profile: you tap a connection's
+avatar and an empty page opens, which reads as "they have no posts" or "they
+blocked me". It lied because of my own personal setting, which they don't know
+about and didn't make.
 
-Теперь **mute означает ровно две вещи: нет в общей ленте и нет пушей**, а
-блокировка остаётся стеной и единственной границей приватности. Разделить их
-пришлось потому, что RLS не знает экрана: лента и профиль — один и тот же
-`select from posts`, разница лишь в клиентском `.eq('author_id', …)`. Значит
-либо правило перестаёт спрашивать про mute, либо для профиля заводится вторая
-копия правила — а это ровно та ошибка, из-за которой правило и сводили в одну
-функцию. Поэтому «чего нет в ленте» переехало в сам запрос ленты — как
-именно, в [client-architecture.md](client-architecture.md).
+Now **mute means exactly two things: not in the general feed and no pushes**,
+while a block remains a wall and the only privacy boundary. They had to be
+separated because RLS doesn't know about screens: the feed and the profile are
+one and the same `select from posts`, the only difference being the client's
+`.eq('author_id', …)`. So either the rule stops asking about mute, or the
+profile gets a second copy of the rule — and that's exactly the mistake the
+rule was consolidated into one function to avoid. So "what's not in the feed"
+moved into the feed query itself — how exactly is in
+[client-architecture.md](client-architecture.md).
 
-Следствие, которое надо держать в голове: **mute не является границей
-приватности и не должен ею считаться** — его исполняет клиент, и правленый
-клиент может его не применять. Ничего чужого этим не открывается: замьюченный
-и так остаётся Connection, чью строку `users` и аватарку политики показывали
-всегда (`is_connected_to_caller()` про mute не спрашивает никогда). Блок —
-целиком на сервере и в обе стороны.
+A consequence to keep in mind: **mute is not a privacy boundary and must not be
+treated as one** — the client enforces it, and a modified client may not apply
+it. Nothing private is exposed by this: the muted person is still a
+Connection, whose `users` row and avatar the policies have always shown
+(`is_connected_to_caller()` never asks about mute). A block is entirely
+server-side and works both ways.
 
-`has_muted()` при этом жива и осталась ровно в двух местах, обоих про
-уведомления: `enqueue_post_notifications()` (ветвь избранного и подсчёт
-дайджеста) и `enqueue_comment_notifications()`. Замьютить и продолжать получать
-пуши было бы бессмыслицей.
+`has_muted()` is still alive and remains in exactly two places, both about
+notifications: `enqueue_post_notifications()` (the favorites branch and the
+digest count) and `enqueue_comment_notifications()`. Muting someone and still
+getting their pushes would make no sense.
 
-Строительные блоки правила — три маленьких предиката, каждый переиспользуется,
-а не переписывается инлайн:
-- `is_blocked_pair(a, b)` — блок в любую сторону.
-- `has_muted(muter, muted)` — направленный, в отличие от блока не симметричен;
-  с 20260829130000 спрашивают его только уведомления.
-- `are_connected(a, b)` — есть ли Connection.
+The rule's building blocks are three small predicates, each reused rather than
+rewritten inline:
+- `is_blocked_pair(a, b)` — a block in either direction.
+- `has_muted(muter, muted)` — directional; unlike a block, not symmetric;
+  since 20260829130000 only notifications ask it.
+- `are_connected(a, b)` — whether there's a Connection.
 
-Все три — `security definer`, но **не выданы** `authenticated` напрямую (кроме
-как из другой `security definer`-функции): оба аргумента произвольные, прямой
-грант ответил бы на чужой вопрос «а эти двое замьючены/заблокированы/знакомы
-друг с другом» — ровно так `is_blocked_pair` и было дырой до 0.11.0. Для
-единственного места, где такая проверка нужна в сырой RLS-политике (`users`,
-«видно себе, Connections, системному аккаунту и своим комментаторам»), заведена
-однонаправленная обёртка `is_connected_to_caller(other)` — один аргумент, всегда
-сравнивается с `auth.uid()` внутри, поэтому её выдать безопасно.
+All three are `security definer`, but **not granted** to `authenticated`
+directly (except via another `security definer` function): both arguments are
+arbitrary, so a direct grant would answer someone else's question "are these
+two muted/blocked/connected to each other" — which is exactly how
+`is_blocked_pair` was a hole before 0.11.0. For the only place where such a
+check is needed in a raw RLS policy (`users`, "visible to self, Connections,
+the system account and one's own commenters"), there's a one-directional
+wrapper `is_connected_to_caller(other)` — one argument, always compared
+against `auth.uid()` internally, so it's safe to grant.
 
-Сама `is_author_visible()` при этом `authenticated` **не** выдана
-(20260826120000): все её вызовы лежат внутри `security definer`-функций, то
-есть исполняются от владельца, а ни в одной политике её нет — грант ничего не
-обслуживал и только публиковал лишнюю ручку `/rpc/is_author_visible`.
+`is_author_visible()` itself is **not** granted to `authenticated` either
+(20260826120000): all its calls are inside `security definer` functions, i.e.
+run as the owner, and no policy uses it — the grant served nothing and only
+published a superfluous `/rpc/is_author_visible` endpoint.
 
-В политиках `is_author_visible`/`is_blocked_pair`-семейство используется как
-`author_id in (select visible_author_ids())`, а не как построчный вызов — см.
-«Грабли» в [../AGENTS.md](../AGENTS.md) (`security definer` не инлайнится
-планировщиком). Сама `visible_author_ids()` берёт системный аккаунт прямым
-вызовом `system_account_ids()`, а не перебором `users` с предикатом на каждой
-строке (20260822250000): ответ ветки — постоянный список, и стоимость не должна
-расти вместе с числом зарегистрированных.
+In policies, the `is_author_visible`/`is_blocked_pair` family is used as
+`author_id in (select visible_author_ids())`, not as a per-row call — see
+"Pitfalls" in [../AGENTS.md](../AGENTS.md) (`security definer` isn't inlined by
+the planner). `visible_author_ids()` itself gets the system account by
+calling `system_account_ids()` directly, not by scanning `users` with a
+predicate on every row (20260822250000): the branch's answer is a constant
+list, and the cost shouldn't grow with the number of registered users.
 
-**Видимость поста требуется на обоих путях записи реакции, не только на
-INSERT.** У UPDATE-политики `reactions` этого требования не было до
-20260822230000, и на нём же стоял guard `dislikes_disabled`: guard написан как
-подзапрос к `posts`, который выполняется правами вызывающего и потому сам
-фильтруется политикой `posts`. Пост не виден — подзапрос пуст — guard читает
-это как «флага нет». А спрятать чужой пост от себя можно было самому: mute
-тогда ещё убирал автора из правила видимости, так что достаточно было
-поставить лайк, замьютить автора и переключить свою же строку на `dislike`.
-(Сегодня той же дырой так не воспользоваться — mute из правила ушёл, см.
-выше, — но требование на UPDATE от этого не менее обязательно: скрыть пост
-можно и блоком.) Тот же класс, что и дыра `blocked_users` из 0.11.0: RLS
-применяется и к подзапросам внутри политики.
+**Post visibility is required on both reaction write paths, not just on
+INSERT.** The UPDATE policy on `reactions` lacked this requirement until
+20260822230000, and the `dislikes_disabled` guard sat on it too: the guard is
+written as a subquery on `posts`, which runs with the caller's rights and is
+therefore itself filtered by the `posts` policy. Post not visible — subquery
+empty — the guard reads that as "no flag". And you could hide someone's post
+from yourself on your own: back then mute still removed the author from the
+visibility rule, so it was enough to like a post, mute the author, and switch
+your own row to `dislike`. (Today the same hole can't be exploited that way —
+mute has left the rule, see above — but the requirement on UPDATE is no less
+mandatory for it: a post can also be hidden by a block.) The same class as the
+`blocked_users` hole from 0.11.0: RLS also applies to subqueries inside a
+policy.
 
-**Список Connections приватен, и это решение, а не пробел** (IMM-216,
-2026-10-19). SELECT-политика `connections` отдаёт только строки, где ты
-одна из сторон, и экрана «знакомые такого-то» нет. Правило видимости
-устроено так, что чужие связи не проступают и косвенно: под постом
-знакомого видны комментарии только ТВОИХ Connections, а профиль незнакомого
-не виден вовсе. Единственный остаточный сигнал — комната: её участники
-видят друг друга и знают, что владелец собрал их из своих знакомых
-(`add_room_member()` требует Connection). Фичу «кто видит мой список
-контактов» решено не делать. Любое новое место, где показываются чужие
-люди, проверять на то, не выдаёт ли оно, с кем знаком третий.
+**The Connections list is private, and that's a decision, not a gap** (IMM-216,
+2026-10-19). The SELECT policy on `connections` returns only rows where you
+are one of the parties, and there is no "so-and-so's connections" screen. The
+visibility rule is built so that other people's connections don't leak through
+indirectly either: under a connection's post you see comments only from YOUR
+Connections, and a non-connection's profile isn't visible at all. The only
+residual signal is a room: its members see each other and know that the owner
+gathered them from their own connections (`add_room_member()` requires a
+Connection). It was decided not to build a "who can see my contact list"
+feature. Any new place that shows other people must be checked for whether it
+reveals who a third party is connected to.
 
-## Комнаты
+## Rooms
 
-Комната — это отдельный чат для тех, кого в неё позвали. Завела
-20260826180000 — тогда ещё лентой; ленту сняла 20260828100000, оставив чат
-(«Комната перестала быть лентой» ниже).
+A room is a separate chat for the people invited to it. Introduced by
+20260826180000 — back then still as a feed; 20260828100000 removed the feed,
+keeping the chat ("The room stopped being a feed" below).
 
 `rooms` / `room_members` / `room_messages`.
 
-**У комнаты нет `creator_id`.** Владелец — участник с наименьшим `seq`
-(`room_owner_id()`), то есть тот, кто вступил раньше всех из оставшихся.
-Поэтому «создатель ушёл — права у старейшего» выполняется само: удаление
-строки в `room_members` И ЕСТЬ передача прав, отдельного триггера и отдельной
-колонки, которую можно забыть обновить, не существует. `seq` — identity, а не
-`joined_at`: `create_room()` вставляет всех одной транзакцией, где `now()` у
-всех строк совпадает, и «кто раньше» по времени не разрешалось бы никак.
-Владелец переименовывает комнату, добавляет и исключает участников; выйти
-может каждый сам. Все четыре владельческих RPC (`rename_room()`,
-`add_room_member()`, `remove_room_member()`, `set_room_avatar()`) отвечают
-**одним `PT404` и на «нет такой комнаты», и на «есть, но чужая»**
-(20260905100000) — тот же принцип, что у `delete_own_comment()` и
-`delete_own_room_message()`. Раньше они различались (`PT404` против `PT403`), а
-`security definer` проносит вопрос мимо RLS, так что по коду ответа можно было
-перебором uuid отличать живую комнату от выдуманной. Обе проверки свёрнуты в
-одну: `room_owner_id()` отдаёт NULL для несуществующей комнаты, и
-`is distinct from auth.uid()` истинно в обоих случаях сразу. Форма проверки
-именно `is distinct from`, а не `not owns_room(...)`: у второй NULL даёт NULL,
-ветка не срабатывает вовсе, и без стоящей выше проверки существования вызов
-поехал бы дальше по несуществующей комнате — ровно эта ловушка и жила в
-`set_room_avatar()`, прикрытая порядком проверок.
+**A room has no `creator_id`.** The owner is the member with the lowest `seq`
+(`room_owner_id()`), i.e. whoever joined earliest among those remaining. So
+"the creator left — rights pass to the oldest member" happens on its own:
+deleting the row in `room_members` IS the transfer of rights; there's no
+separate trigger and no separate column that someone could forget to update.
+`seq` is an identity, not `joined_at`: `create_room()` inserts everyone in one
+transaction, where `now()` is the same for all rows, so "who came first" by
+time couldn't be resolved at all. The owner renames the room, adds and removes
+members; anyone can leave on their own. All four owner RPCs (`rename_room()`,
+`add_room_member()`, `remove_room_member()`, `set_room_avatar()`) answer
+**with the same `PT404` both for "no such room" and for "exists, but isn't
+yours"** (20260905100000) — the same principle as `delete_own_comment()` and
+`delete_own_room_message()`. They used to differ (`PT404` vs. `PT403`), and
+`security definer` carries the question past RLS, so the response code let you
+tell a live room from a made-up one by brute-forcing uuids. Both checks are
+folded into one: `room_owner_id()` returns NULL for a nonexistent room, and
+`is distinct from auth.uid()` is true in both cases at once. The check is
+specifically `is distinct from`, not `not owns_room(...)`: with the latter,
+NULL yields NULL, the branch doesn't fire at all, and without an existence
+check above it the call would carry on with a nonexistent room — exactly that
+trap lived in `set_room_avatar()`, masked by the order of the checks.
 
-**Комната на двоих — не «маленькая группа», а другая сущность.** `is_direct`,
-имени нет вовсе (`rooms_direct_shape` требует `name is null`): каждая сторона
-видит имя второго участника, и собирает это имя клиент
-(`roomDisplayName()`), а не база. Третьего в неё добавить нельзя, и она
-умирает от ухода любой из сторон — комната на одного с чужой перепиской
-внутри не нужна никому. Пара на комнату ровно одна: `direct_a`/`direct_b`
-(упорядочены `least`/`greatest`, как `connections_ordered_pair`) под
-уникальным частичным индексом — денормализация ради инварианта, который через
-`room_members` не выражается ничем. Она же делает `create_room()`
-идемпотентной для парной комнаты: повторный вызов возвращает существующую.
-Групповая комната без имени называется перечислением участников — это тоже
-считается на клиенте, потому что хранить перечисление значило бы заморозить
-его: имена меняются, состав тоже.
+**A two-person room isn't a "small group" — it's a different entity.**
+`is_direct`, no name at all (`rooms_direct_shape` requires `name is null`):
+each side sees the other member's name, and the client assembles that name
+(`roomDisplayName()`), not the database. A third person can't be added, and it
+dies when either side leaves — a room for one with someone else's
+conversation inside is of no use to anyone. There's exactly one pair per room:
+`direct_a`/`direct_b` (ordered by `least`/`greatest`, like
+`connections_ordered_pair`) under a unique partial index — denormalization for
+the sake of an invariant that can't be expressed through `room_members` at
+all. It also makes `create_room()` idempotent for a direct room: a repeated
+call returns the existing one. A group room without a name is called by
+listing its members — that's also computed on the client, because storing the
+list would freeze it: names change, and so does membership.
 
-Владелец у парной комнаты в схеме есть (это просто минимальный `seq`, случая
-«без владельца» в схеме не бывает), но **в интерфейсе не показывается**: делать
-ему там нечего — ни добавить, ни исключить, ни переименовать, — и метка рядом с
-одним из двух имён только вызывала бы вопрос, почему она там.
+A direct room does have an owner in the schema (it's just the lowest `seq`;
+the schema has no "ownerless" case), but **the UI doesn't show it**: there's
+nothing for the owner to do there — no adding, removing or renaming — and a
+label next to one of the two names would only raise the question of why it's
+there.
 
-**Комната перестала быть лентой** (20260828100000). Полтора дня у комнаты
-было две половины — своя лента и свой чат, — и правило видимости поста было
-двухветвенным: «пост общей ленты, автор видим» ИЛИ «пост лежит в моей
-комнате». Прижился чат; вторая ветвь осталась тем, о чём обязана помнить
-каждая новая фича про посты, а помнят не всегда — 20260826190000 закрывала
-ровно такую находку сутки спустя после наката. Поэтому посты комнат удалены,
-`post_rooms` и `posts.in_general_feed` дропнуты, правило видимости свёрнуто
-обратно в одну ветвь, а адресация поста вернулась настройкой видимости самого
-поста, а не комнатой — «Кому виден пост» ниже (20260829100000).
+**The room stopped being a feed** (20260828100000). For a day and a half a
+room had two halves — its own feed and its own chat — and the post visibility
+rule had two branches: "a general-feed post whose author is visible" OR "the
+post is in my room". The chat caught on; the second branch remained something
+every new post-related feature has to remember, and they don't always —
+20260826190000 closed exactly such a finding a day after it was applied. So
+room posts were deleted, `post_rooms` and `posts.in_general_feed` were dropped,
+the visibility rule was folded back into a single branch, and post targeting
+returned as a visibility setting on the post itself rather than a room — "Who
+can see a post" below (20260829100000).
 
-Ветвь была ещё и в видимости КОММЕНТАРИЯ — «автор комментария мой сосед по
-комнате», `is_comment_author_room_peer()`, — и там же оказалась мина: её
-первым конъюнктом был `post_in_my_rooms()`, дропнутый той же миграцией, а
-тело `security definer`-функции разрешается в рантайме. То есть чтение
-комментариев падало бы 42883 у всех, кому не хватило первой ветви. Нашла
-симуляция сразу после наката; обе копии правила (политика `comments` и
-`is_comment_visible()`) вернулись к дороомнатному тексту.
+The branch also existed in COMMENT visibility — "the comment's author is my
+roommate", `is_comment_author_room_peer()` — and that's where a landmine
+turned up: its first conjunct was `post_in_my_rooms()`, dropped by the same
+migration, and the body of a `security definer` function is resolved at
+runtime. So reading comments would have failed with 42883 for everyone the
+first branch didn't cover. A simulation caught it right after the migration
+was applied; both copies of the rule (the `comments` policy and
+`is_comment_visible()`) went back to their pre-rooms text.
 
-**Mute и блокировка внутри комнаты не действуют** — осознанное решение: вошли
-в одну комнату, значит видите друг друга. Единственное, что блок ещё делает, —
-не даёт СОБРАТЬ комнату с тем, с кем он есть (`create_room()`,
-`add_room_member()`); уже существующую комнату он не трогает.
+**Mute and block don't apply inside a room** — a conscious decision: you
+joined the same room, so you see each other. The only thing a block still does
+is prevent ASSEMBLING a room with the person it's against (`create_room()`,
+`add_room_member()`); it doesn't touch an existing room.
 
-Отсюда следствие, которое легко пропустить: участники комнаты не обязаны быть
-Connections **друг другу** — их собрал владелец из СВОИХ знакомых. Значит
-членства в комнате мало, чтобы увидеть хотя бы имя собеседника, и
-`shares_room_with_caller()` спрашивают в двух местах: политика `users` (иначе
-сообщение в чате было бы без имени автора) и storage-политика аватарок (иначе
-пустой кружок). Во втором месте — не напрямую, а через
-`is_room_peer_avatar()`, которая сужает ответ до одного объекта; почему —
-в «Storage» ниже.
+Hence a consequence that's easy to miss: room members don't have to be
+Connections **of each other** — the owner gathered them from THEIR OWN
+connections. So room membership alone isn't enough to see even the other
+person's name, and `shares_room_with_caller()` is asked in two places: the
+`users` policy (otherwise a chat message would have no author name) and the
+avatar storage policy (otherwise an empty circle). In the second place — not
+directly, but via `is_room_peer_avatar()`, which narrows the answer down to a
+single object; why is covered in "Storage" below.
 
-Фотографии поста — след, который комнаты оставили за собой (20260826190000).
-Путь объекта — `posts/<author_id>/…` — знает только АВТОРА, и до комнат этого
-хватало: все посты автора жили в общей ленте, так что «видно автора» означало
-«видно и его файлы». С лентами комнат это перестало быть правдой, и знакомый
-автора, в комнату не позванный, открывал файл фотографии поста, адресованного
-только в комнату (саму строку `post_media` и сам пост он при этом не видел).
-Storage-политика с тех пор идёт от пути к ПОСТУ
-(`post_media_path_visible()` → `is_post_visible()`), а не к автору, и такой
-остаётся: одна копия правила лучше двух, даже когда ветвь, ради которой её
-завели, ушла. Своя ветвь у автора (`foldername[2] = auth.uid()`) осталась
-первой и намеренно не требует строки в `post_media`: клиент заливает файлы ДО
-того, как появляется пост, и без неё автор не открыл бы только что залитое.
+Post photos are a trace rooms left behind (20260826190000). The object path —
+`posts/<author_id>/…` — knows only the AUTHOR, and before rooms that was
+enough: all of an author's posts lived in the general feed, so "the author is
+visible" meant "their files are visible too". With room feeds that stopped
+being true, and a connection of the author who wasn't invited to the room
+could open the photo file of a post addressed only to the room (while not
+seeing the `post_media` row or the post itself). Since then the storage policy
+goes from the path to the POST (`post_media_path_visible()` →
+`is_post_visible()`), not to the author, and it stays that way: one copy of the
+rule is better than two, even after the branch it was introduced for is gone.
+The author's own branch (`foldername[2] = auth.uid()`) remains first and
+deliberately doesn't require a `post_media` row: the client uploads files
+BEFORE the post exists, and without it the author couldn't open what they just
+uploaded.
 
-### Аватарка комнаты
+### Room avatar
 
-`rooms.avatar_path` + префикс `rooms/<room_id>/…` в бакете `media`
-(20260826210000). Только у групповой: парная комната — это второй участник,
-и аватарка у неё его же.
+`rooms.avatar_path` + the `rooms/<room_id>/…` prefix in the `media` bucket
+(20260826210000). Group rooms only: a direct room is the other member, and its
+avatar is theirs.
 
-Отличие от `avatars/<user_id>/…` и `posts/<author_id>/…` в том, что вторая
-папка тут не пользователь, а комната, поэтому право считается не сравнением с
-`auth.uid()`, а вопросом «владею ли я этой комнатой» — `owns_room()`. Это
-однонаправленная обёртка над `room_owner_id()` ровно по той же причине, по
-которой у `are_connected()` есть `is_connected_to_caller()`: сама
-`room_owner_id()` отвечает про ЛЮБУЮ комнату и потому клиенту не выдана, а
-обёртка — про вызывающего, и выдать её безопасно (без гранта её нельзя было бы
-позвать из storage-политики).
+The difference from `avatars/<user_id>/…` and `posts/<author_id>/…` is that
+the second folder here isn't a user but a room, so the permission is computed
+not by comparing with `auth.uid()` but by asking "do I own this room" —
+`owns_room()`. It's a one-directional wrapper over `room_owner_id()` for
+exactly the same reason `are_connected()` has `is_connected_to_caller()`:
+`room_owner_id()` itself answers about ANY room and is therefore not granted to
+the client, while the wrapper answers about the caller and is safe to grant
+(without the grant it couldn't be called from the storage policy).
 
-CHECK на колонке держит оба инварианта сразу: у парной комнаты аватарки нет
-вовсе, и путь всегда лежит под префиксом СВОЕЙ комнаты. Второе не украшение:
-без него владелец одной комнаты мог бы записать себе путь к файлу чужой, и
-клиент участника послушно пошёл бы его скачивать.
+The CHECK on the column holds both invariants at once: a direct room has no
+avatar at all, and the path always lies under ITS OWN room's prefix. The
+second isn't decoration: without it the owner of one room could write a path
+to another room's file, and a member's client would dutifully go download it.
 
-В интерфейсе групповая комната без своей картинки носит нейтральный значок,
-а **не аватарку кого-то из участников**: заимствованное лицо читается как
-«это тот человек» — строка выглядит как он, тап по ней открывал его профиль, —
-хотя выбран он был только тем, что вступил раньше других. Лицо участника
-остаётся у комнаты на двоих, где оно и есть сама комната.
+In the UI, a group room without its own picture shows a neutral icon, **not
+the avatar of one of its members**: a borrowed face reads as "this is that
+person" — the row looks like them, and tapping it used to open their profile —
+even though they were picked only because they joined before the others. A
+member's face stays with the two-person room, where it effectively is the room.
 
-Путь пишет RPC `set_room_avatar()`, а не UPDATE-политика: политика не умеет
-ограничить, КАКИЕ колонки меняются, и вместе с аватаркой открыла бы
-`is_direct` и пару `direct_a`/`direct_b`, на которых стоит уникальность парной
-комнаты. RPC возвращает осиротевший путь — клиент сносит объект после записи
-строки, как и везде: правило «сначала строки, потом объекты» и его причина —
-в [client-architecture.md](client-architecture.md), исполняет его клиент.
+The path is written by the `set_room_avatar()` RPC, not an UPDATE policy: a
+policy can't restrict WHICH columns change, and along with the avatar it would
+open up `is_direct` and the `direct_a`/`direct_b` pair, which direct-room
+uniqueness rests on. The RPC returns the orphaned path — the client deletes the
+object after writing the row, as everywhere else: the "rows first, then
+objects" rule and its reason are in
+[client-architecture.md](client-architecture.md); the client enforces it.
 
-### Чат комнаты
+### Room chat
 
 `room_messages` + `room_members.last_read_at` (20260826200000).
 
-Видимости сообщения отдельного правила нет: сообщение видно тому, кто в
-комнате, — `room_id in (select my_room_ids())`, и всё. Ни mute, ни блок её не
-сужают, и это единственный разумный вариант: дыры в переписке читаются хуже,
-чем присутствие неприятного человека.
+There's no separate visibility rule for a message: a message is visible to
+whoever is in the room — `room_id in (select my_room_ids())`, and that's it.
+Neither mute nor block narrows it, and that's the only sensible option: holes
+in a conversation read worse than the presence of an unpleasant person.
 
-**Удаление — заглушка (`deleted_at` + пустой текст), а не `delete`.** Причина
-не только в том, что так же устроены комментарии: подписка realtime отдаёт
-DELETE без содержимого строки (replica identity default — только ключ), и
-проверить по нему RLS нечем, а UPDATE приезжает целой строкой и фильтруется
-политикой как обычное чтение. Гасить строку по UPDATE — то же самое, что
-убирать её, только без слепого пятна. UPDATE- и DELETE-политик у таблицы нет
-вовсе: единственный путь — `delete_own_room_message()`, где заглушка ставится
-атомарно вместе с очисткой текста (политика на UPDATE не умеет ограничить,
-КАКИЕ колонки меняются, и открыла бы правку своей строки целиком, включая
-`created_at`, по которому считаются непрочитанные).
+**Deletion is a tombstone (`deleted_at` + empty text), not a `delete`.** The
+reason isn't only that comments work the same way: a realtime subscription
+delivers DELETE without the row's contents (replica identity default — key
+only), so there's nothing to check RLS against, while UPDATE arrives as the
+whole row and is filtered by the policy like a normal read. Blanking a row via
+UPDATE is the same as removing it, just without the blind spot. The table has
+no UPDATE or DELETE policies at all: the only path is
+`delete_own_room_message()`, where the tombstone is set atomically together
+with clearing the text (an UPDATE policy can't restrict WHICH columns change,
+and would open up editing your whole row, including `created_at`, which unread
+counts are based on).
 
-**Непрочитанные живут на строке участника** (`last_read_at`), а не в отдельной
-таблице: та повторяла бы `(room_id, user_id)` один в один. `default now()` —
-новый участник не получает в наследство всю переписку как непрочитанную. Свои
-сообщения непрочитанными не считаются никогда.
+**Unread state lives on the member row** (`last_read_at`), not in a separate
+table: that would repeat `(room_id, user_id)` one-for-one. `default now()` — a
+new member doesn't inherit the entire conversation as unread. Your own messages
+are never counted as unread.
 
-**Прочитано/доставлено у каждого сообщения — тем же приёмом** (20260827100000).
-Рядом с `last_read_at` заводится `last_delivered_at`, вторая метка на той же
-строке `room_members`; отдельной таблицы под статус конкретного сообщения нет
-и здесь — сравнение делает клиент: сообщение прочитано участником, если его
-`last_read_at` не раньше `created_at` сообщения (аналогично для доставки).
-Галочки рисуются только на СВОИХ сообщениях (своё прочитанное чужим — не
-то же самое, что чужое прочитанное своё), а в групповой комнате — как
-агрегат «прочитано N/M» по всем «остальным» участникам, а не значок: значок
-не умеет сказать «3 из 5».
+**Per-message read/delivered uses the same technique** (20260827100000).
+Next to `last_read_at` there's `last_delivered_at`, a second marker on the same
+`room_members` row; here too there's no separate table for a specific
+message's status — the client does the comparison: a message has been read by
+a member if their `last_read_at` is no earlier than the message's `created_at`
+(likewise for delivery). Checkmarks are drawn only on YOUR OWN messages (others
+reading yours isn't the same thing as you reading theirs), and in a group room
+as an aggregate "read N/M" across all the "other" members rather than an icon:
+an icon can't say "3 of 5".
 
-«Доставлено» в этом приложении не значит «долетело до устройства» — push
-delivery receipts здесь нет и заводить её ради одной галочки не стоит.
-Значение слабее: `mark_rooms_delivered()` продвигает `last_delivered_at` во
-всех комнатах вызывающего разом и зовётся при каждой загрузке списка комнат
-(`my_rooms()`) — сам факт, что клиент успешно синхронизировал список,
-и есть единственный сигнал «доставлено», которым это приложение
-располагает без своей инфраструктуры push-подтверждений. Чтение
-по-прежнему продвигает обе метки разом (`mark_room_read()`) — прочитанное
-не может быть недоставленным.
+"Delivered" in this app doesn't mean "reached the device" — there are no push
+delivery receipts here, and adding them for one checkmark isn't worth it. The
+meaning is weaker: `mark_rooms_delivered()` advances `last_delivered_at` in all
+of the caller's rooms at once and is called on every load of the room list
+(`my_rooms()`) — the very fact that the client successfully synced the list is
+the only "delivered" signal this app has without its own push-acknowledgment
+infrastructure. Reading still advances both markers at once
+(`mark_room_read()`) — something read can't be undelivered.
 
-Но только в тех комнатах, где есть что доставлять (20260923100000): где нет
-ни одного живого чужого сообщения новее отметки, строка не переписывается.
-Продвижение там всё равно ненаблюдаемо — сообщение старше отметки считается
-доставленным, куда её ни двинь дальше, — а вот стоило оно дорого: строка
-`room_members` опубликована в realtime (см. ниже), так что каждая переписанная
-строка будила всех участников той комнаты. Безусловный UPDATE по всем комнатам
-на каждую загрузку списка превращался в веерную рассылку, и чем больше у людей
-общих комнат, тем дороже обходилось одно сообщение — взаимно, потому что чужие
-загрузки точно так же будили нас.
+But only in rooms where there's something to deliver (20260923100000): where
+there isn't a single live message from someone else newer than the marker, the
+row isn't rewritten. Advancing it there is unobservable anyway — a message
+older than the marker counts as delivered no matter how much further you move
+it — but it was expensive: the `room_members` row is published to realtime (see
+below), so every rewritten row woke up all members of that room. An
+unconditional UPDATE across all rooms on every list load turned into a fan-out
+broadcast, and the more shared rooms people had, the more a single message
+cost — mutually, since other people's loads woke us up in exactly the same way.
 
-`room_members` добавлена в публикацию realtime вторым (после
-`room_messages`) применением этого механизма в проекте — той же политикой
-SELECT, что и обычное чтение, так что галочка у отправителя может
-перевернуться, пока он ещё смотрит на экран, а чужая комната по-прежнему не
-протечёт мимо RLS.
+`room_members` was added to the realtime publication as the second (after
+`room_messages`) use of this mechanism in the project — with the same SELECT
+policy as a normal read, so the sender's checkmark can flip while they're
+still looking at the screen, and someone else's room still can't leak past RLS.
 
-**Realtime** — первое его использование в проекте: `room_messages` добавлена в
-публикацию `supabase_realtime`. Postgres Changes проверяет SELECT-политику
-подписчика для каждой строки, то есть чужие комнаты через подписку не потекут
-— правило то же, что и у обычного чтения.
+**Realtime** — its first use in the project: `room_messages` was added to the
+`supabase_realtime` publication. Postgres Changes checks the subscriber's
+SELECT policy for every row, so other people's rooms won't leak through the
+subscription — the rule is the same as for a normal read.
 
-`my_rooms()` из-за чата пересоздана (drop + create: у `create or replace` нет
-права менять OUT-колонки) и отдаёт теперь ещё последнее сообщение и число
-непрочитанных — список комнат он же список чатов.
+`my_rooms()` was recreated for the chat (drop + create: `create or replace`
+isn't allowed to change OUT columns) and now also returns the last message and
+the unread count — the room list is also the chat list.
 
-### Ответ на сообщение
+### Replying to a message
 
-`room_messages.reply_to_id` — nullable самоссылка на `room_messages(id)`
-(20260911100000), `on delete set null`: строки сообщений никогда не удаляются
-физически (см. заглушку выше), так что эта ветка не срабатывает на практике,
-но ответ переживёт исчезновение оригинала, если это правило когда-нибудь
-изменится. Обратного индекса («какие сообщения отвечают на это») нет — цитата
-всегда резолвится по id, поиска в обратную сторону клиент не делает.
+`room_messages.reply_to_id` is a nullable self-reference to `room_messages(id)`
+(20260911100000), `on delete set null`: message rows are never physically
+deleted (see the tombstone above), so this branch doesn't fire in practice, but
+a reply will survive the original disappearing if that rule ever changes.
+There's no reverse index ("which messages reply to this one") — a quote is
+always resolved by id, and the client never searches in the reverse direction.
 
-INSERT-политика проверяет не только `room_id IN my_room_ids()` (уже было), но
-и что `reply_to_id`, если задан, указывает на сообщение ИЗ ТОЙ ЖЕ комнаты —
-иначе можно процитировать чужую комнату по угаданному uuid. Эта проверка идёт
-через `security definer`-функцию `room_message_in_room()`, а не голым
-`EXISTS` прямо в политике: подзапрос к `room_messages` внутри её же политики
-уронил вставку ЛЮБОГО сообщения на `42P17 infinite recursion` при первой
-накатке — «Подзапрос к своей же таблице» в [AGENTS.md](../AGENTS.md).
+The INSERT policy checks not only `room_id IN my_room_ids()` (already there),
+but also that `reply_to_id`, if set, points to a message FROM THE SAME room —
+otherwise you could quote another room by a guessed uuid. This check goes
+through the `security definer` function `room_message_in_room()`, not a bare
+`EXISTS` right in the policy: a subquery on `room_messages` inside its own
+policy broke the insert of ANY message with `42P17 infinite recursion` on the
+first apply — "A subquery against the table's OWN self" in
+[AGENTS.md](../AGENTS.md).
 
-Цитата резолвится клиентом по-разному в зависимости от того, откуда пришла
-строка: `fetchMessages`/`sendMessage` просят PostgREST embed
-(`reply_to:reply_to_id(...)` — голая FK-колонка, без имени таблицы: PostgREST
-не резолвит self-reference через привычную форму `room_messages!reply_to_id`,
-см. выше) и получают готовый превью прямо в ответе, а Postgres Changes отдаёт только сырую колонку `reply_to_id` без
-джойна (Realtime не умеет embed) — тогда экран ищет оригинал в уже
-загруженном списке сообщений сам, и если не находит (страница с ним ещё не
-подгружена), рисует «оригинал недоступен» вместо пустоты или падения.
+The client resolves the quote differently depending on where the row came
+from: `fetchMessages`/`sendMessage` ask PostgREST for an embed
+(`reply_to:reply_to_id(...)` — the bare FK column, without a table name:
+PostgREST doesn't resolve a self-reference through the usual form
+`room_messages!reply_to_id`, see above) and get a ready preview right in the
+response, while Postgres Changes delivers only the raw `reply_to_id` column
+without a join (Realtime can't embed) — then the screen looks for the original
+in the already-loaded message list itself, and if it doesn't find it (the page
+containing it hasn't been loaded yet), it draws "Original message unavailable"
+instead of a blank or a crash.
 
-### Медиа в сообщении
+### Media in a message
 
-`room_messages.media` — jsonb-массив до 10 элементов (20260828120000).
-**Единственное место в проекте, где медиа лежит колонкой, а не строками**, и
-это не небрежность, а три разных ответа на «почему у поста иначе»:
+`room_messages.media` is a jsonb array of up to 10 elements (20260828120000).
+**The only place in the project where media is stored as a column rather than
+as rows**, and that's not sloppiness but three separate answers to "why is it
+different for posts":
 
-- **Realtime отдаёт СТРОКУ.** Подписчик получает `room_messages` и больше
-  ничего. Строки второй таблицы приехали бы отдельным запросом, которого у
-  подписки нет, — и пузырь с фотографией появлялся бы у остальных пустым,
-  пока экран не переоткроют.
-- **CHECK наконец выражается.** «Пусто нельзя: либо текст, либо вложения» —
-  условие ОДНОЙ строки, если медиа в ней же. У поста то же правило пришлось
-  проверять процедурно внутри `create_post_with_media()` (20260823120000)
-  ровно потому, что строки `post_media` приезжают отдельно и CHECK их не
-  видит.
-- **Обратный путь от файла к строке не нужен.** У поста storage-политика идёт
-  от пути к строке `post_media` и дальше к посту (`post_media_path_visible()`),
-  потому что видимость поста вычисляемая. У сообщения видимость — членство в
-  комнате, а комната написана в самом пути. Индексы по `storage_path`, ради
-  которых у поста заведена таблица, здесь не нужны вовсе.
+- **Realtime delivers a ROW.** The subscriber receives `room_messages` and
+  nothing else. Rows of a second table would arrive in a separate query, which
+  the subscription doesn't have — and a bubble with a photo would show up empty
+  for everyone else until they reopened the screen.
+- **The CHECK can finally be expressed.** "Empty isn't allowed: either text or
+  attachments" is a condition on ONE row if the media is in that same row. For
+  posts the same rule had to be checked procedurally inside
+  `create_post_with_media()` (20260823120000) precisely because `post_media`
+  rows arrive separately and the CHECK can't see them.
+- **No reverse path from file to row is needed.** For posts, the storage policy
+  goes from the path to the `post_media` row and on to the post
+  (`post_media_path_visible()`), because post visibility is computed. For a
+  message, visibility is room membership, and the room is written in the path
+  itself. The `storage_path` indexes the post table exists for aren't needed
+  here at all.
 
-Форму массива держит CHECK через `room_message_media_ok(room_id, author_id,
-media)` — в самом CHECK нельзя ни подзапрос, ни `jsonb_array_elements`, а
-внутри immutable-функции можно. Она же проверяет ПУТЬ каждого элемента, и
-проверяет его на строке, а не в INSERT-политике: политика ограничивает
-вызывающего, CHECK — саму строку, и правило переживёт будущую
-`security definer`-функцию, которая начнёт писать сообщения в обход политики.
-Функция — единственная в проекте, выданная `authenticated` не ради вызова из
-клиента, а потому что CHECK вычисляется правами пишущего; безопасно это
-потому, что она не ходит ни в одну таблицу и как эндпоинт отвечает лишь на
-вопрос «правильно ли составлен этот json».
+The array's shape is enforced by a CHECK via `room_message_media_ok(room_id,
+author_id, media)` — a CHECK itself can contain neither a subquery nor
+`jsonb_array_elements`, but an immutable function can. It also checks the PATH
+of every element, and checks it on the row rather than in the INSERT policy:
+the policy constrains the caller, the CHECK constrains the row itself, and the
+rule will outlive a future `security definer` function that starts writing
+messages bypassing the policy. It's the only function in the project granted
+to `authenticated` not to be called from the client but because a CHECK is
+evaluated with the writer's rights; that's safe because it touches no table and,
+as an endpoint, only answers the question "is this json well-formed".
 
-С 20260829110000 она держит и РАЗМЕР: не больше 400 символов на путь и не
-больше 8000 байт на всю колонку. До неё `media` была единственной клиентской
-колонкой схемы без потолка (`posts.text`, `comments.text`,
-`room_messages.text` — по 5000, `users.name` и `rooms.name` — 100) и
-единственной, которая уезжает не в ответ на запрос, а сама: `room_messages`
-лежит в публикации realtime, и подписчик получает СТРОКУ. Десять путей,
-каждый из которых начинается с законного префикса и продолжается мегабайтом
-набивки, рассылались всей комнате одной отправкой и повторялись сколько
-угодно. Числа с двойным запасом от честного максимума: самый длинный законный
-путь — 161 символ (у постера 168), десять элементов со всеми полями дают
-около 3970 байт.
+Since 20260829110000 it also enforces SIZE: no more than 400 characters per
+path and no more than 8000 bytes for the whole column. Before that, `media` was
+the only client-writable column in the schema without a ceiling (`posts.text`,
+`comments.text`, `room_messages.text` — 5000 each, `users.name` and
+`rooms.name` — 100) and the only one that goes out not in response to a
+request but on its own: `room_messages` is in the realtime publication, and the
+subscriber receives the ROW. Ten paths, each starting with a legitimate prefix
+and continuing with a megabyte of padding, were broadcast to the whole room in
+a single send and could be repeated at will. The numbers have a twofold margin
+over the honest maximum: the longest legitimate path is 161 characters (168
+for a poster), and ten elements with all fields come to about 3970 bytes.
 
-Отправка осталась обычным `insert` — RPC не понадобился, вставлять нечего,
-кроме одной строки, — а `delete_own_room_message()` теперь снимает и
-вложения, возвращая осиротевшие пути: клиент сносит объекты ПОСЛЕ записи
-строки (`deleteRowsThenObjects`), как и везде.
+Sending remains a plain `insert` — no RPC was needed, there's nothing to insert
+but one row — while `delete_own_room_message()` now also removes attachments,
+returning the orphaned paths: the client deletes the objects AFTER writing the
+row (`deleteRowsThenObjects`), as everywhere else.
 
-### Правка сообщения
+### Editing a message
 
-Своё сообщение можно править 48 часов с отправки — и текст, и вложения
-(20261019120000, IMM-208). Путь один — `edit_own_room_message(id, text,
-media)`, а не UPDATE-грант: политика не умеет ограничить колонки и открыла
-бы `created_at`, по которому считаются непрочитанные и галочки, — та же
-причина, по которой удаление сделано RPC. Правка приезжает остальным
-обычным realtime UPDATE, целой строкой.
+You can edit your own message for 48 hours after sending — both text and
+attachments (20261019120000, IMM-208). There's one path —
+`edit_own_room_message(id, text, media)`, not an UPDATE grant: a policy can't
+restrict columns and would open up `created_at`, which unread counts and
+checkmarks are based on — the same reason deletion is an RPC. The edit reaches
+everyone else as a regular realtime UPDATE, as the whole row.
 
-- **`room_messages.edited_at`** ставит только RPC; клиент рисует по нему
-  «изменено». Прежние версии не хранятся. Правка без изменений — не правка:
-  пустой ответ, `edited_at` не двигается.
-- **Окно считается от `created_at`**, а не от прошлой правки, иначе правкой
-  раз в двое суток его не закрыть никогда. Отказ — свой SQLSTATE `AME01`,
-  чтобы клиент сказал «время вышло», а не «не получилось».
-- **Ответы** — как у удаления: «нет», «чужое» и «скрыто модерацией» — один
-  PT404; заглушку удалённого автор видит, ей — PT422.
-- **Форму вложений и непустоту держат CHECK самой строки**, они срабатывают
-  на UPDATE так же, как на вставке, — второй копии правил в функции нет.
-  Убрать из сообщения всё — это удаление, а не правка.
-- **Вложения**: новые файлы клиент заливает до вызова, под тем же префиксом
-  `messages/<room>/<author>/`; функция возвращает пути, которые правка убрала,
-  и объекты уходят после строки (`deleteRowsThenObjects`). Не дошедшая до
-  RPC заливка — сироты для `reap_orphaned_media()`.
-- **Бан**: правка — тоже запись, поэтому на `room_messages` висит
-  поколоночный `before update of text, media` с `reject_write_when_banned()`.
-  С условием `when (new.deleted_at is null)`: удаление переписывает те же
-  колонки, а снести своё под баном можно.
-- **Цитата в ответе** берёт оригинал сначала из загруженного списка и только
-  потом из embed: embed — снимок на момент загрузки и продолжал бы цитировать
-  слова, которые автор уже поправил.
+- **`room_messages.edited_at`** is set only by the RPC; the client draws
+  "edited" from it. Previous versions aren't stored. An edit with no changes
+  isn't an edit: an empty response, `edited_at` doesn't move.
+- **The window is counted from `created_at`**, not from the previous edit,
+  otherwise editing once every two days would keep it open forever. Rejection
+  is its own SQLSTATE `AME01`, so the client can say "time's up" rather than
+  "something went wrong".
+- **Responses** are the same as for deletion: "doesn't exist", "someone else's"
+  and "hidden by moderation" are all one PT404; the author can see the
+  tombstone of a deleted message, and for that it's PT422.
+- **Attachment shape and non-emptiness are enforced by the row's own CHECKs**,
+  which fire on UPDATE just as on insert — there's no second copy of the rules
+  in the function. Removing everything from a message is a deletion, not an
+  edit.
+- **Attachments**: the client uploads new files before the call, under the
+  same `messages/<room>/<author>/` prefix; the function returns the paths the
+  edit removed, and the objects go after the row (`deleteRowsThenObjects`).
+  An upload that never reached the RPC is orphans for `reap_orphaned_media()`.
+- **Ban**: an edit is also a write, so `room_messages` has a per-column
+  `before update of text, media` with `reject_write_when_banned()`. With the
+  condition `when (new.deleted_at is null)`: deletion rewrites the same
+  columns, and you're allowed to delete your own content while banned.
+- **The quote in a reply** takes the original from the loaded list first and
+  only then from the embed: the embed is a snapshot at load time and would keep
+  quoting words the author has already edited.
 
-### «Печатает…» и «в сети»
+### "Typing…" and "online"
 
-Ни таблицы, ни колонки (20260828130000): и то и другое живо ровно столько,
-сколько открыт экран, а значение, которое устаревает через секунду после
-записи, хранить негде — presence Realtime держит его в памяти и раздаёт
-подписчикам сам. Отсюда и граница фичи: «в сети» здесь значит «сейчас в этом
-чате», а не «заходил в приложение», и «был в сети в 12:40» так не получить —
-для этого нужна колонка `last_seen_at` и отдельный разговор про приватность.
+Neither a table nor a column (20260828130000): both live exactly as long as
+the screen is open, and a value that goes stale a second after being written
+has nowhere to be stored — Realtime presence keeps it in memory and
+distributes it to subscribers itself. Hence the feature's boundary: "online"
+here means "in this chat right now", not "has opened the app", and "last seen
+at 12:40" can't be done this way — that needs a `last_seen_at` column and a
+separate conversation about privacy.
 
-**Канал приватный, и это главное.** Обычный канал Realtime открыт любому, кто
-знает его имя: presence и broadcast, в отличие от Postgres Changes, не
-проверяют RLS ни на что — они ничего и не читают из таблиц. Приватный
-проверяет: подписка и отправка идут через `realtime.messages`, у которой RLS
-включена, а политик до сих пор не было ни одной, то есть приватные каналы
-были запрещены целиком. Теперь их две, и обе спрашивают одно:
-`is_my_room_topic('room:<uuid>')`. Регулярка перед приведением типа там не
-украшение — тема приезжает строкой от клиента, и `'room:мусор'::uuid` был бы
-не «false», а ошибкой внутри политики; `case` заодно даёт порядок вычисления,
-на который можно положиться, в отличие от `and`.
+**The channel is private, and that's the main point.** A regular Realtime
+channel is open to anyone who knows its name: presence and broadcast, unlike
+Postgres Changes, check RLS on nothing — they don't read anything from tables
+either. A private one does check: subscribing and sending go through
+`realtime.messages`, which has RLS enabled but, until now, not a single
+policy, i.e. private channels were forbidden entirely. Now there are two, and
+both ask the same thing: `is_my_room_topic('room:<uuid>')`. The regex before
+the type cast there isn't decoration — the topic arrives as a string from the
+client, and `'room:мусор'::uuid` would be not "false" but an error inside the
+policy; `case` also provides an evaluation order you can rely on, unlike `and`.
 
-Каналы Postgres Changes (`room_messages:…`, `room_members_receipts:…`)
-остаются публичными и этих политик не касаются: у них своя проверка,
-построчная, той же SELECT-политикой таблицы.
+Postgres Changes channels (`room_messages:…`, `room_members_receipts:…`)
+remain public and aren't affected by these policies: they have their own
+check, per row, by the same SELECT policy of the table.
 
-Как клиент объявляет о себе и когда снимает флаг — в
-[client-architecture.md](client-architecture.md), раздел про присутствие.
+How the client announces itself and when it clears the flag is in
+[client-architecture.md](client-architecture.md), in the section on presence.
 
-### Уведомления комнат
+### Room notifications
 
-Один kind (`room_message`) и одна настройка (`notify_room_messages`).
-Их было два — вторым уведомляли о посте в комнате, — и они ушли вместе с
-лентами комнат (20260828100000): настройка, которая ничего не выключает,
-хуже отсутствующей, потому что её видно.
+One kind (`room_message`) and one setting (`notify_room_messages`).
+There used to be two — the second notified about a post in a room — and they
+went away together with room feeds (20260828100000): a setting that turns
+nothing off is worse than a missing one, because it's visible.
 
-Три предохранителя, без которых чат превращается в шум:
-- **комната заглушена лично этим человеком** —
-  `room_members.notifications_muted` (20260828110000), третья метка на той же
-  строке и по той же причине, что первые две: отношение «человек ↔ комната»
-  уже описано ею, отдельная таблица повторяла бы её ключ. Общая настройка
-  отвечает на вопрос «хочу ли я пуши из чатов вообще», флаг — «хочу ли я их
-  из ЭТОГО чата». Mute — про пуши и только: непрочитанные считаются
-  по-прежнему, значок на строке списка остаётся, потому что заглушить комнату
-  и перестать её читать — не одно и то же. Пишет флаг `set_room_muted()`, а
-  не UPDATE-политика: политика не умеет ограничить, КАКИЕ колонки меняются, и
-  открыла бы `last_read_at` с `last_delivered_at` — те самые, по которым
-  считаются непрочитанные и рисуются галочки (UPDATE-гранта у `room_members`
-  нет вовсе). **Флаг при этом НЕ скрыт от остальных участников комнаты**, и
-  doc-комментарий в `rooms_repository.dart` до 20260924100000 утверждал
-  обратное. `room_members` читает каждый участник комнаты (та же политика,
-  которой список комнат берёт имена и аватарки), а SELECT-грант там
-  табличный — значит сосед, который спросит эту колонку, её получит.
-  Приложение не спрашивает (`fetchMemberReceipts` выбирает три колонки, и
-  этой среди них нет), но «никто не смотрит» и «никто не может» — разные
-  утверждения. Закрывается это так: `revoke select on room_members` и
-  поколоночный `grant select (room_id, user_id, joined_at, last_read_at,
-  last_delivered_at, seq)`; `my_rooms()` не пострадает, она `security
-  definer` и ходит правами владельца. Не сделано в 20260924100000 намеренно:
-  `room_members` лежит в публикации realtime, через которую идут галочки
-  «доставлено/прочитано», а как realtime ведёт себя при поколоночных грантах,
-  проверяется только живым клиентом — ломать работающие галочки ради этого
-  без такой проверки не стоит;
-- **человек сейчас в этом чате** — экран отмечает прочитанным каждое входящее
-  сообщение, поэтому свежая `last_read_at` (моложе минуты) означает «читает
-  прямо сейчас», и пуш не заводится;
-- **очередь схлопывается** — пока предыдущее уведомление из этой комнаты не
-  ушло, второе не появляется; иначе оживший чат превращается в очередь из
-  сорока одинаковых пушей, которые придут разом.
+Three safeguards without which a chat turns into noise:
+- **the room is muted personally by this person** —
+  `room_members.notifications_muted` (20260828110000), a third marker on the
+  same row and for the same reason as the first two: the "person ↔ room"
+  relationship is already described by that row, and a separate table would
+  repeat its key. The global setting answers "do I want chat pushes at all",
+  the flag — "do I want them from THIS chat". Mute is about pushes and only
+  that: unread counts are still computed and the badge on the list row stays,
+  because muting a room and no longer reading it aren't the same thing. The
+  flag is written by `set_room_muted()`, not an UPDATE policy: a policy can't
+  restrict WHICH columns change, and would open up `last_read_at` and
+  `last_delivered_at` — the very ones unread counts and checkmarks are based
+  on (`room_members` has no UPDATE grant at all). **The flag is NOT hidden from
+  the room's other members, though**, and the doc comment in
+  `rooms_repository.dart` claimed the opposite until 20260924100000.
+  `room_members` is readable by every member of the room (the same policy the
+  room list uses to get names and avatars), and the SELECT grant there is
+  table-wide — so a fellow member who queries this column will get it. The app
+  doesn't query it (`fetchMemberReceipts` selects three columns, and this isn't
+  one of them), but "nobody looks" and "nobody can" are different claims. The
+  fix is: `revoke select on room_members` and a per-column
+  `grant select (room_id, user_id, joined_at, last_read_at,
+  last_delivered_at, seq)`; `my_rooms()` won't suffer, since it's `security
+  definer` and runs with the owner's rights. Deliberately not done in
+  20260924100000: `room_members` is in the realtime publication that carries
+  the "delivered/read" checkmarks, and how realtime behaves with per-column
+  grants can only be verified with a live client — breaking working
+  checkmarks over this without such a check isn't worth it;
+- **the person is in this chat right now** — the screen marks every incoming
+  message as read, so a fresh `last_read_at` (less than a minute old) means
+  "reading right now", and no push is queued;
+- **the queue collapses** — until the previous notification from this room
+  has gone out, a second one isn't created; otherwise a chat that comes alive
+  turns into a queue of forty identical pushes arriving all at once.
 
-Названия комнаты в тексте пуша нет намеренно: оно у каждого своё (у комнаты
-без названия — перечисление остальных участников), собирает его клиент, и
-вторая копия этого правила на сервере разошлась бы с первой при первом же
-переименовании. В payload едет `room_id` — им и открывается чат по тапу.
+The room name is deliberately absent from the push text: it's different for
+each person (for a room without a name — a list of the other members), the
+client assembles it, and a second copy of that rule on the server would drift
+from the first at the very first rename. The payload carries `room_id` — that's
+what opens the chat on tap.
 
-### Тап по пушу
+### Tapping a push
 
-Схема тут ни при чём: `send-push` кладёт в `data` те же id, что уже лежат
-в payload строки очереди, а куда какой вид ведёт и кто обрабатывает тап —
-поведение приложения, см. «Тап по пушу» в
+The schema has nothing to do with it: `send-push` puts into `data` the same ids
+that are already in the queue row's payload, while where each kind leads and
+who handles the tap is app behavior — see "Tapping a push" in
 [client-architecture.md](client-architecture.md).
 
-## Кому виден пост
+## Who can see a post
 
-`posts.visibility` — `'connections'` (всем знакомым) или `'favorites'`
-(только избранным автора). Завела 20260829100000, взамен адресации в комнаты,
-снятой днём раньше.
+`posts.visibility` is `'connections'` (all connections) or `'favorites'`
+(only the author's favorites). Introduced by 20260829100000, replacing
+addressing posts to rooms, which was removed a day earlier.
 
-Разница между ними и есть смысл замены: комната — это ГРУППА, отдельное место
-со своим составом и своей лентой, а видимость — свойство САМОГО ПОСТА. Первое
-требовало второй таблицы, второй ленты и второй ветви правила, живущей
-отдельной жизнью; второе — колонки на строке поста, которую видно там же, где
-и всё остальное про него.
+The difference between the two is the whole point of the swap: a room is a
+GROUP, a separate place with its own membership and its own feed, while
+visibility is a property of THE POST ITSELF. The former needed a second table,
+a second feed and a second branch of the rule living a life of its own; the
+latter needs a column on the post row, visible right where everything else
+about the post is.
 
-**Аудитория «только избранные» — это список избранных АВТОРА**
-(`favorite_users`, где `user_id` = автор). Отдельной таблицы «близкие друзья»
-нет: список уже есть, он уже означает «эти люди мне ближе прочих», и вторая
-такая же коллекция рядом заставляла бы помнить, какая из них для чего. Побочный
-смысл, который стоит назвать вслух: до сих пор избранное было ЧИСТО ЛИЧНЫМ —
-«хочу пуш о его постах», вторая сторона о нём не знала и от него не зависела.
-Теперь оно ещё и аудитория — и это меняет не только видимость постов, но и
-приватность самого списка. 20260829100000 утверждала, что «узнать, что ты у
-кого-то в избранном, по-прежнему нельзя»; **это перестало быть правдой в тот
-же момент**, и лучше сказать прямо, чем повторять снятый инвариант.
-`authors_who_favorited_me()` выдана `authenticated` и обязана быть выдана
-(см. ниже), а она без аргументов перечисляет всех, кто добавил вызывающего к
-себе. То есть каждый может узнать, у кого он в избранном, — про себя, но
-полным списком.
+**The "favorites only" audience is the AUTHOR's favorites list**
+(`favorite_users` where `user_id` = the author). There is no separate "close
+friends" table: the list already exists, it already means "these people are
+closer to me than the rest", and a second, identical collection next to it
+would force everyone to remember which one is for what. A side effect worth
+saying out loud: until now favorites were PURELY PERSONAL — "I want a push
+about their posts"; the other side didn't know about it and didn't depend on
+it. Now it is also an audience, and that changes not only post visibility but
+the privacy of the list itself. 20260829100000 claimed that "you still can't
+find out that you are in someone's favorites"; **that stopped being true at
+the very same moment**, and it's better to say so plainly than to repeat a
+dropped invariant. `authors_who_favorited_me()` is granted to `authenticated`
+and has to be (see below), and with no arguments it lists everyone who has
+added the caller. So anyone can find out whose favorites they are in — only
+about themselves, but as a complete list.
 
-Инвариант поэтому формулируется так: **чужой список избранного закрыт, свой
-«кто добавил меня» — открыт его владельцу**. Строки `favorite_users`
-по-прежнему видит только их хозяин, метка «только избранные» рисуется лишь
-автору поста, и спросить «а держит ли X в избранном Y» нельзя никому. Это
-цена аудитории, а не оплошность: пока чужой список решает, что человек
-увидит, спрятать от него сам факт попадания в список нечем.
+So the invariant reads: **someone else's favorites list is closed; your own
+"who added me" is open to you**. `favorite_users` rows are still visible only
+to their owner, the "Favourites only" badge is drawn only for the post's
+author, and nobody can ask "does X have Y in favorites". This is the price of
+the audience, not an oversight: as long as someone else's list decides what a
+person sees, there is no way to hide from them the fact of being on it.
 
-Двенадцатый аудит (20260829110000) закрыл вторую половину той же истории:
-`is_favorited_by()` была выдана `authenticated` мёртвым грантом и отвечала на
-вопрос «держит ли p_author меня в избранном» про ЛЮБОГО p_author. Лишней она
-была потому, что единственный её вызывающий — `is_post_visible()`, сама
-`security definer` и никому не выданная, то есть внутри неё вызов идёт правами
-владельца. Тот же класс, что мёртвый грант на `is_author_visible()`
-(20260826120000), но, в отличие от него, не безобидный.
+The twelfth audit (20260829110000) closed the other half of the same story:
+`is_favorited_by()` was granted to `authenticated` as a dead grant and
+answered "does p_author have me in favorites" for ANY p_author. It was
+superfluous because its only caller is `is_post_visible()`, itself
+`security definer` and granted to nobody, so inside it the call runs with the
+owner's rights. Same class as the dead grant on `is_author_visible()`
+(20260826120000), but unlike that one, not harmless.
 
-Правило снова двухветвенное и снова записано **в двух местах и только в
-двух** — SELECT-политика `posts` (инлайном) и `is_post_visible()`, которую
-спрашивают `is_comment_visible()`, `reaction_summary()` и
-`post_media_path_visible()`. Менять надо оба. Всё остальное — медиа,
-комментарии, реакции, файлы в Storage — ходит через вложенный
-`exists (select 1 from posts …)` и получает новое правило само.
+The rule is two-branched again and again written **in two places and only
+two** — the `posts` SELECT policy (inline) and `is_post_visible()`, which is
+asked by `is_comment_visible()`, `reaction_summary()` and
+`post_media_path_visible()`. Both have to be changed. Everything else — media,
+comments, reactions, files in Storage — goes through a nested
+`exists (select 1 from posts …)` and picks up the new rule automatically.
 
-Предикатов избранного тоже два, и это тот же дуэт, что
-`visible_author_ids()`/`is_author_visible()`: множество
-`authors_who_favorited_me()` для политики (некоррелированный `IN (SELECT …)`
-хэшируется один раз) и скаляр `is_favorited_by()` для построчных вызывающих.
-Оба `security definer` по той же причине, по которой ею стала
-`is_blocked_pair()` в 0.9.0: RLS на `favorite_users` пускает только к своим
-строкам, поэтому подзапрос к ЧУЖОМУ избранному внутри политики
-отфильтровался бы в ноль — и пост «только для избранных» не увидел бы никто,
-включая самих избранных.
+There are also two favorites predicates, the same duo as
+`visible_author_ids()`/`is_author_visible()`: the set
+`authors_who_favorited_me()` for the policy (an uncorrelated `IN (SELECT …)`
+is hashed once) and the scalar `is_favorited_by()` for per-row callers.
+Both are `security definer` for the same reason `is_blocked_pair()` became one
+in 0.9.0: RLS on `favorite_users` only lets you reach your own rows, so a
+subquery against SOMEONE ELSE's favorites inside the policy would filter down
+to nothing — and a "favorites only" post would be visible to nobody,
+including the favorites themselves.
 
-Гранты у них РАЗНЫЕ, и это не симметрия дуэта, а разница в том, кто зовёт.
-`authors_who_favorited_me()` выдана `authenticated`, потому что стоит в
-SELECT-политике `posts`, а политика вычисляется правами читающего: снять грант
-значит выключить ленту всем. `is_favorited_by()` не выдана никому —
-единственный её вызывающий сам `security definer` и исполняется от владельца
-(20260829110000). Правило «каждый аргумент про самого вызывающего» тут
-формально соблюдалось и обеих бы пропустило; отличает их вопрос, есть ли у
-функции вызывающий, которому грант вообще нужен.
+Their grants are DIFFERENT, and that's not duo symmetry but a difference in
+who calls them. `authors_who_favorited_me()` is granted to `authenticated`
+because it sits in the `posts` SELECT policy, and the policy is evaluated with
+the reader's rights: revoking the grant means turning the feed off for
+everyone. `is_favorited_by()` is granted to nobody — its only caller is itself
+`security definer` and runs as the owner (20260829110000). The rule "every
+argument is about the caller themselves" was formally satisfied here and would
+have let both through; what tells them apart is whether the function has a
+caller that needs the grant at all.
 
-**Автор видит свой пост всегда** — и это отдельная строка в обеих копиях
-правила, а не следствие первой ветви. Нашла симуляция сразу после наката: из
-пяти своих постов автор видел четыре, потому что во вторую ветвь он проходил
-бы, только держа в избранном самого себя.
+**The author always sees their own post** — and that's a separate line in
+both copies of the rule, not a consequence of the first branch. A simulation
+right after rollout caught it: the author saw four of their five posts,
+because they would only pass the second branch by having themselves in
+favorites.
 
-Уведомления считаются по тому же правилу, и списки тут РАЗНЫЕ: пуш «новый
-пост» уходит тем, кто добавил АВТОРА к себе, а видят пост те, кого добавил
-автор. Без явного условия в `enqueue_post_notifications()` пуш ушёл бы тому,
-кому пост не покажут; дайджест по той же причине считает только видимое —
-звать в ленту числом постов, которых там не найти, хуже, чем не звать.
+Notifications are computed by the same rule, and the lists here are
+DIFFERENT: the "new post" push goes to those who added the AUTHOR, while the
+post is visible to those the author added. Without an explicit condition in
+`enqueue_post_notifications()` the push would go to someone who won't be shown
+the post; for the same reason the digest counts only what's visible — luring
+someone into the feed with a count of posts they won't find there is worse
+than not luring them at all.
 
-Пишут колонку только `create_post_with_media()` и `update_post_with_media()`;
-INSERT- и UPDATE-грантов на неё нет. У правки значение по умолчанию `null`
-(«не трогать»), а не `'connections'`: клиент, который о видимости не знает,
-правит подпись у поста «только для избранных» — и не должен этой правкой
-раскрыть его всем.
+The column is written only by `create_post_with_media()` and
+`update_post_with_media()`; there are no INSERT or UPDATE grants on it. On
+edit the default is `null` ("leave as is"), not `'connections'`: a client that
+doesn't know about visibility edits the caption of a "favorites only" post —
+and must not expose it to everyone through that edit.
 
-**Ретрай публикации, сужающий аудиторию, отзывает свои пуши**
-(20260905100000). `enqueue_post_notifications()` — AFTER INSERT, и только
-INSERT, а ветка `on conflict` в `create_post_with_media()` — это UPDATE. То
-есть публикация «всем знакомым», которая закоммитилась после того, как
-`.timeout()` перестал её ждать, успевает разложить `new_post` по всем, у кого
-автор в избранном; композер при этом остаётся открытым с живым токеном и
-редактируемым переключателем, и следующий тап — уже с «только избранным» —
-менял колонку, не трогая очередь. Пуш «у Пети новый пост» доходил до того, кому
-пост не покажут: ровно та утечка, ради которой условие видимости и появилось в
-самом триггере. Теперь ретрай, оставляющий пост «только избранным», удаляет из
-`notification_outbox` ещё не отправленные `new_post` про ЭТОТ пост у всех, кого
-нет в избранном автора, — то есть приводит очередь к тому, что триггер сделал
-бы, зная финальную аудиторию.
+**A publish retry that narrows the audience withdraws its pushes**
+(20260905100000). `enqueue_post_notifications()` is AFTER INSERT, and only
+INSERT, while the `on conflict` branch in `create_post_with_media()` is an
+UPDATE. So an "all connections" publish that committed after `.timeout()`
+stopped waiting for it manages to fan out `new_post` to everyone who has the
+author in favorites; meanwhile the composer stays open with a live token and
+an editable toggle, and the next tap — now with "favorites only" — changed the
+column without touching the queue. The "Petya has a new post" push reached
+someone who won't be shown the post: exactly the leak the visibility condition
+in the trigger itself was introduced to prevent. Now a retry that leaves the
+post "favorites only" deletes from `notification_outbox` the not-yet-sent
+`new_post` entries about THIS post for everyone not in the author's
+favorites — that is, it brings the queue to what the trigger would have done
+had it known the final audience.
 
-Три границы у этого, названные вслух: уже отправленное (`sent_at is not null`)
-не трогается — отозвать пуш нельзя; `digest` не трогается вовсе — он не
-называет пост, а считает их, так что сузившаяся аудитория делает его число
-завышенным на единицу, и это неточность, а не утечка; обратный ход (ретрай
-РАСШИРЯЕТ аудиторию) уведомлений не добавляет — одна публикация, один пуш, а
-пропущенный пуш дешевле лишнего.
+It has three limits, named out loud: what's already sent
+(`sent_at is not null`) is left alone — a push can't be recalled; `digest` is
+not touched at all — it doesn't name the post but counts posts, so a narrowed
+audience makes its number one too high, and that's an inaccuracy, not a leak;
+the reverse move (a retry that WIDENS the audience) adds no notifications —
+one publish, one push, and a missed push is cheaper than an extra one.
 
-## Заявки в знакомые
+## Connection requests
 
-`connection_requests` (20260828140000) — второй способ завести Connection и
-первый, не требующий встречи вживую. Первый способ, инвайт-код
-(`activate_invite_link()`), остаётся основным: знакомство в этом приложении
-про людей, которых знают лично.
+`connection_requests` (20260828140000) is the second way to make a Connection
+and the first one that doesn't require meeting in person. The first way, the
+invite code (`activate_invite_link()`), remains the main one: a connection in
+this app is about people you know personally.
 
-**Заявку можно отправить ТОЛЬКО тому, с кем есть общая комната.** Это узкая
-дверь, и она же — вся идея: комнату собирает владелец из СВОИХ знакомых, её
-участники друг другу знакомыми быть не обязаны, и люди, которые уже сидят в
-одном чате, до сих пор не имели способа обменяться кодом. Ни каталога, ни
-поиска людей, ни возможности написать незнакомцу отсюда не появляется —
-условие проверяет `shares_room_with_caller()` на сервере.
+**A request can be sent ONLY to someone you share a room with.** It's a narrow
+door, and that's the whole idea: a room is assembled by its owner from THEIR
+connections, its members don't have to be each other's connections, and people
+already sitting in the same chat had no way to exchange a code until now. No
+directory, no people search and no way to message a stranger appears from
+this — the condition is checked server-side by `shares_room_with_caller()`.
 
-**Пара упорядочена, в отличие от `connections`**: у заявки есть направление,
-и кто кого позвал — существенная её часть. Уникальность по
-`(requester_id, recipient_id)` — то есть **одна заявка на НАПРАВЛЕНИЕ за всё
-время, в любом статусе**, а не одна на пару: отказ окончателен для
-отказавшего направления, потому что возможность просить снова превращает
-отказ в переговоры, но передумавший отправляет СВОЮ заявку в обратную
-сторону, и её тот же индекс пропускает — это уже его решение, а не повторная
-просьба.
+**The pair is ordered, unlike `connections`**: a request has a direction, and
+who asked whom is an essential part of it. Uniqueness is on
+`(requester_id, recipient_id)` — that is, **one request per DIRECTION, ever,
+in any status**, not one per pair: a decline is final for the declined
+direction, because the ability to ask again turns a decline into a
+negotiation, but someone who changed their mind sends THEIR own request in the
+opposite direction, and the same index lets it through — that's their own
+decision, not a repeated ask.
 
-Формулировка «одна на пару» ходила и в шапке 20260828140000, где ссылалась на
-«второй, симметричный индекс ниже». Такого индекса нет и не должно быть: он
-запретил бы ровно тот обратный ход, который абзацем ниже там же назван
-законным. Правильное чтение — направленное, и оно совпадает с тем, что стоит
-в схеме. Шапка миграции приведена к нему задним числом (20260905100000,
-тринадцатый аудит): правился только текст комментария, DDL там не менялся —
-направленный индекс стоял в схеме с самого начала.
+The wording "one per pair" also appeared in the header of 20260828140000,
+where it referred to "a second, symmetric index below". There is no such index
+and there must not be: it would forbid exactly the reverse move that the very
+next paragraph there calls legitimate. The correct reading is directional, and
+it matches what is in the schema. The migration header was retroactively
+brought in line with it (20260905100000, the thirteenth audit): only the
+comment text was edited, the DDL there didn't change — the directional index
+had been in the schema from the start.
 
-Встречная заявка не заводится, а принимается: двое, попросившие друг друга,
-согласны оба, и просить кого-то из них ещё и нажать «принять» — церемония
-ради церемонии (`request_connection()` возвращает в этом случае `connected`).
+A counter-request isn't created but accepted: two people who asked each other
+both agree, and making one of them also press "Accept" would be ceremony for
+ceremony's sake (`request_connection()` returns `connected` in this case).
 
-Блок и отсутствие общей комнаты отвечают одним PT403: различать их значит
-отвечать на вопрос «а он меня заблокировал?», который блок обязан скрывать.
-Блок проверяется и при ОТВЕТЕ — он мог появиться после отправки.
+A block and the absence of a shared room answer with the same PT403:
+distinguishing them would answer the question "did they block me?", which a
+block must hide. The block is also checked on ANSWERING — it could have
+appeared after the request was sent.
 
-Отказ уведомления не порождает: сообщать «вам отказали» значит превращать
-тихий отказ в событие. Отправитель увидит это сам — кнопка «позвать» к нему не
-вернётся. Держится это на клиенте, и держалось не всегда: экран читал только
-заявки со статусом `pending`, поэтому отклонённая пропадала из списка вместе с
-молчанием, кнопка возвращалась — и отвечала PT409 навсегда, потому что второй
-строки в то же направление индекс не даст никогда. Клиент теперь забирает СВОИ
-заявки в любом статусе (`fetchRequests()`), и «кнопка не вернётся» — описание
-кода, а не намерения. У обоих видов (`connection_request`,
-`connection_accepted`) нет настройки-выключателя, единственные такие рядом с
-`app_update`: заявка адресована лично и приходит раз в несколько месяцев, а «я
-больше никогда не узнаю, что меня позвали» — не тот выбор, который стоит
-предлагать.
+A decline doesn't produce a notification: telling someone "you were declined"
+turns a quiet decline into an event. The sender will see it themselves — the
+"Ask to connect" button won't come back for them. This is held on the client,
+and it wasn't always: the screen read only requests with status `pending`, so
+a declined one disappeared from the list along with the silence, the button
+came back — and answered PT409 forever, because the index will never allow a
+second row in the same direction. The client now fetches ITS OWN requests in
+any status (`fetchRequests()`), and "the button won't come back" describes the
+code, not an intention. Both kinds (`connection_request`,
+`connection_accepted`) have no opt-out setting, the only such ones besides
+`app_update`: a request is addressed personally and arrives once every few
+months, and "I will never find out again that someone asked me" is not a
+choice worth offering.
 
-## Комментарии
+## Comments
 
-Вложенность **ровно одноуровневая**. `parent_comment_id` — корень ветки,
-`reply_to_id` — адресат (только для метки «в ответ»), `deleted_at` — заглушка.
-Удаление идёт через RPC `delete_own_comment()`: с ответами — заглушка, без —
-реальный delete, решает сервер. DELETE- и UPDATE-политик на `comments`
-намеренно нет: редактирование комментариев — не фича, а прямой DELETE унёс бы
-по `on delete cascade` ответы ДРУГИХ людей (потому 20260725120000 и сняла
-DELETE-политику, заведённую 20260710113710). С 20260825100000 снят и сам грант
-DELETE: без политики он и так ничего не открывал, но пережил её снятие и ждал,
-пока кто-нибудь заведёт политику обратно. «Нет такого
-комментария» и «есть, но чужой» отвечают одним `PT404` — различать их значит
-отвечать на вопрос «жива ли строка» про то, что RLS обязана скрывать целиком
-(20260822140000).
+Nesting is **exactly one level**. `parent_comment_id` is the thread root,
+`reply_to_id` the addressee (only for the "In reply to" label), `deleted_at`
+the placeholder. Deletion goes through the `delete_own_comment()` RPC: with
+replies — a placeholder, without — a real delete; the server decides. There
+are deliberately no DELETE or UPDATE policies on `comments`: editing comments
+isn't a feature, and a direct DELETE would take OTHER people's replies with it
+via `on delete cascade` (which is why 20260725120000 dropped the DELETE policy
+introduced by 20260710113710). Since 20260825100000 the DELETE grant itself is
+revoked too: without a policy it opened nothing anyway, but it survived the
+policy's removal and was waiting for someone to bring a policy back. "No such
+comment" and "exists, but someone else's" answer with the same `PT404` —
+distinguishing them would answer "is the row alive" about something RLS must
+hide entirely (20260822140000).
 
-`comments.text` — не длиннее 5000 (`comments_text_length`, 20260716120000) и
-непустой после `btrim`, если строка не заглушка (`comments_text_not_blank`,
-20260824110000). Условие с дизъюнкцией по `deleted_at`, а не просто
-`btrim(text) <> ''`, потому что заглушку `delete_own_comment()` делает именно
-пустой строкой — там это не мусор, а само значение «текста больше нет».
-Нижней границы не было вовсе, пока её заводили для `posts.text` и `users.name`
-(20260822200000): пустой комментарий проходил, рисовался пустой строкой у всех,
-кому виден пост, считался в `comment_summary()` и уносил с собой пуш автору.
+`comments.text` is at most 5000 (`comments_text_length`, 20260716120000) and
+non-empty after `btrim` unless the row is a placeholder
+(`comments_text_not_blank`, 20260824110000). The condition is a disjunction on
+`deleted_at` rather than plain `btrim(text) <> ''` because
+`delete_own_comment()` makes the placeholder precisely an empty string — there
+it isn't junk but the very value "there is no text anymore". There was no
+lower bound at all until it was introduced for `posts.text` and `users.name`
+(20260822200000): an empty comment got through, was rendered as an empty line
+for everyone who could see the post, was counted in `comment_summary()` and
+sent the author a push along the way.
 
-Структурные правила ответов (`enforce_comment_reply_rules()`) живут в
-`security definer` BEFORE INSERT-триггере, а такие триггеры срабатывают **до**
-`WITH CHECK` политики. Поэтому триггер молчит про всё, чего вызывающему видеть
-нельзя: не видно — `return new`, и отказывает уже политика, одинаковым 42501
-на «нет строки», «строка чужая» и «строка-заглушка». Видимость обеих сторон
-(`parent_comment_id`, `reply_to_id`) проверяет `is_comment_visible()` —
-единственный сценарий, где условие SELECT-политики `comments` продублировано
-намеренно: подставить функцию в саму политику нельзя, `security definer` не
-инлайнится и построчный вызов на ленте — регрессия из 20260726180000. Менять
-надо обе (20260822140000).
+The structural reply rules (`enforce_comment_reply_rules()`) live in a
+`security definer` BEFORE INSERT trigger, and such triggers fire **before**
+the policy's `WITH CHECK`. So the trigger stays silent about everything the
+caller isn't allowed to see: not visible — `return new`, and the policy does
+the refusing, with the same 42501 for "no row", "someone else's row" and
+"placeholder row". Visibility of both sides (`parent_comment_id`,
+`reply_to_id`) is checked by `is_comment_visible()` — the only case where the
+`comments` SELECT policy condition is duplicated on purpose: the function
+can't be substituted into the policy itself, `security definer` isn't inlined
+and a per-row call on the feed is the regression from 20260726180000. Both
+have to be changed (20260822140000).
 
-## Медиа поста
+## Post media
 
-До 20 фото/видео на пост — `post_media(post_id, position, media_type,
-storage_path, poster_path)`, одна строка на элемент. `position` — только
-порядок отображения в карусели ленты, не плотная последовательность (при
-редактировании клиент переписывает позиции оставшихся строк разом). Видимость
-наследуется от видимости самого поста, и наследуется буквально: политика — это
-`exists (select 1 from posts p where p.id = post_media.post_id)`, а RLS
-применяется и к подзапросу внутри политики, так что «строка `posts` нашлась»
-и означает «пост видно». Своей копии правила у `post_media` нет с
-20260826180000 — до неё здесь стоял join к `visible_author_ids()`, то есть
-четвёртая копия, и она бы не узнала ни про ветвь комнаты тогда, ни про
-`visibility` сейчас. **UPDATE-политики на `post_media` нет**: замена файла
-и reorder — всегда delete+insert строк, никогда update на месте (объект в
-storage при reorder не трогается, строка с той же `storage_path` просто
-пересоздаётся с новым `id`/`position`). Обе половины делает
-`set_post_media(post_id, items)` — **одной транзакцией**, и возвращает пути,
-на которые больше никто не ссылается, чтобы клиент удалил объекты уже ПОСЛЕ
-того, как строки переписаны (20260820150000). Двумя запросами PostgREST это
-было двумя транзакциями, и обрыв между ними оставлял пост вообще без медиа.
-Клиент зовёт её не напрямую, а через `update_post_with_media(post_id, text,
-items)` (20260824120000), которая добавляет к тому же вызову подпись поста —
-см. ниже про «ни текста, ни медиа». Сама `set_post_media()` **с 20260905100000
-`authenticated` не выдана** и живёт только как внутренность своей обёртки:
-`update_post_with_media()` зовёт её изнутри `security definer`, правами
-владельца, где грант не нужен. Держали его ради build 41 («убрать можно будет,
-когда `min(app_build)` перевалит за 42»), но условие выполнилось с другой
-стороны — 20260828100000 дропнула `posts.in_general_feed` и сменила сигнатуру
-`create_post_with_media()`, то есть выключила ленту и публикацию всем сборкам
-46 и ниже. Безобидным грант при этом не был: `set_post_media()` не проверяет
-«ни текста, ни медиа» и не может (она видит только медиа — см. ниже), так что
-`/rpc/set_post_media` с пустым `items` по собственному посту без подписи
-оставлял пустой пост живым в ленте у всех знакомых до ближайшего
-`purge_empty_posts()`. Её финальный INSERT с
-20260826120000 гасит дубликат `on conflict (post_id, storage_path) do nothing`
-— так же, как парная ей `create_post_with_media()`: две функции, пишущие в одну
-таблицу по одному ключу, вели себя по-разному, и один и тот же путь, пришедший
-в `items` дважды, на публикации отбрасывался молча, а на редактировании падал
-сырым 23505. Вместе с `on conflict` там появилась директива
-`#variable_conflict use_column`, и она обязательна: `returns table
-(storage_path text)` заводит OUT-параметр с этим именем, а цель конфликта
-обязана быть голым именем колонки — квалифицировать её нельзя синтаксически, а
-неквалифицированная натыкается на переменную и падает с 42702.
-Лимит 20 — backstop-триггер `enforce_post_media_limit()` (`BEFORE INSERT`),
-основной гейт — клиент.
+Up to 20 photos/videos per post — `post_media(post_id, position, media_type,
+storage_path, poster_path)`, one row per item. `position` is only the display
+order in the feed carousel, not a dense sequence (on edit the client rewrites
+the positions of the remaining rows all at once). Visibility is inherited from
+the visibility of the post itself, and inherited literally: the policy is
+`exists (select 1 from posts p where p.id = post_media.post_id)`, and RLS
+applies to the subquery inside a policy too, so "a `posts` row was found"
+literally means "the post is visible". `post_media` has had no copy of the
+rule of its own since 20260826180000 — before that there was a join to
+`visible_author_ids()` here, i.e. a fourth copy, and it would have known
+neither about the room branch back then nor about `visibility` now. **There is
+no UPDATE policy on `post_media`**: replacing a file and reordering are always
+delete+insert of rows, never an in-place update (on reorder the storage object
+isn't touched; the row with the same `storage_path` is simply recreated with a
+new `id`/`position`). Both halves are done by
+`set_post_media(post_id, items)` — **in one transaction** — and it returns the
+paths nothing references anymore, so that the client deletes the objects only
+AFTER the rows have been rewritten (20260820150000). As two PostgREST requests
+this was two transactions, and a drop between them left the post with no
+media at all. The client doesn't call it directly but through
+`update_post_with_media(post_id, text, items)` (20260824120000), which adds the
+post caption to the same call — see below on "neither text nor media".
+`set_post_media()` itself **has not been granted to `authenticated` since
+20260905100000** and lives only as the internals of its wrapper:
+`update_post_with_media()` calls it from inside `security definer`, with the
+owner's rights, where no grant is needed. The grant was kept for build 41 ("it
+can be removed once `min(app_build)` passes 42"), but the condition was met
+from the other side — 20260828100000 dropped `posts.in_general_feed` and
+changed the signature of `create_post_with_media()`, i.e. it switched off the
+feed and publishing for all builds 46 and below. The grant wasn't harmless in
+the meantime: `set_post_media()` doesn't check "neither text nor media" and
+can't (it only sees the media — see below), so `/rpc/set_post_media` with an
+empty `items` on one's own captionless post left an empty post alive in the
+feed of all connections until the next `purge_empty_posts()`. Since
+20260826120000 its final INSERT swallows duplicates with
+`on conflict (post_id, storage_path) do nothing` — just like its counterpart
+`create_post_with_media()`: two functions writing to one table on the same key
+behaved differently, and the same path arriving in `items` twice was silently
+dropped on publish but failed with a raw 23505 on edit. Together with
+`on conflict` the `#variable_conflict use_column` directive was added there,
+and it is mandatory: `returns table (storage_path text)` creates an OUT
+parameter with that name, and the conflict target must be a bare column
+name — it can't be qualified syntactically, and unqualified it collides with
+the variable and fails with 42702.
+The limit of 20 is the backstop trigger `enforce_post_media_limit()`
+(`BEFORE INSERT`); the main gate is the client.
 
-Префикс пути проверяют **оба** пути записи, и это две разные проверки одного
-условия. `security definer` проносит `set_post_media()` мимо INSERT-политики,
-поэтому она проверяет сама и кидает `PT422` (20260822170000); прямой INSERT
-(его делает `createPost`) проверяет INSERT-политика и отвечает 42501
-(20260822180000). Условие одно: `storage_path`/`poster_path` обязаны начинаться
-на `posts/<auth.uid()>/`, ровно как у storage-политики на INSERT. Пока это было
-только в RPC, через прямой INSERT можно было прицепить к своему посту строку с
-чужим путём — байты чужому зрителю от этого не открываются (подписывает объект
-он сам, и storage-политика матчит второй сегмент против его собственного
-`visible_author_ids()`), но авторство подменялось.
+The path prefix is checked by **both** write paths, and these are two
+different checks of one condition. `security definer` carries
+`set_post_media()` past the INSERT policy, so it checks by itself and throws
+`PT422` (20260822170000); a direct INSERT (which `createPost` does) is checked
+by the INSERT policy and answers 42501 (20260822180000). The condition is the
+same: `storage_path`/`poster_path` must start with `posts/<auth.uid()>/`,
+exactly as in the storage INSERT policy. While this lived only in the RPC, a
+direct INSERT could attach a row with someone else's path to one's own post —
+this doesn't expose the bytes to another viewer (they sign the object
+themselves, and the storage policy matches the second segment against their
+own `visible_author_ids()`), but authorship was spoofed.
 
-`posts.text` — либо NULL, либо непустой после `btrim` (`posts_text_not_blank`,
-20260822200000).
+`posts.text` is either NULL or non-empty after `btrim`
+(`posts_text_not_blank`, 20260822200000).
 
-Публикация поста вместе с медиа — **одной транзакцией**, через
-`create_post_with_media(client_token, text, items)` (20260823120000). Раньше это
-были три запроса PostgREST подряд (вставить пост, прочитать `id`, вставить
-медиа), то есть три транзакции: обрыв после первой публиковал пост с текстом и
-без фотографий — живой в ленте у всех знакомых, с уже ушедшим пушем, — пока
-композер показывал «не удалось опубликовать». Та же форма и то же лечение, что
-у `set_post_media()` (20260820150000) на пути редактирования; путь создания она
-тогда не тронула. Арбитраж прежний — `on conflict (author_id, client_token)`, —
-но ветка конфликта больше не `do nothing`: она **приводит пост к присланному
-состоянию** (20260824100000). Один `client_token` — одна публикация, содержимое
-которой определяет последний вызов с этим токеном.
+Publishing a post together with its media is **one transaction**, via
+`create_post_with_media(client_token, text, items)` (20260823120000). Before,
+it was three PostgREST requests in a row (insert the post, read the `id`,
+insert the media), i.e. three transactions: a drop after the first one
+published the post with text and no photos — live in the feed of all
+connections, with the push already sent — while the composer showed "Failed to
+publish". Same shape and same cure as `set_post_media()` (20260820150000) on
+the edit path; back then it didn't touch the create path. The arbitration is
+the same as before — `on conflict (author_id, client_token)` — but the
+conflict branch is no longer `do nothing`: it **brings the post to the state
+sent** (20260824100000). One `client_token` is one publish, whose content is
+determined by the last call with that token.
 
-Раз повтор может УБРАТЬ медиа, он может оставить объект в бакете без строки,
-которая на него ссылается. Поэтому `create_post_with_media()` возвращает
-`table (storage_path text)` — пути, осиротевшие его же перезаписью, — а клиент
-прогоняет уборку через `deleteRowsThenObjects` (20260825110000), ровно как на
-пути редактирования. `reap_orphaned_media()` тут последний рубеж, а не первый:
-он забирает объекты старше суток и по сотне за запуск, что не тот инструмент
-для клипа на 100 МБ, убранного из черновика секунду назад.
+Since a retry can REMOVE media, it can leave an object in the bucket with no
+row referencing it. So `create_post_with_media()` returns
+`table (storage_path text)` — the paths orphaned by its own overwrite — and the
+client runs the cleanup through `deleteRowsThenObjects` (20260825110000),
+exactly as on the edit path. `reap_orphaned_media()` is the last line of
+defence here, not the first: it collects objects older than a day, a hundred
+per run, which is not the tool for a 100 MB clip removed from a draft a second
+ago.
 
-Это не украшение, а то, что позволяет композеру чеканить токен один раз за
-сессию. Пока повтор был no-op, токен приходилось привязывать к содержимому
-(иначе правка после неудачи молча не применилась бы) — а значит, после
-публикации, которая «упала» по таймауту и всё-таки закоммитилась, правка
-черновика уезжала под НОВЫМ токеном и публиковала второй пост со вторым пушем.
+This isn't decoration; it's what lets the composer mint the token once per
+session. While a retry was a no-op, the token had to be tied to the content
+(otherwise an edit after a failure would silently not apply) — which meant
+that after a publish that "failed" on timeout and committed anyway, an edit to
+the draft went out under a NEW token and published a second post with a
+second push.
 
-Поэтому же «ни текста, ни медиа» проверяется синхронно на **обоих** путях
-записи (`PT422`), а не только кроном: `create_post_with_media()` при публикации
-и `update_post_with_media()` при правке. Раньше выразить это CHECK'ом было
-нельзя: в момент вставки поста строк медиа ещё не существовало, и проверка
-отвергла бы легальный пост из одних фотографий. Вкрутить проверку в саму
-`set_post_media()` тоже нельзя: она видит только медиа, а текст к моменту её
-вызова либо уже новый, либо ещё старый — смотря в каком порядке клиент шлёт две
-команды, и порядок «сначала текст» появился только в build 42. Крон
-`purge-empty-posts` остаётся и нужен, но уже по одной причине из двух:
-грант на `set_post_media()` снят (20260905100000, см. выше), а вот гранты на
-прямой INSERT в `posts`/`post_media` — нет. Пост без текста и без медиа
-по-прежнему может приехать этим путём, мимо обеих RPC, поэтому крон и остаётся.
-Снять и его можно будет, только если исчезнет прямой INSERT.
+For the same reason "neither text nor media" is checked synchronously on
+**both** write paths (`PT422`), not just by a cron: `create_post_with_media()`
+on publish and `update_post_with_media()` on edit. Before, this couldn't be
+expressed as a CHECK: at the moment the post was inserted, the media rows
+didn't exist yet, and the check would reject a legitimate photos-only post.
+The check can't be put into `set_post_media()` itself either: it only sees the
+media, and by the time it's called the text is either already new or still
+old — depending on the order in which the client sends the two commands, and
+the "text first" order only appeared in build 42. The `purge-empty-posts` cron
+stays and is needed, but now for one reason out of two: the grant on
+`set_post_media()` is revoked (20260905100000, see above), but the grants for
+direct INSERT into `posts`/`post_media` are not. A post with no text and no
+media can still arrive that way, bypassing both RPCs, which is why the cron
+stays. It can only be removed once direct INSERT goes away.
 
-Сам `posts.text` редактируется через узкую UPDATE-политику (`grant update
-(text)`, 20260819210000) — единственная колонка `posts`, доступная на UPDATE;
-`author_id`/`created_at`/`id`/`client_token` через этот путь недостижимы.
+`posts.text` itself is edited through a narrow UPDATE policy (`grant update
+(text)`, 20260819210000) — the only `posts` column available for UPDATE;
+`author_id`/`created_at`/`id`/`client_token` are unreachable this way.
 
-`poster_path` — только для video, JPEG первого кадра, сгенерированный на
-клиенте при выборе файла.
+`poster_path` is for video only: a JPEG of the first frame, generated on the
+client when the file is picked.
 
-## Фото профиля
+## Profile photos
 
-До 80 фото на пользователя — `profile_photos(user_id, position, storage_path)`,
-одна строка на фото, тот же неплотный `position` и delete+insert-reorder, что
-и у `post_media`, и так же одной транзакцией — через
-`reorder_profile_photos(photo_ids)`, которому надо передать **всю** галерею
-(позиции переписываются в плотный 0..N-1, частичная перестановка налезла бы на
-нетронутые строки; несовпадение — `PT422`). Проверка сверяет длины, и до
-20260826120000 этого было мало ровно на один случай: массив с повторами. Для
-галереи `{a, b}` набор `[a, a]` даёт на join'е две строки, длины сходятся,
-`PT422` не срабатывает, `delete` сносит обе фотографии — и падает уже INSERT,
-сырым 23505 по `profile_photos_user_storage_path_key`. Данные откатывались, но
-вместо внятного «набор не совпадает с вашей галереей» человек получал общую
-ошибку. Повторы теперь отсекаются отдельной проверкой `count(distinct)` до
-чтения таблицы: считать их через `array_length` нельзя, длина как раз и
-совпадает. Добавление идёт через
-`append_profile_photos(items)` (20260824130000) — и `position` там раздаёт
-сервер, из той же транзакции, в которую строки и лягут. Считать его на клиенте
-было нельзя по той же причине, по которой нельзя было делать reorder двумя
-запросами: экран считал от закэшированного списка, а тот отстаёт ровно тогда,
-когда предыдущая попытка закоммитилась уже после «не удалось добавить фото», —
-и новые строки целились в занятые позиции. Погасить это `upsert`'ом не выходит:
-его арбитр `(user_id, storage_path)`, а у новых файлов пути свои, так что
-конфликт по `position` не гасится, а роняет весь батч. Прямой INSERT остаётся
-выданным — по нему ходят сборки из Play. Видимость — **себе, Connection или
-системному аккаунту, без учёта mute/block**, а не `is_author_visible()`: блок
-не должен прятать аватар с экрана «Заблокированные», где блок и снимают.
-Раньше это было ровно то же правило, что у самой аватарки в Storage; с
-20260905100000 они разошлись на одну ветвь — у storage добавился сосед по
-комнате, которому видна аватарка и только она, а строк галереи он
-по-прежнему не видит. Почему именно так, а не префиксом, — в «Storage» ниже.
+Up to 80 photos per user — `profile_photos(user_id, position, storage_path)`,
+one row per photo, the same non-dense `position` and delete+insert reorder as
+`post_media`, and likewise in one transaction — via
+`reorder_profile_photos(photo_ids)`, which must be given the **whole** gallery
+(positions are rewritten to a dense 0..N-1; a partial permutation would
+collide with untouched rows; a mismatch is `PT422`). The check compares
+lengths, and until 20260826120000 that fell short in exactly one case: an
+array with duplicates. For a gallery `{a, b}` the set `[a, a]` yields two rows
+on the join, the lengths match, `PT422` doesn't fire, `delete` removes both
+photos — and then the INSERT fails with a raw 23505 on
+`profile_photos_user_storage_path_key`. The data was rolled back, but instead
+of a clear "the set doesn't match your gallery" the person got a generic
+error. Duplicates are now cut off by a separate `count(distinct)` check before
+the table is read: they can't be counted via `array_length`, since the length
+is exactly what matches. Appending goes through
+`append_profile_photos(items)` (20260824130000) — and `position` there is
+handed out by the server, from the same transaction the rows land in.
+Computing it on the client was impossible for the same reason reordering with
+two requests was: the screen computed it from the cached list, and that list
+lags exactly when the previous attempt committed after "Failed to add
+photos" — and the new rows aimed at occupied positions. An `upsert` can't
+paper over this: its arbiter is `(user_id, storage_path)`, and new files have
+their own paths, so a conflict on `position` isn't absorbed but brings down
+the whole batch. Direct INSERT stays granted — the Play builds use it.
+Visibility is **self, a Connection or the system account, ignoring
+mute/block**, not `is_author_visible()`: a block must not hide the avatar on
+the "Blocked" screen, which is where blocks are lifted.
+This used to be exactly the same rule as for the avatar itself in Storage;
+since 20260905100000 they differ by one branch — storage gained the room
+peer, who can see the avatar and only the avatar, while still not seeing the
+gallery rows. Why it's done this way rather than by prefix — see "Storage"
+below.
 
-Ветка системного аккаунта пришла сюда позже остальных (20260823130000):
-исключение «видно всем» заводили в четыре приёма, и ни до `profile_photos`, ни
-до storage-политики аватарок оно не дошло — а системный аккаунт ничей не
-Connection, так что обе отвечали «нельзя» вообще всем. Видно это на пасхалке
-переключателя темы: она открывает профиль Amicus, а тот рисует аватарку и по
-тапу галерею. `users.avatar_path` остаётся
-единственным полем, которое читает весь остальной клиент (лента, список
-знакомых, `friend_profile_screen`) — вместо того, чтобы переписывать эти места
-под галерею, триггер `sync_avatar_path_from_profile_photos()` держит его в
-синхроне с фото наименьшей `position` на каждой мутации `profile_photos`. Он
-`security definer` — не для доступа к чужим строкам, а потому, что после
-20260822210000 у `authenticated` нет права писать `users.avatar_path` вовсе, а
-писать её кто-то должен. Тронуть чужую строку он не может: `new/old.user_id`
-приходит из `profile_photos`, где RLS уже прибила его к `auth.uid()`.
-`storage_path` обязан начинаться на `avatars/<auth.uid()>/` — то же, что у
-`post_media`, и по той же причине (20260822180000). Лимит 80 — backstop-триггер
-`enforce_profile_photos_limit()`, тот же паттерн, что у `post_media`. Миграция
-`20260819240000_add_profile_photos.sql`.
+The system account branch arrived here later than the rest (20260823130000):
+the "visible to everyone" exception was introduced in four steps, and it
+reached neither `profile_photos` nor the avatar storage policy — and the
+system account is nobody's Connection, so both answered "no" to literally
+everyone. This shows on the theme-toggle easter egg: it opens the Amicus
+profile, which draws the avatar and, on tap, the gallery. `users.avatar_path`
+remains the only field the rest of the client reads (feed, connections list,
+`friend_profile_screen`) — instead of rewriting those places for the gallery,
+the `sync_avatar_path_from_profile_photos()` trigger keeps it in sync with the
+lowest-`position` photo on every `profile_photos` mutation. It is
+`security definer` — not to access other people's rows, but because after
+20260822210000 `authenticated` has no right to write `users.avatar_path` at
+all, and someone has to write it. It can't touch someone else's row:
+`new/old.user_id` comes from `profile_photos`, where RLS has already pinned it
+to `auth.uid()`.
+`storage_path` must start with `avatars/<auth.uid()>/` — same as
+`post_media`, and for the same reason (20260822180000). The limit of 80 is the
+backstop trigger `enforce_profile_photos_limit()`, the same pattern as
+`post_media`. Migration `20260819240000_add_profile_photos.sql`.
 
-## Серверные колонки
+## Server-owned columns
 
-Из табличных прав у `anon` не оставлено ничего (20260818140000, 20260821120000),
-а у `authenticated` сняты `TRUNCATE`, `TRIGGER` и `REFERENCES` — и в самих
-таблицах, и в дефолтных привилегиях, чтобы следующая созданная таблица не
-получила их обратно (20260822240000). Главный из трёх — `TRUNCATE`: **на него
-RLS не распространяется в принципе**, политики фильтруют строки, а он не
-строчная операция. До правки пользователь, которому политики показывали 3 строки
-`reactions`, сносил все 56.
+`anon` has no table privileges left at all (20260818140000, 20260821120000),
+and `authenticated` has had `TRUNCATE`, `TRIGGER` and `REFERENCES` revoked —
+both on the tables themselves and in default privileges, so the next table
+created doesn't get them back (20260822240000). The main one of the three is
+`TRUNCATE`: **RLS doesn't apply to it at all** — policies filter rows, and it
+isn't a row-level operation. Before the fix, a user whose policies showed them
+3 rows of `reactions` wiped all 56.
 
-Соответствие «грант ↔ политика» проверяется контрольным блоком прямо в
-миграции: если у `authenticated` осталось право на запись, под которым нет ни
-одной политики, накат падает. Блок из 20260824140000 сверялся с
-`information_schema.column_privileges` — правильный источник для INSERT и
-UPDATE, которые бывают поколоночными, и слепой на DELETE: это привилегия уровня
-таблицы, в `column_privileges` она не появляется никогда. Вся команда прошла
-мимо проверки, написанной ровно против такого. За ней стояли четыре мёртвых
-гранта — `comments`, `connections`, `invite_links`, `users`, — снятые в
-20260825100000; там же блок дополнен `role_table_grants` и теперь покрывает все
-три команды.
+The "grant ↔ policy" correspondence is verified by a check block right in the
+migration: if `authenticated` retains a write privilege with no policy under
+it, the rollout fails. The block from 20260824140000 checked against
+`information_schema.column_privileges` — the right source for INSERT and
+UPDATE, which can be per-column, and blind to DELETE: that's a table-level
+privilege and never shows up in `column_privileges`. The entire command
+slipped past a check written precisely against this. Behind it stood four dead
+grants — `comments`, `connections`, `invite_links`, `users` — revoked in
+20260825100000; the same migration extended the block with
+`role_table_grants`, and it now covers all three commands.
 
-Клиентский write-грант сужен по колонкам на **каждой** таблице, куда он вообще
-пишет. У `users` это `update (name)` и никакого INSERT вовсе (строку заводит
-триггер `handle_new_user()`) — `dislikes_disabled`, `created_at` и
-`avatar_path` серверные, хотя RLS-политика говорит лишь «моя ли это строка»
-(20260820140000, 20260822210000). `avatar_path` попала сюда позже остальных:
-грант на неё остался с версии до галереи, клиент её только читает, а пишет
-триггер, — так что живой грант позволял ровно одно, подставить в свою аватарку
-чужой путь. `name` ограничено 100 символами и обязано быть непустым после
-`btrim` (`users_name_not_blank`, 20260822200000): фолбэк `'Без имени'` есть
-только в `handle_new_user()`, то есть на регистрации, и на UPDATE не
-распространяется.
+The client write grant is narrowed by column on **every** table the client
+writes to at all. For `users` that's `update (name)` and no INSERT whatsoever
+(the row is created by the `handle_new_user()` trigger) — `dislikes_disabled`,
+`created_at` and `avatar_path` are server-owned, even though the RLS policy
+only says "is this my row" (20260820140000, 20260822210000). `avatar_path`
+joined the list later than the rest: its grant was left over from the
+pre-gallery version, the client only reads it and a trigger writes it, so the
+live grant allowed exactly one thing — putting someone else's path into your
+own avatar. `name` is limited to 100 characters and must be non-empty after
+`btrim` (`users_name_not_blank`, 20260822200000): the `'Без имени'` ("No
+name") fallback exists only in `handle_new_user()`, i.e. at sign-up, and
+doesn't extend to UPDATE.
 
-Прибиты в INSERT-политиках `posts`/`comments`: `created_at = now()`,
-`deleted_at is null`. `id` у `posts`/`comments`/`reactions` не грантован на
-INSERT вовсе (клиент никогда его не выбирает) — иначе конфликт по `id` с чужой
-скрытой строкой отвечает на вопрос «жива ли она» (существование-оракул,
+Pinned in the `posts`/`comments` INSERT policies: `created_at = now()`,
+`deleted_at is null`. `id` on `posts`/`comments`/`reactions` isn't granted for
+INSERT at all (the client never picks it) — otherwise a conflict on `id` with
+someone else's hidden row answers "is it alive" (an existence oracle,
 0.13.1/0.13.2).
 
-`reactions` — то же самое, но на UPDATE: колонку нельзя закрыть тем же грантом
-(клиентский upsert без `onConflict` шлёт `post_id`/`user_id` в SET на каждый
-вызов, не только `type` — сузить грант значило бы сломать легитимное
-переключение реакции). Вместо гранта — BEFORE UPDATE триггер
-`pin_reaction_identity()`: молча возвращает `id`/`post_id`/`user_id`/
-`created_at` к старым значениям при любой попытке их поменять, `type` не
-трогает. Миграция `20260819150000`.
+`reactions` — the same, but on UPDATE: the column can't be closed with the
+same grant (the client's upsert without `onConflict` sends `post_id`/`user_id`
+in SET on every call, not just `type` — narrowing the grant would break
+legitimately switching a reaction). Instead of a grant there's a BEFORE UPDATE
+trigger `pin_reaction_identity()`: it silently reverts `id`/`post_id`/
+`user_id`/`created_at` to their old values on any attempt to change them, and
+leaves `type` alone. Migration `20260819150000`.
 
-`device_tokens` — тот же приём и по той же причине (апсерт шлёт в SET все
-колонки payload, включая `user_id`/`fcm_token`, так что колоночный грант на
-UPDATE уронил бы регистрацию пушей): BEFORE UPDATE триггер
-`pin_device_token_timestamps()` возвращает `created_at` к старому значению и
-ставит `updated_at = now()`. С 20260826120000 он возвращает на место и саму
-пару `(user_id, fcm_token)` — первичный ключ, который UPDATE двигать не
-должен: грант выдан на всю таблицу, политика проверяет только `user_id`, и без
-пина строку можно было перевести на чужой `fcm_token` и увести пуши на чужое
-устройство, не нарушив ни одной политики. На легальном пути это no-op, апсерт
-конфликтует именно по этой паре. Вторая половина важнее первой — до неё
-`updated_at` не обновлялся вообще: `default now()` срабатывает только на
-вставке, а в payload апсерта этой колонки нет, поэтому колонка равнялась
-`created_at` у всех строк и врала о том, когда устройство последний раз
-выходило на связь. Миграция `20260822130000`.
+`device_tokens` — the same technique for the same reason (the upsert sends all
+payload columns in SET, including `user_id`/`fcm_token`, so a column grant on
+UPDATE would break push registration): the BEFORE UPDATE trigger
+`pin_device_token_timestamps()` reverts `created_at` to its old value and sets
+`updated_at = now()`. Since 20260826120000 it also puts back the
+`(user_id, fcm_token)` pair itself — the primary key, which an UPDATE must not
+move: the grant covers the whole table, the policy checks only `user_id`, and
+without the pin a row could be switched to someone else's `fcm_token`,
+diverting pushes to someone else's device without violating a single policy.
+On the legitimate path this is a no-op; the upsert conflicts on exactly this
+pair. The second half matters more than the first — before it, `updated_at`
+wasn't updated at all: `default now()` fires only on insert, and the upsert
+payload doesn't include that column, so the column equalled `created_at` on
+every row and lied about when the device was last online. Migration
+`20260822130000`.
 
-Строк на пользователя — не больше 20, лишние **вытесняются**, а не отбиваются
-ошибкой: регистрация идёт fire-and-forget и экрана под собой не имеет
-(`enforce_device_token_limit()`, 20260821180000). Вытесняется наименее свежая
-по `updated_at` — по `created_at` нельзя, его `pin_device_token_timestamps()`
-намеренно держит равным дате ПЕРВОЙ регистрации, и сортировка по нему
-выбрасывала бы годовалый рабочий телефон раньше мёртвого токена трёхмесячной
-давности (20260822160000).
+No more than 20 rows per user; extra ones are **evicted** rather than rejected
+with an error: registration is fire-and-forget and has no screen behind it
+(`enforce_device_token_limit()`, 20260821180000). The least recent by
+`updated_at` is evicted — `created_at` won't do, since
+`pin_device_token_timestamps()` deliberately keeps it equal to the date of the
+FIRST registration, and sorting by it would throw out a year-old working phone
+before a three-month-old dead token (20260822160000).
 
-**Один аппарат — один аккаунт.** FCM-токен выдаётся установке приложения, а не
-человеку, и войти двумя аккаунтами одновременно здесь нельзя, поэтому строка с
-этим `fcm_token` под другим `user_id` — всегда остаток от предыдущего
-владельца устройства. Снимал её только `unregisterDevice()` на выходе, а он
-best-effort и обёрнут в пустой catch: выход без сети — или уже провернувшаяся
-ротация, из-за которой `getToken()` возвращает не ту строку, что
-регистрировали, — оставлял её навсегда, и следующий аккаунт на том же телефоне
-получал чужие уведомления, с именами комментаторов и дайджестами. Само это не
-чинилось ничем: `send-push` сносит токен только по ответу FCM `UNREGISTERED`,
-а токен живой; повторить снятие клиент не может — после выхода сессии уже нет,
-а политика пускает только к своим строкам. С 20260826120000 право на строку
-забирает тот, кто регистрируется последним: BEFORE INSERT триггер
-`claim_device_token()` (`security definer` — строка чужая) сносит все строки с
-этим токеном под другими пользователями. Инвариант, который держится только на
-том, что уходящий клиент успеет сходить в сеть, — не инвариант.
+**One device, one account.** An FCM token is issued to an app installation,
+not to a person, and you can't be signed in to two accounts at once here, so a
+row with this `fcm_token` under a different `user_id` is always a leftover
+from the device's previous owner. Only `unregisterDevice()` on sign-out
+removed it, and that is best-effort and wrapped in an empty catch: signing out
+without network — or a rotation that has already happened, so `getToken()`
+returns a different string from the one registered — left it forever, and the
+next account on the same phone received someone else's notifications, with
+commenter names and digests. Nothing fixed this on its own: `send-push` only
+deletes a token on an FCM `UNREGISTERED` response, and the token is alive; the
+client can't retry the removal — after sign-out there's no session anymore,
+and the policy only lets you reach your own rows. Since 20260826120000 the row
+is claimed by whoever registers last: the BEFORE INSERT trigger
+`claim_device_token()` (`security definer` — the row is someone else's)
+deletes all rows with this token under other users. An invariant that holds
+only if the departing client manages to reach the network is not an
+invariant.
 
-## Invite-ссылки
+## Invite links
 
-`connections.method` — как именно завелась связь: `invite_link` (единственный
-путь, которым её заводит приложение), `manual` (строки, вставленные руками
-через Management API — тестовые данные) и `qr_code`. Последнее — **задел под
-будущую фичу**, а не работающий путь: сканирования QR в приложении нет
-(см. [future-development.md](future-development.md)), `activate_invite_link()`
-всегда ставит `invite_link`, и ни одна живая строка с `qr_code` через
-приложение не пришла. Раньше ручные вставки подписывались именно им — то есть
-выглядели так, будто прошли по несуществующему пути, — поэтому 20260826130000
-завела отдельное значение `manual`, перевела на него уже существующие такие
-строки и оставила `qr_code` свободным до появления самой фичи.
+`connections.method` records how the connection was made: `invite_link` (the
+only way the app makes one), `manual` (rows inserted by hand via the
+Management API — test data) and `qr_code`. The last one is **groundwork for a
+future feature**, not a working path: there is no QR scanning in the app
+(see [future-development.md](future-development.md)),
+`activate_invite_link()` always sets `invite_link`, and not a single live row
+with `qr_code` came through the app. Manual inserts used to be labelled with
+exactly that value — i.e. they looked as if they had come through a
+nonexistent path — so 20260826130000 introduced a separate `manual` value,
+moved the existing such rows to it and left `qr_code` free until the feature
+itself appears.
 
-`activate_invite_link()` кидает стабильные SQLSTATE — `PT404` (не найден),
-`PT409` (использован), `PT422` (свой собственный); клиент мапит их в строки из
-ARB и никогда не показывает `e.message`.
+`activate_invite_link()` throws stable SQLSTATEs — `PT404` (not found),
+`PT409` (used), `PT422` (your own); the client maps them to ARB strings and
+never shows `e.message`.
 
-Код — `encode(gen_random_bytes(16), 'hex')`, 32 символа и 128 бит
-(20260823140000). До этого было 5 байт, то есть 40 бит: для предъявительского
-кредентиала, который не протухает и открывает ленту, профиль и галерею, этого
-мало — перебор идёт сразу по всему пулу невостребованных кодов, а
-`activate_invite_link()` не замедляет его ничем. Существующие коды не
-переписывались: использованные мертвы, а живой отзывается кнопкой «создать
-новый код».
+The code is `encode(gen_random_bytes(16), 'hex')`, 32 characters and 128 bits
+(20260823140000). Before that it was 5 bytes, i.e. 40 bits: too little for a
+bearer credential that never expires and opens the feed, profile and
+gallery — brute-forcing runs against the whole pool of unclaimed codes at once,
+and `activate_invite_link()` doesn't slow it down in any way. Existing codes
+weren't rewritten: used ones are dead, and a live one is revoked with the
+"Create new code" button.
 
-Выпуск кода — две разные функции, и это не дубликат. `create_invite_link()`
-идемпотентна: есть неиспользованный код — вернёт **его**, что и нужно ретраю.
-Идемпотентна и против самой себя: read-then-insert без блокировки проигрывал
-гонку двух одновременных вызовов одного владельца — ровно того ретрая после
-таймаута, ради которого функция и написана, потому что `.timeout()` перестаёт
-ждать, не отменяя запрос, — и второй вызов падал сырым 23505 по
-`invite_links_one_active_per_owner`, хотя код был выпущен. С 20260826120000
-вставка идёт через `on conflict (owner_id) where not is_used do nothing`
-(предикат обязателен: индекс частичный), а `row_count` под ней отличает
-«вставил я» от «успел кто-то другой» — во втором случае возвращается его код.
-`rotate_invite_link()` (20260822150000) удаляет неиспользованные строки
-владельца и чеканит новую — единственный способ отозвать код, отправленный не
-тому: код предъявительский, кто активировал, тот и Connection, а
-`invite_links_one_active_per_owner` не даёт завести вторую активную строку.
-Удаление, а не `is_used = true`, чтобы отозванный код читался как `PT404`
-(«нет такого»), а не `PT409` («уже использован») — второе неправда. Клиент
-зовёт ротацию только из ветки «код уже на экране» и только после
-подтверждения.
+Issuing a code is two different functions, and that isn't duplication.
+`create_invite_link()` is idempotent: if there's an unused code, it returns
+**that one**, which is what a retry needs. It's idempotent against itself too:
+read-then-insert without a lock lost the race between two simultaneous calls
+from the same owner — exactly the post-timeout retry the function was written
+for, because `.timeout()` stops waiting without cancelling the request — and
+the second call failed with a raw 23505 on
+`invite_links_one_active_per_owner`, even though the code had been issued.
+Since 20260826120000 the insert goes through
+`on conflict (owner_id) where not is_used do nothing` (the predicate is
+mandatory: the index is partial), and `row_count` after it tells "I inserted"
+from "someone else got there first" — in the latter case their code is
+returned. `rotate_invite_link()` (20260822150000) deletes the owner's unused
+rows and mints a new one — the only way to revoke a code sent to the wrong
+person: the code is a bearer one, whoever activates it becomes the Connection,
+and `invite_links_one_active_per_owner` doesn't allow a second active row.
+Deletion rather than `is_used = true`, so that a revoked code reads as `PT404`
+("no such code") and not `PT409` ("already used") — the latter would be
+untrue. The client calls rotation only from the "code is already on screen"
+branch and only after confirmation.
 
-Сгорает код только тогда, когда он действительно завёл связь. Вставка идёт
-через `on conflict (user_a_id, user_b_id) do nothing`, а `is_used = true`
-ставился следом безусловно — то есть предъявление кода тем, кто с владельцем и
-так на связи, гасило код впустую (20260825120000 сверяет `row_count` вставки).
-Попасть туда просто: `.timeout()` перестаёт ждать, не отменяя запрос, поэтому
-повторный тап «Активировать» после «ошибки» — штатное поведение человека.
-Разные исходы наружу намеренно не различаются: «вы теперь на связи с X» верно в
-обоих, а отдельный код ответил бы предъявителю на вопрос про чужой граф
-связей.
+A code is burned only when it actually created a connection. The insert goes
+through `on conflict (user_a_id, user_b_id) do nothing`, while
+`is_used = true` used to be set right after unconditionally — that is,
+presenting the code by someone already connected to its owner burned the code
+for nothing (20260825120000 checks the insert's `row_count`). It's easy to get
+there: `.timeout()` stops waiting without cancelling the request, so tapping
+"Activate" again after an "error" is normal human behaviour. The different
+outcomes are deliberately not distinguished externally: "you are now
+connected with X" is true in both, while a separate code would answer the
+presenter's question about someone else's connection graph.
 
 ## Storage
 
-Бакет `media` заводится миграцией (20260822260000), а не только руками в
-дашборде: до неё его настраивали через `update … where id = 'media'`, то есть на
-чистом проекте оба таких `update` не находили ничего и молча проходили. Там же
-`public = false` из начального значения становится инвариантом — на нём стоят
-все SELECT-политики ниже (числа тут намеренно нет: их стало больше вместе с
-комнатами и станет больше опять), публичный бакет отменяет их разом.
+The `media` bucket is created by a migration (20260822260000), not just by hand
+in the dashboard: before it, the bucket was configured via
+`update … where id = 'media'`, so on a clean project both such `update`s found
+nothing and silently passed. The same migration turns `public = false` from an
+initial value into an invariant — all the SELECT policies below rest on it
+(there's deliberately no number here: there got more of them with rooms and
+there will be more again), and a public bucket cancels them all at once.
 
-Бакет приватный, signed URL живут 24 ч, лимит объекта 100 MiB,
-`allowed_mime_types` — пять image-типов и шесть video, ровно под
-`videoExtensions`/`imageExtensions` в `shared/media_extensions.dart`
-(content-type storage_client берёт из расширения
-в имени объекта, а не из содержимого; 20260820130000). Оба списка на клиенте
-существуют именно поэтому: формат, которого нет в `allowed_mime_types`,
-отвергается на заливке по имени файла и будет отвергаться на каждом ретрае, так
-что оба пикера отсеивают его сами и с внятным сообщением.
+The bucket is private, signed URLs live 24 h, the object limit is 100 MiB,
+`allowed_mime_types` is five image types and six video types, matching exactly
+`videoExtensions`/`imageExtensions` in `shared/media_extensions.dart`
+(storage_client takes the content-type from the extension
+in the object name, not from the content; 20260820130000). That's exactly why
+both lists exist on the client: a format not in `allowed_mime_types` is
+rejected at upload by file name and will be rejected on every retry, so both
+pickers filter it out themselves, with a clear message.
 
-Оба — но не сразу. Для image гейт завели вместе с этим файлом (до него `.gif`
-уходил в общий «не удалось опубликовать»), а для video он появился позже, хотя
-этот абзац утверждал обратное: `videoExtensions` участвовал только в
-`_looksLikeVideo()` — как классификатор «видео или картинка», когда пикер не
-сообщил mime, — и гейтом не был. Поэтому `.avi` доезжал до бакета и отлетал от
-него навсегда, а клип без расширения в имени получал от `fileExtension()`
-дефолтный `jpg`, проходил как `image/jpeg` и оставался в ленте слайдом с
-`media_type = 'video'`, который ничего не проигрывает.
+Both — but not from the start. For images the gate was introduced together
+with this file (before it `.gif` fell into the generic "Failed to publish"),
+while for video it appeared later, even though this paragraph claimed
+otherwise: `videoExtensions` was used only in `_looksLikeVideo()` — as a
+"video or image" classifier when the picker didn't report a mime — and wasn't
+a gate. So an `.avi` made it to the bucket and bounced off it forever, and a
+clip with no extension in its name got the default `jpg` from
+`fileExtension()`, passed as `image/jpeg` and stayed in the feed as a slide
+with `media_type = 'video'` that plays nothing.
 
-`posts/<uid>/…` — по видимости САМОГО поста, а не его автора
-(`post_media_path_visible()` → `is_post_visible()`, 20260826190000). Раньше
-было «по `is_author_visible`», и это было одно и то же ровно до тех пор, пока
-у автора не завелись посты, видные не всем его знакомым (ленты комнат;
-20260828100000 их сняла, а правило осталось — одна копия лучше двух). См.
-«Аватарка комнаты» выше про ту же ловушку с другой стороны.
-Своя ветвь у автора (`foldername[2] = auth.uid()`) стоит первой и строки в
-`post_media` не требует: клиент заливает файлы до того, как появляется пост.
-Сам путь — `posts/<author_id>/<post_client_token>/<media_client_token>.<ext>`;
-первые два сегмента не менялись с версии с одиночным фото, поэтому политики,
-матчащие по `(storage.foldername(name))[1..2]`, при переходе на множественные
-медиа трогать не пришлось. Каждый файл — свой объект под собственным
-`media_client_token`, видео-постер лежит рядом как
+`posts/<uid>/…` — by the visibility of THE POST ITSELF, not its author
+(`post_media_path_visible()` → `is_post_visible()`, 20260826190000). It used
+to be "by `is_author_visible`", and that was the same thing exactly until the
+author got posts that not all of their connections could see (room feeds;
+20260828100000 removed them, but the rule stayed — one copy is better than
+two). See "Room avatar" above for the same trap from the other side.
+The author's own branch (`foldername[2] = auth.uid()`) comes first and doesn't
+require a row in `post_media`: the client uploads files before the post exists.
+The path itself is `posts/<author_id>/<post_client_token>/<media_client_token>.<ext>`;
+the first two segments haven't changed since the single-photo version, so the
+policies matching on `(storage.foldername(name))[1..2]` didn't need touching
+when moving to multiple media. Each file is its own object under its own
+`media_client_token`; the video poster sits next to it as
 `<media_client_token>_poster.jpg`.
 
-`avatars/<uid>/…` — себе, Connections и системному аккаунту (20260823130000)
-**префиксом целиком**, а соседу по комнате (20260826180000) — **только один
-объект: текущую `users.avatar_path`** (`is_room_peer_avatar()`,
-20260905100000). **Блок ничего из этого не сужает**: заблокированный остаётся
-в списке знакомых и на экране «Заблокированные», где блок и снимают, а оба
-экрана рисуют аватарку.
+`avatars/<uid>/…` — to self, Connections and the system account
+(20260823130000) **by the whole prefix**, and to a room peer (20260826180000)
+**only one object: the current `users.avatar_path`** (`is_room_peer_avatar()`,
+20260905100000). **A block narrows none of this**: a blocked user stays in the
+connections list and on the "Blocked" screen, where blocks are lifted, and both
+screens draw the avatar.
 
-Разница между «префиксом» и «объектом» здесь — не аккуратность, а починенная
-дыра. Фото профиля (`profile_photos`) лежат теми же объектами под тем же
-префиксом, отдельной storage-политики им не потребовалось — и пока ветвей было
-три, это сходилось: и себе, и Connection RLS на `profile_photos` показывает
-галерею целиком, так что префиксная форма ровно ей и равнялась. Ветвь комнаты
-это равенство сломала: строки галереи соседу по комнате не видны вовсе, а
-объекты — были, включая те, что не аватарка. `storage.list('avatars/<uid>')`
-проходит ту же SELECT-политику, то есть перечислял соседу по комнате все до 80
-фотографий, каждую из которых оставалось подписать и скачать. Комната
-задумывалась как «видите имена и лица друг друга», а не как доступ к чужому
-альбому. Ровно ту же ошибку — префикс вместо объекта — 20260826190000 уже
-исправляла у `posts/` (см. абзац выше); у `avatars/` она пролежала дольше,
-потому что до комнат была незаметна.
+The difference between "prefix" and "object" here isn't tidiness but a fixed
+hole. Profile photos (`profile_photos`) are the same kind of objects under the
+same prefix and didn't need a storage policy of their own — and while there
+were three branches, that added up: for both self and a Connection, RLS on
+`profile_photos` shows the whole gallery, so the prefix form was exactly equal
+to it. The room branch broke that equality: gallery rows aren't visible to a
+room peer at all, but the objects were, including the ones that aren't the
+avatar. `storage.list('avatars/<uid>')` goes through the same SELECT policy,
+so it listed all of up to 80 photos to a room peer, each of which then just
+had to be signed and downloaded. A room was meant as "you see each other's
+names and faces", not as access to someone else's album. Exactly the same
+mistake — prefix instead of object — had already been fixed by
+20260826190000 for `posts/` (see the paragraph above); in `avatars/` it lasted
+longer because before rooms it was invisible.
 
-`rooms/<room_id>/…` — аватарка комнаты: читают участники, пишет и сносит
-владелец. Единственный префикс, где вторая папка не пользователь, а комната,
-поэтому право считается через `owns_room()`, а не сравнением с `auth.uid()`.
+`rooms/<room_id>/…` — the room avatar: members read it, the owner writes and
+deletes it. The only prefix where the second folder isn't a user but a room,
+so the right is computed via `owns_room()` rather than by comparing with
+`auth.uid()`.
 
-`messages/<room_id>/<author_id>/<токен отправки>/<токен файла>.<ext>` — медиа
-сообщения (20260828120000): читает любой участник комнаты, пишет участник в
-свою папку, **сносит автор — и после того, как вышел из комнаты**
-(20260829120000). Для SELECT и INSERT обе первые папки — это и есть право:
-комната отвечает на «кому видно», автор — на «кому можно писать»; второе
-условие не формальность, без него участник мог бы положить файл в чужую папку
-внутри общей комнаты, и CHECK на строке отверг бы только СВОЮ строку, а объект
-остался бы лежать. А у DELETE членство было лишним и вредным: чужого байта
-через третий сегмент пути не достать при любом членстве, зато свои файлы
-становились недоступны ровно там, где их и надо убрать, — при удалении
-аккаунта (`delete_own_account()` уносит `room_members` каскадом раньше, чем
-клиент доходит до бакета) и у автора, который погасил своё сообщение уже
-после ухода из комнаты (`delete_own_room_message()` членства не требует и
-сейчас).
+`messages/<room_id>/<author_id>/<send token>/<file token>.<ext>` — message
+media (20260828120000): any room member reads, a member writes into their own
+folder, **the author deletes — even after leaving the room**
+(20260829120000). For SELECT and INSERT the first two folders are the
+permission itself: the room answers "who can see it", the author answers "who
+may write"; the second condition isn't a formality — without it a member could
+put a file into someone else's folder inside a shared room, and the CHECK on
+the row would reject only THEIR OWN row, while the object would stay. For
+DELETE, though, membership was superfluous and harmful: no one else's bytes
+can be reached through the third path segment regardless of membership, but
+one's own files became inaccessible exactly where they need to be cleaned
+up — on account deletion (`delete_own_account()` cascades away `room_members`
+before the client gets to the bucket) and for an author who deleted their
+message after leaving the room (`delete_own_room_message()` doesn't require
+membership even now).
 
-Объекты, на которые не ссылается ни одна строка, выносит `reap-orphaned-media`
-(20260823110000) — строчные лимиты «20 медиа на пост» и «80 фото» считают
-таблицы и в бакет не смотрят, а заливка идёт ДО вставки строк, так что каждый
-брошенный черновик оставляет за собой то, что успел залить. Ветвей у сборщика
-три, по одной на форму вопроса «на этот файл ещё кто-нибудь ссылается»:
-`posts/` и `avatars/` спрашивают строки `post_media`/`profile_photos`,
-`messages/` (20260828120000) — jsonb внутри `room_messages`, `rooms/`
-(20260829110000) — колонку `rooms.avatar_path`. Последнюю добавили последней и
-не зря: аватарка удалённой комнаты была не просто несобранной, а
-НЕДОСТИЖИМОЙ — обе её storage-политики считают право через `owns_room()`,
-то есть через строку в `room_members`, которой у пустой комнаты уже нет, так
-что объект нельзя было ни прочитать, ни удалить, ни найти. Порог в сутки общий
-и защищает свежую заливку, чья строка появится через секунду. Расписание,
-лимит за прогон и как посмотреть, что джоб собирается снести, — в
-[operations.md](operations.md).
+Objects that no row references are swept out by `reap-orphaned-media`
+(20260823110000) — the row limits "20 media per post" and "80 photos" count
+tables and don't look into the bucket, and uploading happens BEFORE rows are
+inserted, so every abandoned draft leaves behind whatever it managed to
+upload. The reaper has three branches, one per form of the question "does
+anything still reference this file":
+`posts/` and `avatars/` ask the `post_media`/`profile_photos` rows,
+`messages/` (20260828120000) the jsonb inside `room_messages`, `rooms/`
+(20260829110000) the `rooms.avatar_path` column. The last one was added last,
+and for good reason: a deleted room's avatar wasn't merely uncollected but
+UNREACHABLE — both of its storage policies compute the right via
+`owns_room()`, i.e. via a row in `room_members`, which an empty room no longer
+has, so the object could be neither read, nor deleted, nor found. The one-day
+threshold is shared and protects a fresh upload whose row will appear a second
+later. The schedule, the per-run limit and how to see what the job is about to
+delete are in [operations.md](operations.md).
 
-UPDATE-политики нет ни у одного префикса (20260822210000): у `posts/…` её не
-было никогда, у `avatars/…` она пролежала неиспользованной с 20260707222025 и
-снята — замена файла тут всегда новый объект под свежим client-minted путём
-плюс delete старого, поэтому `uploadTolerant` намеренно не ставит `upsert`.
+No prefix has an UPDATE policy (20260822210000): `posts/…` never had one,
+`avatars/…` had one lying unused since 20260707222025 and it was dropped —
+replacing a file here is always a new object under a fresh client-minted path
+plus a delete of the old one, which is why `uploadTolerant` deliberately
+doesn't set `upsert`.

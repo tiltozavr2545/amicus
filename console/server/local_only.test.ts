@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { guardLocalRequest } from './local_only.ts';
 
-// Таблица случаев для проверки, которая стоит перед service_role-ключом.
-// Смысл каждого «должен отказать» — в шапке local_only.ts; здесь только то,
-// что эти случаи реально различаются, а не выглядят различающимися.
+// A table of cases for the check that stands in front of the service_role
+// key. The meaning of each "must reject" is in the header of local_only.ts;
+// here we only verify that these cases really differ, rather than merely
+// looking different.
 describe('guardLocalRequest', () => {
   const loopback = { host: '127.0.0.1:5174', remoteAddress: '127.0.0.1' };
 
-  it('пускает запрос самой консоли через Vite', () => {
-    // Браузер говорит с Vite на 5173, тот проксирует в API, сохраняя Host.
+  it("lets the console's own request through Vite", () => {
+    // The browser talks to Vite on 5173, which proxies to the API, keeping
+    // Host.
     assert.deepEqual(
       guardLocalRequest({
         host: '127.0.0.1:5173',
@@ -21,7 +23,7 @@ describe('guardLocalRequest', () => {
     );
   });
 
-  it('пускает localhost так же, как 127.0.0.1', () => {
+  it('lets localhost through the same as 127.0.0.1', () => {
     assert.equal(
       guardLocalRequest({
         host: 'localhost:5173',
@@ -33,28 +35,28 @@ describe('guardLocalRequest', () => {
     );
   });
 
-  it('пускает IPv6-петлю в скобках', () => {
+  it('lets the bracketed IPv6 loopback through', () => {
     assert.equal(
       guardLocalRequest({ host: '[::1]:5174', remoteAddress: '::1' }).ok,
       true,
     );
   });
 
-  it('пускает curl: ни Origin, ни Sec-Fetch-Site', () => {
+  it('lets curl through: neither Origin nor Sec-Fetch-Site', () => {
     assert.equal(guardLocalRequest(loopback).ok, true);
   });
 
-  it('пускает набранный руками адрес (Sec-Fetch-Site: none)', () => {
+  it('lets a hand-typed address through (Sec-Fetch-Site: none)', () => {
     assert.equal(
       guardLocalRequest({ ...loopback, secFetchSite: 'none' }).ok,
       true,
     );
   });
 
-  // Главный случай: чужой домен с A-записью 127.0.0.1. Для браузера это один
-  // origin с API, никакого CORS не возникает, и единственное отличие от
-  // законного запроса — имя в Host.
-  it('отказывает при DNS rebinding — чужой домен в Host', () => {
+  // The main case: a foreign domain with an A record of 127.0.0.1. To the
+  // browser it is one origin with the API, no CORS arises, and the only
+  // difference from a legitimate request is the name in Host.
+  it('rejects DNS rebinding — a foreign domain in Host', () => {
     const verdict = guardLocalRequest({
       host: 'rebind.attacker.example:5174',
       origin: 'http://rebind.attacker.example:5174',
@@ -65,11 +67,11 @@ describe('guardLocalRequest', () => {
     assert.match(verdict.ok ? '' : verdict.reason, /Host/);
   });
 
-  it('отказывает, даже если чужой домен притворяется без порта', () => {
+  it('rejects even when a foreign domain comes without a port', () => {
     assert.equal(guardLocalRequest({ host: 'attacker.example' }).ok, false);
   });
 
-  it('отказывает cross-origin записи с чужой страницы', () => {
+  it('rejects a cross-origin write from a foreign page', () => {
     const verdict = guardLocalRequest({
       ...loopback,
       origin: 'https://attacker.example',
@@ -79,13 +81,13 @@ describe('guardLocalRequest', () => {
     assert.match(verdict.ok ? '' : verdict.reason, /Origin/);
   });
 
-  it('отказывает Origin: null (страница из data:/file:)', () => {
+  it('rejects Origin: null (a page from data:/file:)', () => {
     assert.equal(guardLocalRequest({ ...loopback, origin: 'null' }).ok, false);
   });
 
-  it('отказывает на Sec-Fetch-Site: same-site при петлевом Origin', () => {
-    // Origin петлевой, Host петлевой — и всё равно это не консоль: браузер
-    // сам сказал, что запрос пришёл со страницы другого origin.
+  it('rejects Sec-Fetch-Site: same-site with a loopback Origin', () => {
+    // Origin is loopback, Host is loopback — and it still isn't the console:
+    // the browser itself said the request came from a page of another origin.
     const verdict = guardLocalRequest({
       ...loopback,
       origin: 'http://localhost:5173',
@@ -95,21 +97,21 @@ describe('guardLocalRequest', () => {
     assert.match(verdict.ok ? '' : verdict.reason, /Sec-Fetch-Site/);
   });
 
-  it('отказывает запросу без Host', () => {
+  it('rejects a request without Host', () => {
     assert.equal(guardLocalRequest({}).ok, false);
   });
 
-  it('отказывает непетлевому адресу соединения', () => {
+  it('rejects a non-loopback connection address', () => {
     assert.equal(
       guardLocalRequest({ ...loopback, remoteAddress: '192.168.1.14' }).ok,
       false,
     );
   });
 
-  // `http://127.0.0.1.attacker.example` — хостнейм, который ЗАКАНЧИВАЕТСЯ на
-  // чужой домен, но начинается как петля. Проверка сравнивает хостнейм
-  // целиком, а не по префиксу.
-  it('не путает петлю с доменом, который на неё похож', () => {
+  // `http://127.0.0.1.attacker.example` is a hostname that ENDS in a foreign
+  // domain but starts like loopback. The check compares the whole hostname,
+  // not a prefix.
+  it('does not confuse loopback with a domain that looks like it', () => {
     assert.equal(
       guardLocalRequest({ host: '127.0.0.1.attacker.example:5174' }).ok,
       false,

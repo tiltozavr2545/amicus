@@ -283,9 +283,10 @@ th.num {
   align-items: center;
 }
 
-/* Модерация: действие — это строка «кнопка + что она сделает», а не кнопка
-   в ряду одинаковых. Цена ошибки тут выше обычного, и подпись рядом дешевле,
-   чем вспоминать разницу между «скрыть» и «удалить» в момент нажатия. */
+/* Moderation: an action is a "button + what it will do" row, not a button
+   in a row of identical ones. The cost of a mistake is higher than usual here,
+   and a caption alongside is cheaper than recalling the difference between
+   "hide" and "delete" at the moment of clicking. */
 .action {
   display: grid;
   grid-template-columns: 190px 1fr;
@@ -361,8 +362,8 @@ th.num {
   padding: 8px;
 }
 
-/* Новостной редактор: композер слева, предпросмотр справа — чтобы видеть
-   пост тем же, чем его увидят в ленте, не переключая вкладки. */
+/* News editor: composer on the left, preview on the right, so the post is
+   seen the way it will look in the feed, without switching tabs. */
 .news-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -424,7 +425,7 @@ th.num {
   padding: 0 5px;
   border-radius: 8px;
 }
-/* Карточка предпросмотра повторяет ленту: имя, дата, текст, сетка медиа. */
+/* The preview card mirrors the feed: name, date, text, media grid. */
 .post-preview {
   background: var(--panel-2);
   border: 1px solid var(--line);

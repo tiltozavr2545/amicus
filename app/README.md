@@ -1,8 +1,8 @@
 # amicus
 
-Flutter-приложение Amicus. Здесь только код клиента — всё описание проекта, запуск, документация и планы лежат в корне репозитория: [../README.md](../README.md).
+The Amicus Flutter app. Only the client code lives here — the full project description, setup, documentation and plans are in the repository root: [../README.md](../README.md).
 
-Запуск из этой папки:
+Running from this folder:
 
 ```bash
 flutter pub get

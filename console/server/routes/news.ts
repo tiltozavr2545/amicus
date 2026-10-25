@@ -30,9 +30,9 @@ import { uuidParam } from '../uuid.ts';
 export const newsRouter = Router();
 newsRouter.param('id', uuidParam);
 
-// Id системного аккаунта спрашивается у базы (`system_account_ids()`), а не
-// лежит копией в коде консоли — по той же причине, по которой его не носит в
-// себе APK.
+// The system account id is asked from the database (`system_account_ids()`)
+// rather than kept as a copy in the console code — for the same reason the APK
+// doesn't carry it either.
 let cachedSystemId: string | null = null;
 async function systemId(): Promise<string> {
   if (cachedSystemId) return cachedSystemId;
@@ -49,12 +49,12 @@ type IncomingMedia = {
   posterPath?: unknown;
 };
 
-/// Заливает staged-файл в бакет и отдаёт его настоящий путь.
+/// Uploads a staged file to the bucket and returns its real path.
 ///
-/// Имя объекта — само имя staged-файла, то есть стабильное: опубликовать один
-/// и тот же черновик дважды значит второй раз прийти по тому же пути с теми же
-/// байтами, и 409 здесь — это «уже там», а не отказ. Тот же вывод и то же
-/// послабление, что у `uploadTolerant` в приложении.
+/// The object name is the staged file's own name, i.e. stable: publishing the
+/// same draft twice means arriving at the same path with the same bytes the
+/// second time, and a 409 here means "already there", not a refusal. Same
+/// reasoning and same leniency as `uploadTolerant` in the app.
 async function materialise(name: string, author: string): Promise<string> {
   const path = `posts/${author}/${name}`;
   const contentType = mimeForExtension(name);
@@ -65,28 +65,31 @@ async function materialise(name: string, author: string): Promise<string> {
     .from('media')
     .upload(path, await readStaged(name), { contentType, upsert: false });
   if (error === null) return path;
-  // `upsert: false` и повторная публикация того же черновика — штатная пара,
-  // а не сбой. Код смотрим и в `statusCode`, и в тексте: у StorageError форма
-  // ответа зависит от версии storage-api, а обозначает оба одно и то же.
+  // `upsert: false` plus republishing the same draft is a normal combination,
+  // not a failure. We check the code both in `statusCode` and in the text: the
+  // StorageError response shape depends on the storage-api version, and both
+  // mean the same thing.
   const status = (error as { statusCode?: string }).statusCode;
   if (status === '409' || /already exists/i.test(error.message)) return path;
   throw new Error(`storage: ${error.message}`);
 }
 
-// Повторяет проверки `create_post_with_media()`, потому что сама она здесь
-// неприменима: она берёт автора из `auth.uid()`, а консоль ходит под
-// service_role без JWT — auth.uid() там null, и функция сразу отказывает.
-// Значит вставка идёт напрямую, и всё, что RPC проверяла, надо проверить
-// тут же: иначе в базу попадёт то, чего клиент туда положить не мог.
+// Repeats the checks of `create_post_with_media()`, because the function itself
+// can't be used here: it takes the author from `auth.uid()`, while the console
+// runs as service_role without a JWT — auth.uid() is null there, and the
+// function refuses right away. So the insert goes in directly, and everything
+// the RPC checked has to be checked right here: otherwise the database would
+// get something the client couldn't have put there.
 //
-// Здесь же staged-файлы превращаются в объекты бакета — публикация и есть тот
-// момент, когда байтам там место (см. STAGING в news.ts). До него путь в
-// присланном элементе указывает на диск консоли, после — в бакет, и дальше по
-// коду разницы уже нет.
+// This is also where staged files turn into bucket objects — publishing is
+// exactly the moment the bytes belong there (see STAGING in news.ts). Before
+// it, the path in the submitted item points at the console's disk, after it —
+// at the bucket, and from there on the code makes no distinction.
 //
-// Путь для нового объекта минтит сервер, а не клиент: единственное, что
-// приходит снаружи, — имя staged-файла, и оно проверено шаблоном. Прежняя
-// редакция принимала `storage_path` строкой и проверяла у неё только префикс.
+// The path for a new object is minted by the server, not the client: the only
+// thing coming from outside is the staged file name, and it's checked against
+// a pattern. The previous version accepted `storage_path` as a string and
+// checked only its prefix.
 async function prepareMedia(
   text: unknown,
   media: unknown,
@@ -106,7 +109,7 @@ async function prepareMedia(
   const author = await systemId();
   const prefix = `posts/${author}/`;
 
-  /// Один путь: staged-файл заливается, путь в бакет проверяется.
+  /// One path: a staged file gets uploaded, a bucket path gets checked.
   const resolvePath = async (raw: string, what: string): Promise<string> => {
     if (isStaged(raw)) {
       const name = stagedName(raw);
@@ -138,18 +141,18 @@ async function prepareMedia(
     });
   }
 
-  // Пустая строка от клиента — это отсутствие текста, а не текст: тот же
-  // nullif(btrim(...)), что стоит в posts_text_not_blank.
+  // An empty string from the client means no text, not text: the same
+  // nullif(btrim(...)) as in posts_text_not_blank.
   return { text: trimmed === '' ? null : trimmed, media: normalised };
 }
 
-/// Чем показать медиа черновика.
+/// What to show a draft's media with.
 ///
-/// Staged-файл отдаёт сама консоль, и такая ссылка не протухает — в отличие от
-/// подписанной, которая живёт час, так что миниатюры сохранённого черновика
-/// были битыми уже к обеду. Настоящий путь (черновик, сохранённый до перехода
-/// на стейджинг) всё ещё подписывается, чтобы такие черновики не ослепли
-/// разом; если объекта уже нет — `null`, и плитка просто пустая.
+/// A staged file is served by the console itself, and such a link doesn't
+/// expire — unlike a signed one, which lives an hour, so a saved draft's
+/// thumbnails were broken by lunchtime. A real path (a draft saved before the
+/// switch to staging) is still signed, so such drafts don't all go blind at
+/// once; if the object is already gone — `null`, and the tile is just empty.
 async function draftMediaUrls(drafts: Draft[]): Promise<NewsDraft[]> {
   const legacy = new Set<string>();
   for (const draft of drafts) {
@@ -190,9 +193,9 @@ async function signed(paths: string[]): Promise<Map<string, string>> {
 }
 
 async function replaceMedia(postId: string, media: Required<NewsMedia>[]) {
-  // Набор переписывается целиком, а не доливается — как в
-  // `create_post_with_media()`: `position` раздаётся по порядку массива, и
-  // оставшиеся старые строки заняли бы чужие места.
+  // The set is rewritten whole, not appended to — as in
+  // `create_post_with_media()`: `position` is assigned in array order, and
+  // leftover old rows would take other items' places.
   const { error: wipeError } = await admin
     .from('post_media')
     .delete()
@@ -267,10 +270,10 @@ newsRouter.get('/news', async (_req, res, next) => {
     const commentCount = tally(comments);
     const reactionCount = tally(reactions);
 
-    // Уборка стейджинга висит здесь, а не на своём расписании: раздел новостей
-    // — единственное место, откуда туда что-то попадает, и открыть его до
-    // того, как файл станет лишним, невозможно. То, на что ссылается хоть один
-    // черновик, не трогается вовсе; остальное сносится по возрасту.
+    // Staging cleanup hangs here rather than on its own schedule: the news
+    // section is the only place anything gets in there from, and it's
+    // impossible to open it before a file becomes unneeded. Anything referenced
+    // by at least one draft isn't touched at all; the rest is removed by age.
     const drafts = await readDrafts();
     const referenced = new Set<string>();
     for (const draft of drafts) {
@@ -311,19 +314,21 @@ newsRouter.get('/news', async (_req, res, next) => {
   }
 });
 
-// Файл приходит сырым телом, а не multipart: разбирать multipart значит
-// тащить зависимость ради одного поля. Тип едет в query — его и надо-то знать,
-// чтобы проверить, примет ли бакет, и выбрать расширение.
+// The file arrives as a raw body, not multipart: parsing multipart means
+// pulling in a dependency for one field. The type travels in the query — it's
+// only needed to check whether the bucket will accept it and to pick the
+// extension.
 //
-// Файл ложится на диск консоли, а НЕ в бакет: в бакет он уедет из
-// `prepareMedia()`, когда из него будут делать пост. Почему так — см. STAGING
-// в news.ts; коротко: у объекта без строки в `post_media` нет ничего, что
-// удержало бы его от `reap-orphaned-media`, поэтому сохранённый черновик
-// терял свои картинки ровно через сутки.
+// The file lands on the console's disk, NOT in the bucket: it goes to the
+// bucket from `prepareMedia()`, when a post is made from it. For why, see
+// STAGING in news.ts; in short: an object without a row in `post_media` has
+// nothing keeping it from `reap-orphaned-media`, so a saved draft lost its
+// pictures after exactly a day.
 //
-// `name` больше не читается. Расширение берётся из типа по таблице, то есть
-// путь целиком минтит сервер: имя файла из браузера в него не попадает ни
-// одним символом — а оно попадало, и вместе с ним `..` в имя на диске.
+// `name` is no longer read. The extension comes from the type via a table, so
+// the whole path is minted by the server: not a single character of the
+// browser's file name gets into it — and it used to, bringing `..` into the
+// name on disk with it.
 newsRouter.post(
   '/news/media',
   raw({ type: '*/*', limit: MAX_FILE_BYTES + 1024 * 1024 }),
@@ -362,13 +367,13 @@ newsRouter.post(
   },
 );
 
-// Превью staged-файла. Ссылка не подписанная и не протухает — в отличие от
-// той, что раньше сохранялась внутрь черновика и переставала работать через
-// час.
+// Preview of a staged file. The link isn't signed and doesn't expire — unlike
+// the one that used to be saved inside the draft and stopped working after an
+// hour.
 //
-// `stagedName()` — единственное, что стоит между параметром маршрута и
-// `resolve()` по файловой системе, поэтому отказ здесь 404, а не попытка
-// что-нибудь прочитать.
+// `stagedName()` is the only thing standing between the route parameter and a
+// filesystem `resolve()`, so a refusal here is a 404, not an attempt to read
+// something.
 newsRouter.get('/news/media/:name', async (req, res, next) => {
   try {
     const name = stagedName(stagedRef(req.params.name));
@@ -416,12 +421,12 @@ newsRouter.post('/news', async (req, res, next) => {
 
 newsRouter.patch('/news/:id', async (req, res, next) => {
   try {
-    // `media` обязателен явным списком, и это не придирка к форме запроса.
-    // Правка переписывает набор медиа целиком (иначе `position` раздать
-    // нечем), поэтому отсутствующее поле означает «медиа больше нет» — то
-    // есть запрос, забывший его указать, молча сносит вложения. Поймано
-    // дважды на живом посте новостного аккаунта: PATCH с одним только
-    // `text` обнулял набор и переписывал текст.
+    // `media` is required as an explicit list, and that's not nitpicking about
+    // the request shape. An edit rewrites the media set whole (otherwise
+    // there's nothing to assign `position` from), so a missing field means
+    // "no more media" — i.e. a request that forgot it silently wipes the
+    // attachments. Caught twice on a live post of the news account: a PATCH
+    // with only `text` emptied the set and rewrote the text.
     if (!Array.isArray(req.body?.media)) {
       res.status(400).json({
         error:
@@ -429,12 +434,12 @@ newsRouter.patch('/news/:id', async (req, res, next) => {
       });
       return;
     }
-    // Проверка владельца — ДО `prepareMedia`, а не после. Раньше порядок был
-    // обратный и ничего не стоил, потому что `normalise` только смотрела на
-    // строки. Теперь она заливает staged-файлы в бакет, и правка поста,
-    // которого нет, успевала бы оставить там объекты, на которые уже некому
-    // сослаться, — то есть ровно тех сирот, от которых этот раздел только что
-    // ушёл.
+    // The owner check goes BEFORE `prepareMedia`, not after. The order used
+    // to be reversed and cost nothing, because `normalise` only looked at
+    // strings. Now it uploads staged files to the bucket, and an edit of a
+    // post that doesn't exist would manage to leave objects there that nothing
+    // can reference anymore — exactly the orphans this section just got away
+    // from.
     const author = await systemId();
     const existing = await fetchOnce<{ id: string }>('posts', 'id', (q) =>
       q.eq('id', req.params.id).eq('author_id', author),
@@ -469,9 +474,9 @@ newsRouter.delete('/news/:id', async (req, res, next) => {
       .eq('id', req.params.id)
       .eq('author_id', author);
     if (error) throw new Error(`posts: ${error.message}`);
-    // Файлы из бакета не трогаем: на них больше никто не ссылается, и их
-    // вынесет `reap-orphaned-media` в течение суток. Удалять байты руками —
-    // единственное действие в этой схеме, которое нельзя отменить.
+    // We don't touch the bucket files: nothing references them anymore, and
+    // `reap-orphaned-media` will clear them out within a day. Deleting bytes
+    // by hand is the only action in this scheme that can't be undone.
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -480,10 +485,11 @@ newsRouter.delete('/news/:id', async (req, res, next) => {
 
 newsRouter.put('/news/drafts', async (req, res, next) => {
   try {
-    // Не-массив — это ошибка запроса, а НЕ «черновиков больше нет». Прежняя
-    // редакция подставляла на его месте пустой список и молча стирала файл
-    // целиком: тот же класс, что и PATCH без `media`, только цена выше —
-    // черновик восстановить неоткуда, он нигде больше не хранится.
+    // A non-array is a request error, NOT "there are no more drafts". The
+    // previous version substituted an empty list in its place and silently
+    // wiped the whole file: the same class as a PATCH without `media`, only
+    // costlier — there's nowhere to restore a draft from, it isn't stored
+    // anywhere else.
     if (!Array.isArray(req.body?.drafts)) {
       res.status(400).json({
         error: 'drafts обязателен списком — пустой список тоже список',

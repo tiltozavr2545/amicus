@@ -1,49 +1,50 @@
-/// Сколько длится наказание, по тому, что прислала консоль.
+/// How long a penalty lasts, based on what the console sent.
 ///
-/// Отдельный модуль, а не три строки в обработчике, ровно по одной причине:
-/// это арифметика над данными из формы, у неё есть граничные случаи, и их
-/// надо проверять тестом. Пока она жила внутри `/moderation/ban`, проверить
-/// её было нечем, и оба случая ниже дошли до прода.
+/// A separate module rather than three lines in the handler, for exactly one
+/// reason: this is arithmetic over form data, it has edge cases, and they
+/// should be verified by a test. While it lived inside `/moderation/ban`
+/// there was nothing to check it with, and both cases below reached prod.
 ///
-///   * `Number("неделя")` — это NaN, а `new Date(NaN).toISOString()` бросает
-///     RangeError. Модератор видел 500 и «Invalid time value» вместо ответа,
-///     что срок задан неверно.
-///   * отрицательное число проходило молча и было хуже: `write_banned_until`
-///     в прошлом — это бан, снятый в тот же миг. Консоль показывала
-///     применённое наказание, которого нет.
+///   * `Number("неделя")` ("week") is NaN, and `new Date(NaN).toISOString()`
+///     throws RangeError. The moderator saw a 500 and "Invalid time value"
+///     instead of a reply saying the duration is invalid.
+///   * a negative number passed silently and was worse: a `write_banned_until`
+///     in the past is a ban lifted the same instant. The console showed a
+///     penalty as applied that doesn't exist.
 
-/// Сутки запрета писать по умолчанию, если срок не прислали.
+/// Default write-ban length in days, if no duration was sent.
 export const defaultWriteBanDays = 7;
 
-/// Срок бана входа по умолчанию — «навсегда» в понятных GoTrue единицах.
+/// Default login-ban duration — "forever" in units GoTrue understands.
 export const defaultAuthBanDays = 3650;
 
-/// Потолок в часах (сто лет): `ban_duration` уезжает в GoTrue строкой, и
-/// `1e21h` он уже не разбирает.
+/// Ceiling in hours (a hundred years): `ban_duration` goes to GoTrue as a
+/// string, and it can no longer parse `1e21h`.
 const maxAuthBanHours = 876_000;
 
-/// Те же сто лет, но сутками — и это потолок на ВХОДЕ, общий для обоих сроков.
+/// The same hundred years, but in days — and this is a ceiling on INPUT,
+/// shared by both durations.
 ///
-/// Он тут не для симметрии. `Number.isFinite` пропускает `1e9`, а `1e9` суток
-/// — это `8.64e16` миллисекунд, то есть за пределом диапазона `Date`, и
-/// `writeBanUntil` падал на `toISOString()` тем самым `RangeError: Invalid
-/// time value`, ради которого этот модуль и заведён (см. заголовок).
-/// `authBanDuration` от этого прикрыт — он клампится о `maxAuthBanHours`, и
-/// это проверено тестом на `1e9`, — а у запрета писать клампа не было,
-/// потому что не было и общего места, где его поставить.
+/// It isn't here for symmetry. `Number.isFinite` lets `1e9` through, and `1e9`
+/// days is `8.64e16` milliseconds, i.e. outside the `Date` range, and
+/// `writeBanUntil` would fail on `toISOString()` with the very `RangeError:
+/// Invalid time value` this module was created for (see the header).
+/// `authBanDuration` is covered against this — it is clamped by
+/// `maxAuthBanHours`, and this is verified by a test on `1e9` — but the write
+/// ban had no clamp, because there was no shared place to put one.
 ///
-/// Поставлено отказом, а не клампом, и это разница по смыслу: «навсегда» —
-/// законное намерение для бана входа, и у него для этого есть свой дефолт
-/// ([defaultAuthBanDays]). А `days: 1e9` в запросе — не «навсегда», а мусор,
-/// и молча превратить его в наказание на сто лет хуже, чем сказать, что
-/// число не годится.
+/// It is done as a rejection, not a clamp, and that is a difference in
+/// meaning: "forever" is a legitimate intent for a login ban, and it has its
+/// own default for that ([defaultAuthBanDays]). But `days: 1e9` in a request
+/// is not "forever", it is garbage, and silently turning it into a
+/// hundred-year penalty is worse than saying the number is not acceptable.
 const maxBanDays = 36_500;
 
 export type BanDays =
   | { ok: true; days: number | null }
   | { ok: false; error: string };
 
-/// `null` означает «срок не прислали» — вызывающий подставит свой дефолт.
+/// `null` means "no duration was sent" — the caller substitutes its default.
 export function parseBanDays(raw: unknown): BanDays {
   if (raw === undefined || raw === null || raw === '')
     return { ok: true, days: null };
@@ -57,16 +58,16 @@ export function parseBanDays(raw: unknown): BanDays {
   return { ok: true, days };
 }
 
-/// Момент, до которого запрещено писать.
+/// The moment until which writing is forbidden.
 ///
-/// Верхняя граница снята с входа ([maxBanDays]), а не проверяется здесь: этой
-/// функции достаётся уже разобранное число, и второй потолок в двух местах
-/// разошёлся бы с первым.
+/// The upper bound is enforced at input ([maxBanDays]), not checked here: this
+/// function receives an already parsed number, and a second ceiling in two
+/// places would drift apart from the first.
 export function writeBanUntil(days: number | null, now: number): string {
   return new Date(now + (days ?? defaultWriteBanDays) * 864e5).toISOString();
 }
 
-/// `ban_duration` для GoTrue.
+/// `ban_duration` for GoTrue.
 export function authBanDuration(days: number | null): string {
   const hours = Math.min(
     maxAuthBanHours,

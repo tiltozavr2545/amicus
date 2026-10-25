@@ -9,33 +9,35 @@ export const broadcastRouter = Router();
 
 const UPDATE_KINDS = ['app_update', 'app_update_important'];
 
-/// Чем сортировать строку истории, у которой сборка — строка.
+/// What to sort a history row by when its build is a string.
 ///
-/// `?` подставляется там, где в payload сборки не оказалось, и он-то и был
-/// проблемой: `Number('?')` — это NaN, а компаратор, возвращающий NaN, не
-/// задаёт порядка вообще. `sort` принимает такой ответ за «оставить как есть»,
-/// и ОДНОЙ такой строки хватало, чтобы вся таблица истории выехала в порядке,
-/// который зависит от реализации, — молча, потому что сама строка рисуется
-/// нормально. Дефолт `?? '?'` показывает, что строки без сборки ждали; не
-/// обновили вторую половину.
+/// `?` is substituted where the payload had no build, and that was the
+/// problem: `Number('?')` is NaN, and a comparator that returns NaN defines no
+/// order at all. `sort` takes such an answer as "leave as is", and ONE such
+/// row was enough for the whole history table to come out in an
+/// implementation-dependent order, silently, because the row itself renders
+/// fine. The `?? '?'` default shows that rows without a build were expected;
+/// the second half was not updated.
 ///
-/// -1, а не 0: «сборка неизвестна» — это самое старое, что может быть, и в
-/// таблице, отсортированной от новых к старым, ему место в конце.
+/// -1 rather than 0: "build unknown" is the oldest thing there can be, and in
+/// a table sorted from newest to oldest it belongs at the end.
 function buildOrder(build: string): number {
   const parsed = Number(build);
   return Number.isFinite(parsed) ? parsed : -1;
 }
 
-// Повторяет отбор `enqueue_app_update_notifications()` слово в слово, чтобы
-// показать список ДО отправки. Источник истины — сама функция; это её
-// зеркало, и если они разойдутся, права будет функция. Поэтому же ниже
-// показывается, сколько строк она реально завела: расхождение станет видно
-// сразу, а не когда кто-то не получит уведомление.
+// Repeats the selection in `enqueue_app_update_notifications()` word for word,
+// to show the list BEFORE sending. The source of truth is the function
+// itself; this is its mirror, and if they diverge the function is right. For
+// the same reason the code below shows how many rows the function actually
+// created: a divergence becomes visible immediately, not when someone fails
+// to get a notification.
 //
-// Отбор: у человека есть хоть одно устройство, максимум `app_build` по всем
-// его устройствам меньше целевой сборки (NULL считается нулём — «старее
-// всего известного»), он не выключил `notify_system_account`, и про ЭТУ
-// сборку ему ещё не клали ни обычное уведомление, ни настойчивое.
+// Selection: the person has at least one device, the maximum `app_build`
+// across all their devices is below the target build (NULL counts as zero,
+// "older than anything known"), they have not turned off
+// `notify_system_account`, and they have not yet been queued either a regular
+// or an insistent notification for THIS build.
 async function audience(targetBuild: number) {
   const [devices, users, prefs, outbox] = await Promise.all([
     loadDevices(),
@@ -147,9 +149,10 @@ broadcastRouter.post('/broadcast/app-update', async (req, res, next) => {
       return;
     }
 
-    // Вызывается сама функция, а не повторяется её логика вставкой: отбор,
-    // защита от повтора и выбор вида — её дело, и второй реализации этому
-    // месту не нужно. Консоль здесь только форма ввода.
+    // The function itself is called rather than repeating its logic as an
+    // insert: selection, repeat protection and kind choice are its job, and
+    // this spot needs no second implementation. The console is only an input
+    // form here.
     const { data, error } = await admin.rpc(
       'enqueue_app_update_notifications',
       {

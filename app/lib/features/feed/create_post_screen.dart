@@ -220,24 +220,24 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       return;
     }
 
-    // Раньше стояло ПОСЛЕ пикера. Пока пикер поднимает свою activity, кнопка
-    // «Добавить» оставалась включённой (её `onPressed` смотрит на `_isPicking`
-    // и на `_slots.length`, и то и другое — доpick-овое состояние), так что
-    // второй тап открывал второй пикер. Оба батча потом обрезались через
-    // `take(remaining)` по ОДНОМУ И ТОМУ ЖЕ `remaining`, посчитанному до
-    // первого выбора, и вместе могли перевалить за [_maxMediaCount] —
-    // публикация после этого падала на серверном `post_media_limit_exceeded`,
-    // а композер умел показать только общее «не удалось опубликовать».
+    // This used to come AFTER the picker. While the picker brings up its
+    // activity, the "Add" button stayed enabled (its `onPressed` looks at
+    // `_isPicking` and `_slots.length`, both of which are pre-pick state), so a
+    // second tap opened a second picker. Both batches were then trimmed via
+    // `take(remaining)` using the SAME `remaining`, computed before the first
+    // pick, and together could exceed [_maxMediaCount] — publishing then failed
+    // on the server's `post_media_limit_exceeded`, and the composer could only
+    // show a generic "failed to publish".
     setState(() => _isPicking = true);
 
     final MediaPickResult result;
     try {
       result = await pickMediaFiles(remaining: remaining);
     } catch (_) {
-      // Теперь, когда флаг выставлен заранее, бросок отсюда запирал бы кнопку
-      // до конца сессии композера. Заодно перестаёт быть необработанной
-      // асинхронной ошибкой: `_pickMedia` зовут как `VoidCallback`, так что
-      // ловить этот Future некому.
+      // Now that the flag is set up front, a throw from here would lock the
+      // button for the rest of the composer session. It also stops being an
+      // unhandled async error: `_pickMedia` is called as a `VoidCallback`, so
+      // there is nobody to catch that Future.
       if (!mounted) return;
       setState(() => _isPicking = false);
       ScaffoldMessenger.of(
@@ -346,9 +346,10 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       // is no PopScope — so this State can be gone by the time a timeout
       // lands, and an unguarded setState then throws an unhandled async error.
       if (!mounted) return;
-      // Бан проверяется ПЕРЕД общим сообщением: «не удалось опубликовать»
-      // здесь было бы неправдой — попытка дошла, и сервер ответил именно
-      // отказом, а не молчанием. Человеку нужна дата, а не совет повторить.
+      // The ban is checked BEFORE the generic message: "failed to publish"
+      // would be untrue here — the attempt got through, and the server answered
+      // with a refusal, not silence. The person needs a date, not advice to
+      // retry.
       final bannedUntil = writeBanUntil(e);
       setState(
         () => _errorMessage = bannedUntil != null

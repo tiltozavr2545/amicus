@@ -16,25 +16,23 @@ class CommentsScreen extends ConsumerStatefulWidget {
 
   final String postId;
 
-  /// Сообщает открывшему экрану, сколько комментариев у поста на самом деле —
-  /// после каждой успешной загрузки списка, то есть и после отправки, и после
-  /// удаления.
+  /// Tells the screen's opener how many comments the post really has, after
+  /// every successful list load, so after a send and after a delete alike.
   ///
-  /// Колбэк, а не возвращаемое значение маршрута: экран закрывают системной
-  /// кнопкой «назад», у которой результата нет, а перехватывать её через
-  /// PopScope ради счётчика — вмешательство в жест, который в этом проекте
-  /// проверить нечем (см. «Грабли» в CLAUDE.md). Заодно карточка под
-  /// экраном обновляется сразу, а не при выходе.
+  /// A callback rather than a route result: the screen gets closed with the
+  /// system back button, which has no result, and intercepting it through
+  /// PopScope just for a counter would tamper with a gesture this project has
+  /// no way to test (see "Pitfalls" in AGENTS.md). It also updates the card
+  /// underneath right away instead of on exit.
   ///
-  /// Дёргать [FeedRefreshTick] здесь было бы неверно по цене: он перезагружает
-  /// первую страницу КАЖДОГО открытого списка, а изменилось одно число на
-  /// одной карточке.
+  /// Poking [FeedRefreshTick] here would cost too much: it reloads the first
+  /// page of EVERY open list, while all that changed is one number on one card.
   ///
-  /// Не вызывается вовсе, когда список обрезан по [commentFetchLimit]: длина
-  /// обрезанного списка — уже не «сколько их на самом деле», а потолок, и
-  /// подставить её значило бы уронить счётчик на карточке с настоящего числа
-  /// до 500. Карточка в этом случае остаётся с числом от `comment_summary()`,
-  /// которое считает всё и на сервере.
+  /// Not called at all when the list is cut off at [commentFetchLimit]: the
+  /// length of a truncated list is no longer "how many there really are" but a
+  /// ceiling, and substituting it would drop the counter on the card from the
+  /// real number to 500. In that case the card keeps the number from
+  /// `comment_summary()`, which the server counts in full.
   final ValueChanged<int>? onCountChanged;
 
   @override
@@ -45,8 +43,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   final _textController = TextEditingController();
   List<ThreadedComment>? _comments;
 
-  /// У поста больше комментариев, чем вернул один запрос (см.
-  /// [commentFetchLimit]). Рисует сноску в конце списка и запирает
+  /// The post has more comments than one request returned (see
+  /// [commentFetchLimit]). Draws a footnote at the end of the list and locks
   /// [CommentsScreen.onCountChanged].
   bool _isTruncated = false;
 
@@ -104,14 +102,14 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         _isTruncated = page.isTruncated;
         _errorMessage = null;
       });
-      // Из СЫРОГО списка, не из threadComments(): счётчик на карточке рисует
-      // `comment_summary()`, а он считает `count(*) … where deleted_at is
-      // null` — то есть ровно видимые нетомбстоненные строки. threadComments()
-      // сверх этого прячет ответы без корня и заглушки без ответов, так что
-      // его длина дала бы другое число.
+      // From the RAW list, not from threadComments(): the counter on the card
+      // is drawn by `comment_summary()`, which counts `count(*) … where
+      // deleted_at is null` — exactly the visible non-tombstone rows. On top of
+      // that, threadComments() hides replies without a root and placeholders
+      // without replies, so its length would give a different number.
       //
-      // И только когда список пришёл целиком: у обрезанного длина — это
-      // потолок, а не количество (см. [CommentsScreen.onCountChanged]).
+      // And only when the list arrived whole: for a truncated one the length is
+      // a ceiling, not a count (see [CommentsScreen.onCountChanged]).
       if (!page.isTruncated) {
         widget.onCountChanged?.call(
           page.comments.where((c) => !c.isDeleted).length,
@@ -260,8 +258,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       // sending — assigning to it puts the message nowhere. The composer would
       // just stop, and the server rejects a reply for several ordinary reasons
       // (its target was deleted or blocked while the reply was being typed).
-      // Бан — не «не удалось отправить»: попытка дошла, и ответ на неё
-      // пришёл. Сообщение с датой окончания вместо предложения повторить.
+      // A ban is not "failed to send": the attempt got through and an answer
+      // came back. Show a message with the end date instead of offering a
+      // retry.
       final bannedUntil = writeBanUntil(e);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -293,9 +292,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                 ? Center(child: Text(l10n.noCommentsYetMessage))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    // Сноска идёт последним элементом ТОГО ЖЕ списка, а не
-                    // отдельным блоком под ним: обрезается хвост, и сказать об
-                    // этом надо там, где хвост кончился.
+                    // The footnote is the last item of the SAME list, not a
+                    // separate block below it: the tail is what gets cut off,
+                    // and that should be said where the tail ends.
                     itemCount: _comments!.length + (_isTruncated ? 1 : 0),
                     itemBuilder: (context, index) => index == _comments!.length
                         ? Padding(
@@ -424,9 +423,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
               iconSize: 20,
               onPressed: () => _deleteComment(comment.id),
             ),
-          // Заглушка удалённого комментария жалобы не принимает по той же
-          // причине, по которой не принимает ответ: жаловаться уже не на что,
-          // текста там нет.
+          // A deleted-comment placeholder doesn't accept reports for the same
+          // reason it doesn't accept a reply: there is nothing left to report,
+          // it has no text.
           if (!isOwnComment && !comment.isDeleted)
             IconButton(
               icon: const Icon(Icons.flag_outlined),

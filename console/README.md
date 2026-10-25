@@ -1,202 +1,214 @@
-# Консоль Amicus
+# Amicus console
 
-Локальная админ-консоль: жалобы, посты новостного аккаунта, срезы по базе и
-рассылки. Запускается **только на машине разработчика** — наружу не
-выкладывается и логина не имеет, потому что весь доступ держится на
-service_role-ключе, который обходит RLS целиком.
+A local admin console: reports, posts from the news account, database
+breakdowns and broadcasts. It runs **only on the developer's machine**: it is
+never deployed anywhere and has no login, because all access rests on the
+service_role key, which bypasses RLS entirely.
 
-## Запуск
+## Running
 
 ```bash
 cd console
 npm install
-cp .env.example .env   # заполнить SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY
+cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 npm run dev
 ```
 
-Откроется два процесса: API на `127.0.0.1:5174` и Vite на
-`127.0.0.1:5173`. Работать — со вторым, первый он проксирует.
+This starts two processes: the API on `127.0.0.1:5174` and Vite on
+`127.0.0.1:5173`. Work with the second one; it proxies the first.
 
-## Почему так устроено
+## Why it is built this way
 
-- **Ключ живёт только на сервере.** Браузер ходит в `/api`, а в Supabase из
-  него не ходит никто: service_role в бандле фронтенда — это вся база наружу.
-  Поэтому у консоли есть серверная половина. Читающей она была только в
-  первом этапе: сейчас через неё скрывают и удаляют контент, банят, разбирают
-  жалобы, публикуют посты новостного аккаунта и ставят уведомления в очередь.
-- **Только петля — и проверка `Host`/`Origin` поверх неё.** И API, и Vite
-  слушают `127.0.0.1`, не `0.0.0.0`. Но петля закрывает сеть, а не браузер
-  разработчика: чужой домен с A-записью `127.0.0.1` (DNS rebinding) для
-  браузера становится ОДНИМ origin с консолью, никакого CORS не возникает, и
-  скрипт с такой страницы читает ответы консоли как свои — то есть получает
-  всю базу, потому что консоль ходит мимо RLS. Поэтому `server/local_only.ts`
-  отбивает всё, у чего в `Host` не петлевой хостнейм, у чего `Origin` чужой
-  или у чего браузер сам сказал `Sec-Fetch-Site: cross-site`. Проверка стоит
-  ПЕРЕД разбором тела и покрыта тестами (`npm test`), включая случай
-  подменённого `Host`.
-- **Агрегация в памяти, а не в SQL.** Консоль читает таблицы целиком и считает
-  срезы в Node — на пилотном проекте это дешевле, чем заводить вью и мигрировать
-  их вместе со схемой. Потолок — 100 000 строк на таблицу (`server/db.ts`);
-  если он упрётся, это сигнал переносить агрегацию в SQL, а не поднимать число.
-- **Версия — свойство установки, а не человека.** Телефон и планшет одного
-  пользователя бывают на разных сборках, поэтому таблица версий считает
-  отдельно установки и людей, а «отставшим» считает того, у кого максимум
-  `app_build` ниже свежего — ровно как `enqueue_app_update_notifications()`.
-  Подробности — «Версия приложения и уведомление об обновлении» в
-  [../docs/data-model.md](../docs/data-model.md).
+- **The key lives only on the server.** The browser talks to `/api`, and
+  nothing in it talks to Supabase: service_role in the frontend bundle means
+  the whole database is exposed. That is why the console has a server half. It
+  was read-only only during the first stage: now it is used to hide and delete
+  content, ban people, handle reports, publish news-account posts and enqueue
+  notifications.
+- **Loopback only, plus a `Host`/`Origin` check on top of it.** Both the API
+  and Vite listen on `127.0.0.1`, not `0.0.0.0`. But loopback closes off the
+  network, not the developer's browser: a foreign domain with an A record of
+  `127.0.0.1` (DNS rebinding) becomes the SAME origin as the console from the
+  browser's point of view, no CORS kicks in, and a script on that page reads
+  the console's responses as its own, i.e. gets the whole database, because
+  the console goes around RLS. So `server/local_only.ts` rejects anything whose
+  `Host` is not a loopback hostname, whose `Origin` is foreign, or for which
+  the browser itself said `Sec-Fetch-Site: cross-site`. The check runs BEFORE
+  body parsing and is covered by tests (`npm test`), including the spoofed
+  `Host` case.
+- **Aggregation in memory, not in SQL.** The console reads tables whole and
+  computes breakdowns in Node: on a pilot project that is cheaper than creating
+  views and migrating them along with the schema. The ceiling is 100,000 rows
+  per table (`server/db.ts`); if it is hit, that is the signal to move
+  aggregation into SQL, not to raise the number.
+- **A version belongs to an install, not a person.** One user's phone and
+  tablet can be on different builds, so the version table counts installs and
+  people separately, and counts someone as "behind" when their maximum
+  `app_build` is below the latest, exactly like
+  `enqueue_app_update_notifications()`. Details: "App version and update
+  notification" in [../docs/data-model.md](../docs/data-model.md).
 
-## Что готово
+## What's done
 
-- **Обзор** — итоги по базе, регистрации и посты за 30 дней, разбивка по
-  версиям, платформам и языкам, возраст пуш-токенов, **почему не доходят
-  пуши** (отказ в разрешении / сбой регистрации / старая версия), состояние
-  очереди уведомлений, отключённые настройки.
-- **Пользователи** — список с поиском и сортировкой, карточка человека:
-  устройства с версиями и ОС, настройки уведомлений, последние посты и
-  уведомления.
-- **Новости** — редактор постов новостного аккаунта: текст с предпросмотром
-  «как увидят в ленте», медиа с перестановкой, черновики, правка и удаление
-  опубликованного. Публикация уведомлений не рассылает — триггер очереди
-  выходит на системном аккаунте (20260820190000). Выбранный файл до
-  публикации лежит на диске консоли, а не в бакете — почему, см. «Про
-  редактор новостей» ниже.
-- **Жалобы** — очередь разбора: что за объект, его текст на момент жалобы,
-  кто пожаловался, сколько жалоб на этот же объект. Действия: скрыть и
-  вернуть, удалить, запретить писать на срок, забанить вход, снять
-  ограничения, закрыть или отклонить жалобу.
+- **Overview** ("Обзор"): database totals, sign-ups and posts over 30 days,
+  breakdown by version, platform and language, push-token age, **why pushes
+  don't arrive** (permission denied / registration failure / old version),
+  notification queue state, disabled settings.
+- **Users** ("Пользователи"): a list with search and sorting, and a person's
+  card: devices with versions and OS, notification settings, recent posts and
+  notifications.
+- **News** ("Новости"): an editor for news-account posts: text with a "how it
+  will look in the feed" preview, media with reordering, drafts, editing and
+  deleting published posts. Publishing sends no notifications: the queue
+  trigger bails out for the system account (20260820190000). Until
+  publication, a selected file sits on the console's disk, not in the bucket;
+  for why, see "About the news editor" below.
+- **Reports** ("Жалобы"): the review queue: what the object is, its text at
+  the time of the report, who reported it, how many reports there are on the
+  same object. Actions: hide and unhide, delete, ban from writing for a period,
+  ban sign-in, lift restrictions, close or reject the report.
 
-- **Рассылки** — уведомление «вышла новая версия»: цель берётся из
-  `app/pubspec.yaml`, аудитория считается заранее и показывается поимённо, с
-  их собственными сборками. Отдельно видно тех, кого отсеет защита от
-  повтора, и тех, кто выключил уведомления системного аккаунта.
+- **Broadcasts** ("Рассылки"): the "a new version is out" notification: the
+  target is taken from `app/pubspec.yaml`, the audience is computed in advance
+  and shown by name, with their own builds. Shown separately are those who
+  will be filtered out by the repeat protection and those who turned off
+  notifications from the system account.
 
-### Про адресные уведомления
+### About targeted notifications
 
-- **Отправить одному человеку** можно с его карточки в разделе
-  «Пользователи»: «Обновитесь», «Важное обновление» и «Сообщение модерации».
-  Первые два уважают то же, что и массовая рассылка — выключенные уведомления
-  системного аккаунта и защиту от повтора по сборке.
-- **Список видов закрыт и короче, чем CHECK таблицы.** Остальные виды
-  событийные: послать «у вас новый комментарий» там, где комментария не было,
-  значит соврать человеку голосом приложения.
-- **«Написать автору»** есть и отдельным действием в карточке жалобы — когда
-  убирать нечего, а сказать есть что: контент остаётся, жалоба не закрывается.
-- **Отдельной кнопки «написать жалобщику» нет намеренно.** Оба готовых текста
-  для него описывают ИСХОД разбора, поэтому уходят вместе с «Закрыть» или
-  «Отклонить», а не сами по себе.
+- **You can send to a single person** from their card in the "Users" section:
+  "Обновитесь" ("Please update"), "Важное обновление" ("Important update") and
+  "Сообщение модерации" ("Moderation message"). The first two respect the same
+  things as the mass broadcast: disabled system-account notifications and the
+  per-build repeat protection.
+- **The list of kinds is closed and shorter than the table's CHECK.** The
+  other kinds are event-driven: sending "you have a new comment" where there
+  was no comment means lying to a person in the app's voice.
+- **"Написать автору" ("Message the author")** also exists as a separate
+  action on the report card, for when there is nothing to remove but something
+  to say: the content stays, the report is not closed.
+- **There is deliberately no separate "message the reporter" button.** Both
+  ready-made texts for them describe the OUTCOME of the review, so they go out
+  together with "Закрыть" ("Close") or "Отклонить" ("Reject"), not on their
+  own.
 
-### Про рассылки
+### About broadcasts
 
-- **Отправку делает `enqueue_app_update_notifications()`**, консоль — только
-  форма ввода. Список получателей на экране — зеркало её отбора,
-  посчитанное заранее; источник истины сама функция, поэтому после отправки
-  показывается, сколько строк она реально завела: расхождение станет видно
-  сразу, а не когда кто-то не получит уведомление.
-- **Повторный вызов с той же сборкой безопасен.** Про одну сборку человек
-  получает ровно одно уведомление, и обычное с настойчивым не складываются.
-- **Настойчивый вид — редко и только по делу.** За всю историю проекта он
-  применялся дважды. Консоль показывает предупреждение об этом ровно тогда,
-  когда галочка стоит.
-- **Строка очереди не равна доставленному пушу.** До человека без устройств
-  она тоже доходит и помечается отправленной — поэтому рядом стоит счётчик
-  «без устройств».
+- **Sending is done by `enqueue_app_update_notifications()`**; the console is
+  only an input form. The recipient list on screen mirrors its selection,
+  computed in advance; the function itself is the source of truth, so after
+  sending the console shows how many rows it actually created: a discrepancy
+  becomes visible immediately, not when someone fails to get the notification.
+- **Calling it again with the same build is safe.** A person gets exactly one
+  notification per build, and the regular and the urgent ones don't stack.
+- **The urgent kind is rare and only when warranted.** In the whole history of
+  the project it has been used twice. The console shows a warning about this
+  exactly when the checkbox is ticked.
+- **A queue row is not a delivered push.** It also reaches a person with no
+  devices and gets marked as sent, which is why there is a "без устройств"
+  ("no devices") counter next to it.
 
-### Про редактор новостей
+### About the news editor
 
-- **Правка переписывает медиа целиком.** Иначе нечем раздать `position`.
-  Поэтому API требует `media` явным списком даже при правке одного текста:
-  забытое поле означало бы «медиа больше нет», и запрос молча сносил бы
-  вложения. Проверено дорогой ценой — в разработке этим дважды затёрло
-  настоящий пост.
-- **Пост системного аккаунта создаётся прямой вставкой, а не через
-  `create_post_with_media()`**: та берёт автора из `auth.uid()`, а консоль
-  ходит под service_role без JWT. Поэтому все её проверки (лимит 20 медиа,
-  «посту нужен текст или медиа», пустая строка как отсутствие текста)
-  повторены в `server/routes/news.ts` — без них в базу попало бы то, чего
-  клиент туда положить не может. Путь объекта при этом больше не проверяется,
-  а **выдаётся**: сервер сам собирает его из uuid и расширения по типу, так
-  что присланное имя файла в нём не участвует (см. следующий пункт).
-- **Выбранный файл до публикации лежит на диске консоли, а не в бакете.**
-  `POST /news/media` кладёт его в `news-staging/` и отдаёт ссылку вида
-  `staged:<имя>`; в бакет он уезжает из `prepareMedia()`, когда из него
-  действительно делают пост.
+- **Editing rewrites the media entirely.** Otherwise there is no way to assign
+  `position`. So the API requires `media` as an explicit list even when only
+  the text is edited: a forgotten field would mean "there's no media anymore",
+  and the request would silently wipe the attachments. Learned the hard way:
+  during development this wiped a real post twice.
+- **A system-account post is created by a direct insert, not through
+  `create_post_with_media()`**: that function takes the author from
+  `auth.uid()`, while the console runs as service_role without a JWT. So all
+  of its checks (the 20-media limit, "a post needs text or media", an empty
+  string meaning no text) are repeated in `server/routes/news.ts`; without
+  them, the database would get things the client can't put there. The object
+  path, meanwhile, is no longer checked but **issued**: the server builds it
+  itself from a uuid and an extension derived from the type, so the uploaded
+  file name plays no part in it (see the next item).
+- **Until publication, a selected file sits on the console's disk, not in the
+  bucket.** `POST /news/media` puts it into `news-staging/` and returns a
+  reference of the form `staged:<name>`; it moves to the bucket from
+  `prepareMedia()`, when a post is actually made from it.
 
-  Иначе черновик был нежизнеспособен. На объект без строки в `post_media` не
-  ссылается ничто, то есть по определению `orphaned_media_paths()` он сирота,
-  и ежечасный `reap-orphaned-media` сносил байты через сутки — а публикация
-  двухдневного черновика при этом **проходила успешно**: строки вставали,
-  указывая в пустоту, и пост уходил в ленту всем знакомым битым, вместе с уже
-  отправленным пушем. Вернуть было нечего, `drafts.json` — единственная копия.
+  Otherwise drafts were not viable. An object with no row in `post_media` is
+  referenced by nothing, so by the definition of `orphaned_media_paths()` it is
+  an orphan, and the hourly `reap-orphaned-media` wiped the bytes after a day,
+  while publishing a two-day-old draft **still succeeded**: the rows were
+  inserted pointing at nothing, and the post went out broken into the feeds
+  of all connections, along with an already-sent push. There was nothing to
+  restore from; `drafts.json` is the only copy.
 
-  Попутно исчезли ещё две вещи: брошенный набор файлов больше вообще не
-  попадает в бакет, и миниатюры черновика перестали протухать через час
-  (ссылка на стейджинг не подписанная). Уборка стейджинга висит на
-  `GET /news`: то, на что ссылается хоть один черновик, не трогается вовсе,
-  остальное сносится через неделю. Подробности — комментарий к `STAGING` в
+  Two more things went away along the way: an abandoned set of files no longer
+  reaches the bucket at all, and draft thumbnails stopped expiring after an
+  hour (the staging link is not signed). Staging cleanup hangs off
+  `GET /news`: anything referenced by at least one draft is not touched at
+  all, the rest is removed after a week. Details: the comment on `STAGING` in
   [server/news.ts](server/news.ts).
-- **Постер видео снимается в браузере** через canvas: на сервере ради одной
-  картинки понадобился бы ffmpeg. Если браузер не смог декодировать файл,
-  пост публикуется без постера.
-- **Удалённые файлы из бакета не стираются сразу** — на них перестаёт
-  ссылаться строка, и их выносит `reap-orphaned-media` в течение суток.
+- **The video poster is captured in the browser** via canvas: on the server,
+  one image would require ffmpeg. If the browser can't decode the file, the
+  post is published without a poster.
+- **Deleted files are not erased from the bucket immediately**: the row stops
+  referencing them, and `reap-orphaned-media` removes them within a day.
 
-### Про действия в очереди
+### About queue actions
 
-- **«Скрыть» обратимо, «Удалить» — нет.** Скрытие ставит `hidden_at`, и
-  объект исчезает у всех, включая автора. Удаление поста сносит строку;
-  комментарий и сообщение превращаются в заглушку, как это делает само
-  приложение, — иначе оборвётся ветка ответов на них.
-- **Галочка «уведомить» включена по умолчанию** и шлёт настоящий пуш.
-  Снимайте её, когда разбираете что-то своё или проверяете консоль.
-- **Приписка в уведомление не переводится.** Каркас текста локализован
-  (`send-push`), а ваши слова уходят как есть — человеку с английской
-  локалью придёт половина по-русски. Поэтому приписка необязательна: без неё
-  текст остаётся полностью на языке получателя.
-- **Сначала выложите Edge Function, потом пользуйтесь галочкой «уведомить».**
-  Виды `moderation_notice`, `report_resolved` и `report_rejected` добавлены в
-  `send-push`, но CI её не выкладывает — нужен `supabase functions deploy send-push` руками.
-  Пока этого не сделано, уведомление не откладывается, а **пропадает**: drain
-  забирает строку, не находит для её вида текста, пропускает её — и всё равно
-  ставит `sent_at`, потому что иначе перевыбирал бы её вечно. В очереди она
-  будет выглядеть отправленной, а на телефон ничего не придёт.
+- **"Скрыть" ("Hide") is reversible, "Удалить" ("Delete") is not.** Hiding
+  sets `hidden_at`, and the object disappears for everyone, the author
+  included. Deleting a post removes the row; a comment or a message turns into
+  a placeholder, the same way the app itself does it, otherwise the reply
+  thread under them would break.
+- **The "уведомить" ("notify") checkbox is on by default** and sends a real
+  push. Untick it when you are handling something of your own or testing the
+  console.
+- **The note added to a notification is not translated.** The text skeleton
+  is localized (`send-push`), but your words go out as is: a person with an
+  English locale will get half of it in Russian. That is why the note is
+  optional: without it, the text stays entirely in the recipient's language.
+- **Deploy the Edge Function first, then use the "notify" checkbox.** The
+  `moderation_notice`, `report_resolved` and `report_rejected` kinds were added
+  to `send-push`, but CI doesn't deploy it: you need to run `supabase functions deploy send-push` by hand.
+  Until that is done, the notification is not postponed but **lost**: drain
+  picks up the row, finds no text for its kind, skips it, and still sets
+  `sent_at`, because otherwise it would keep reselecting it forever. In the
+  queue it will look sent, but nothing will reach the phone.
 
-## Что дальше
+## What's next
 
-Серых пунктов в меню не осталось — все пять разделов рабочие. Что стоит
-держать в голове: консоль никуда не выкладывается, поэтому в `make verify`
-приложения она не входит — у неё свой workflow,
-`.github/workflows/console-ci.yml`, который на изменения в `console/**` гоняет
-`npm run lint` (Biome), `npm run typecheck`, `npm test` и `npm run build`. То
-же самое локально:
+There are no greyed-out menu items left: all five sections work. What to keep
+in mind: the console is never deployed, so it is not part of the app's
+`make verify`; it has its own workflow,
+`.github/workflows/console-ci.yml`, which on changes to `console/**` runs
+`npm run lint` (Biome), `npm run typecheck`, `npm test` and `npm run build`.
+The same locally:
 
 ```bash
 cd console && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
-Тесты — на `node --test` через уже имеющийся `tsx`, отдельного раннера в
-зависимостях нет намеренно: единственный кандидат тянул больше сотни пакетов
-и приходил с собственной уязвимостью, а проверять здесь надо чистые функции.
-Лежат рядом с проверяемым кодом, `server/*.test.ts` (скрипт `test` берёт
-именно этот уровень).
+Tests run on `node --test` via the already-present `tsx`; there is
+deliberately no separate test runner in the dependencies: the only candidate
+pulled in over a hundred packages and came with its own vulnerability, while
+what needs testing here is pure functions. They live next to the code under
+test, `server/*.test.ts` (the `test` script picks up exactly that level).
 
-## Структура
+## Structure
 
 ```
-server/            локальный API; единственное место, где есть service_role
-  routes/          эндпоинты по разделам
-  db.ts            постраничное чтение PostgREST + админский Auth API
-  aggregate.ts     общие срезы (версии, языки, ряды по дням)
-  local_only.ts    проверка «запрос пришёл с этой машины», перед всем остальным
-  ban_duration.ts  разбор и границы срока наказания
-  news.ts          черновики, стейджинг медиа, таблица «тип ↔ расширение»
-  uuid.ts          проверка формы id до того, как он уедет в PostgREST
-  *.test.ts        тесты (node --test через tsx)
-shared/types.ts    контракт между сервером и фронтендом
-src/               React-приложение (Vite)
-drafts.json        черновики новостей — не в репозитории
-news-staging/      байты, выбранные в композере и ещё не ставшие постом,
-                   тоже не в репозитории
+server/            local API; the only place that has service_role
+  routes/          endpoints by section
+  db.ts            paginated PostgREST reads + the admin Auth API
+  aggregate.ts     shared breakdowns (versions, languages, daily series)
+  local_only.ts    the "request came from this machine" check, before everything else
+  ban_duration.ts  parsing and bounds of the penalty period
+  news.ts          drafts, media staging, the "type ↔ extension" table
+  uuid.ts          id shape check before it goes off to PostgREST
+  *.test.ts        tests (node --test via tsx)
+shared/types.ts    contract between the server and the frontend
+src/               React app (Vite)
+drafts.json        news drafts, not in the repository
+news-staging/      bytes picked in the composer that haven't become a post yet,
+                   also not in the repository
 ```
 
-Два последних появляются сами при первом использовании раздела «Новости» и
-лежат в `.gitignore`: это состояние одной машины, а не проекта.
+The last two appear on their own the first time the "News" section is used
+and are listed in `.gitignore`: they are the state of one machine, not of the
+project.

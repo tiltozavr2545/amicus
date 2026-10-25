@@ -73,10 +73,10 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   }
 
   /// Thrown instead of activating, so a test can drive the error branch.
-  // `Exception?`, а не `Object?`: сюда кладут только `PostgrestException`
-  // (см. вызовы ниже), а широкий тип разрешал бы `throw` чем угодно — включая
-  // строку, которую `catch (e)` на экране обработает, а человек увидит как
-  // текст ошибки неизвестного происхождения.
+  // `Exception?`, not `Object?`: only a `PostgrestException` goes in here
+  // (see the calls below), and a wider type would allow `throw`ing anything —
+  // including a string that the screen's `catch (e)` would handle and the
+  // person would see as an error message of unknown origin.
   Exception? activateError;
 
   @override

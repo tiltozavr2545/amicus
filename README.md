@@ -1,79 +1,79 @@
 # Amicus
 
-> Соцсеть-лента, где ты видишь посты только тех людей, с которыми познакомился по-настоящему — через личную встречу или приглашение от друга.
+> A feed-style social network where you only see posts from people you've genuinely met — in person or through an invite from a friend.
 
-Идея приложения — это не только приватность, но и **цифровой детокс**: лента не бесконечна и не управляется алгоритмом. Ты видишь контент только своих связей (Connections), без случайных рекомендаций и давления бесконечного скроллинга. При этом ты не теряешь связь с друзьями — контент остаётся, просто в узком кругу своих знакомых.
+The idea behind the app is not just privacy but also a **digital detox**: the feed is not infinite and not driven by an algorithm. You only see content from your Connections, with no random recommendations and no pressure of endless scrolling. At the same time you don't lose touch with your friends — the content is still there, just within a narrow circle of people you know.
 
-Пилотный/портфолио-проект (изначально шёл под рабочим названием «Круг»). Исходная идея и механика — в [docs/project-brief.md](docs/project-brief.md); действующая схема данных — в [docs/data-model.md](docs/data-model.md) (в брифе лежит её первый черновик, а не то, что получилось).
+A pilot/portfolio project (originally developed under the working name "Круг", "Circle"). The original idea and mechanics are in [docs/project-brief.md](docs/project-brief.md); the current data model is in [docs/data-model.md](docs/data-model.md) (the brief holds its first draft, not what it turned into).
 
-## Статус
+## Status
 
-Задеплоено на Android (Google Play, Closed testing — трек `alpha`) и на iOS
-(TestFlight). Сейчас — тестирование и донастройка фич на обеих платформах (см.
+Deployed on Android (Google Play, Closed testing — the `alpha` track) and on iOS
+(TestFlight). Currently — testing and fine-tuning features on both platforms (see
 [docs/future-development.md](docs/future-development.md)).
 
-## Что умеет
+## Features
 
-- Вход/регистрация, профиль с галереей фото (до 80) и собственной стеной постов
-- Знакомства по invite-ссылке — с просмотром профиля и постов знакомого
-- Лента: текст и до 20 фото/видео на пост, реакции, комментарии с ответами (один уровень вложенности)
-- Видимость поста: при публикации (и потом, при редактировании) можно выбрать, кто его увидит — все знакомые или только избранные
-- Комнаты: отдельный чат для тех, кого позвали — сообщения приходят по realtime-подписке, с непрочитанными, галочками «доставлено/прочитано», статусами «в сети»/«печатает…» и пушами; к сообщению можно приложить до 10 фото/видео, ответить на конкретное сообщение цитатой, а сам чат — заглушить отдельно от остальных; список разбит на дни («Сегодня», «Вчера», дата)
-- Комната на двоих называется именем собеседника и появляется у обоих; группе от трёх человек владелец даёт название и аватарку, добавляет и исключает людей
-- Заявка в знакомые — участнику общей комнаты, если Connection между вами ещё нет: единственный способ познакомиться без встречи вживую, и он открыт только там, где люди уже сидят в одном чате
-- Mute, блокировка и избранное — с push-уведомлениями и гибкой настройкой по каждому источнику
-- Жалоба на пост, комментарий, сообщение в комнате или на самого человека: автор не узнаёт, кто пожаловался, а разбирают их из локальной консоли — скрыть, удалить, ограничить запись или закрыть вход
-- Тёмная тема, две локали (en/ru) с переключателем языка
-- Выход и удаление аккаунта, оба с подтверждением
+- Sign-in/sign-up, a profile with a photo gallery (up to 80) and your own wall of posts
+- Connections via an invite link — with access to the connection's profile and posts
+- Feed: text and up to 20 photos/videos per post, reactions, comments with replies (one level of nesting)
+- Post visibility: when publishing (and later, when editing) you can choose who sees it — all connections or only selected ones
+- Rooms: a separate chat for the people you invited — messages arrive via a realtime subscription, with unread counts, "Delivered"/"Read" ticks, "online"/"typing…" statuses and pushes; a message can carry up to 10 photos/videos, you can reply to a specific message with a quote, and mute the chat itself separately from everything else; the list is split by day ("Today", "Yesterday", a date)
+- A two-person room is named after the other person and appears for both; for a group of three or more, the owner sets a name and an avatar, and adds and removes people
+- Connection request — to a member of a shared room if you aren't connected yet: the only way to connect without meeting in person, and it's available only where people already share a chat
+- Mute, block and favorites — with push notifications and fine-grained per-source settings
+- Report a post, a comment, a room message or the person themselves: the author never learns who reported, and reports are reviewed from the local console — hide, delete, impose a write ban or lock the account
+- Dark theme, two locales (en/ru) with a language switcher
+- Sign-out and account deletion, both with confirmation
 
-Полная история фич — в [CHANGELOG.md](CHANGELOG.md).
+Full feature history is in [CHANGELOG.md](CHANGELOG.md).
 
-## Скриншоты
+## Screenshots
 
 <table>
 <tr>
-<td><img src="docs/screenshots/feed.png" width="200" alt="Общая лента"><br><sub>Лента</sub></td>
-<td><img src="docs/screenshots/comments.png" width="200" alt="Комментарии"><br><sub>Комментарии</sub></td>
-<td><img src="docs/screenshots/connections.png" width="200" alt="Знакомства"><br><sub>Знакомства</sub></td>
-<td><img src="docs/screenshots/profile.png" width="200" alt="Профиль"><br><sub>Профиль</sub></td>
+<td><img src="docs/screenshots/feed.png" width="200" alt="Main feed"><br><sub>Feed</sub></td>
+<td><img src="docs/screenshots/comments.png" width="200" alt="Comments"><br><sub>Comments</sub></td>
+<td><img src="docs/screenshots/connections.png" width="200" alt="Connections"><br><sub>Connections</sub></td>
+<td><img src="docs/screenshots/profile.png" width="200" alt="Profile"><br><sub>Profile</sub></td>
 </tr>
 </table>
 
-## Стек
+## Stack
 
-- **Frontend:** Flutter / Dart (Android и iOS, см. [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md))
+- **Frontend:** Flutter / Dart (Android and iOS, see [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md))
 - **Backend:** [Supabase](https://supabase.com) — PostgreSQL, Auth, Storage, Realtime, Row Level Security
 - **State management:** Riverpod
-- **Навигация:** go_router
-- **CI:** GitHub Actions — `dart format`, `flutter analyze`, `flutter test` и сборка `.aab` на каждый push/PR (плюс проверка бампа версии в PR); пуш в `main` собирает подписанный бандл и выкладывает его в Play (см. [docs/operations.md](docs/operations.md))
+- **Navigation:** go_router
+- **CI:** GitHub Actions — `dart format`, `flutter analyze`, `flutter test` and an `.aab` build on every push/PR (plus a version-bump check on PRs); a push to `main` builds a signed bundle and uploads it to Play (see [docs/operations.md](docs/operations.md))
 
-Архитектура доступа к данным целиком построена на RLS-политиках Postgres: увидеть чужой пост или комментарий можно только если между пользователями есть подтверждённое «знакомство» — это проверяется на уровне базы, а не в коде приложения. Профили видны только тебе и твоим связям (перечислить всех пользователей через API нельзя), причём то же правило распространяется и на файлы аватарок в Storage. По реакциям наружу отдаются только агрегированные счётчики — кто именно что поставил, не узнать (счётчики считает `security definer`-функция, возвращающая числа без чужих `user_id`). Блокировка знакомого работает по тому же принципу и остаётся единственной границей приватности между людьми: она взаимна, живёт в политике на уровне базы и скрывает и посты, и комментарии (включая ответы под его комментарием и адресованные ему реплики) независимо от версии клиента. Mute устроен иначе и границей приватности не является — это личная настройка «не показывай его в общей ленте», её применяет сам клиент, а профиль замьюченного остаётся открытым, как у любого знакомого (подробнее — в [docs/data-model.md](docs/data-model.md)).
+Data access is built entirely on Postgres RLS policies: you can see someone else's post or comment only if there is a confirmed connection between the users — this is enforced at the database level, not in the app code. Profiles are visible only to you and your connections (you can't enumerate all users through the API), and the same rule applies to avatar files in Storage. For reactions, only aggregated counts are exposed — there's no way to find out who reacted with what (the counts are computed by a `security definer` function that returns numbers without other people's `user_id`). Blocking a connection works on the same principle and remains the only privacy boundary between people: it is mutual, lives in a database-level policy and hides both posts and comments (including replies under their comment and replies addressed to them) regardless of the client version. Mute works differently and is not a privacy boundary — it's a personal "don't show them in the main feed" setting applied by the client itself, and the muted person's profile stays open like any connection's (more in [docs/data-model.md](docs/data-model.md)).
 
-Чат комнаты закрыт тем же способом: сообщение видно тому, кто в комнате, и подписка на новые сообщения — не исключение. Postgres Changes проверяет ту же SELECT-политику для каждого подписчика, поэтому чужая переписка не приходит и по realtime-каналу.
+Room chat is locked down the same way: a message is visible to whoever is in the room, and the subscription to new messages is no exception. Postgres Changes checks the same SELECT policy for each subscriber, so other people's conversations don't arrive over the realtime channel either.
 
-## Структура репозитория
+## Repository layout
 
 ```
-app/                     — Flutter-приложение
+app/                     — Flutter app
   lib/features/          — auth, connections, feed, notifications, profile, rooms, settings, shell
-  lib/shared/            — то, чем пользуются несколько фич сразу
-  test/                  — юнит- и виджет-тесты
-supabase/migrations/     — схема БД и RLS-политики (baseline + миграции поверх)
-supabase/functions/      — Edge Function send-push (рассылка уведомлений через FCM,
-                           тексты пушей живут там же)
-console/                 — локальная админ-консоль (React + Vite): срезы по базе,
-                           разбор жалоб, посты новостного аккаунта, рассылки.
-                           Живёт только на машине разработчика, наружу не
-                           выкладывается — см. console/README.md
-docs/                    — схема БД, устройство клиента, эксплуатация,
-                           отложенное и исторические планы
-docs/review/             — черновики текстов для сторов, ждущие вычитки
-docs/gh-pages/           — исходники страниц на GitHub Pages (privacy policy,
-                           terms of use, подтверждение email, сброс пароля);
-                           выкладываются CI при пуше в main
+  lib/shared/            — code used by several features at once
+  test/                  — unit and widget tests
+supabase/migrations/     — DB schema and RLS policies (baseline + migrations on top)
+supabase/functions/      — send-push Edge Function (notification delivery via FCM;
+                           push texts live there too)
+console/                 — local admin console (React + Vite): database slices,
+                           report review, news-account posts, broadcasts.
+                           Lives only on the developer's machine, never
+                           deployed — see console/README.md
+docs/                    — DB schema, client architecture, operations,
+                           deferred work and historical plans
+docs/review/             — draft store texts awaiting proofreading
+docs/gh-pages/           — sources of the GitHub Pages pages (privacy policy,
+                           terms of use, email confirmation, password reset);
+                           deployed by CI on push to main
 ```
 
-## Запуск локально
+## Running locally
 
 ```bash
 cd app
@@ -81,25 +81,25 @@ flutter pub get
 flutter run --dart-define-from-file=.env
 ```
 
-`.env` не хранится в репозитории — нужен свой Supabase-проект (`SUPABASE_URL`, `SUPABASE_ANON_KEY`), см. `app/.env.example`.
+`.env` is not stored in the repository — you need your own Supabase project (`SUPABASE_URL`, `SUPABASE_ANON_KEY`), see `app/.env.example`.
 
-## Документация
+## Documentation
 
-Актуальное:
+Current:
 
-- [Схема и правило видимости](docs/data-model.md) — таблицы, RLS, storage-политики; главный документ, если разбираешься в устройстве
-- [Устройство клиента](docs/client-architecture.md) — чем собрано приложение и что делает сам клиент поверх схемы
-- [Эксплуатация](docs/operations.md) — задания по расписанию, секреты, релиз, выкладка Edge Function, рассылка уведомления об обновлении
-- [Консоль](console/README.md) — локальная админ-консоль: что умеет, как запускать и почему у неё есть серверная половина
-- [Деплой iOS](docs/ios-deployment-guide.md) — путь от симулятора до TestFlight: Xcode, иконки, экспорт-комплаенс, сборка IPA
-- [Push-уведомления iOS (APNs)](docs/ios-push-apns-setup.md) — ключ APNs, привязка к Firebase Cloud Messaging
-- [Отложенные фичи](docs/future-development.md) — GPS-треки, веб-версия, открытые вопросы
-- [Черновик листинга App Store](docs/review/app-store-listing-draft.md) — тексты для App Store Connect, ещё не поданные и ждущие вычитки
-- [Страницы GitHub Pages](docs/gh-pages/) — опубликованные privacy policy и terms of use, страницы подтверждения email и сброса пароля
-- [Changelog](CHANGELOG.md) — что появилось в какой версии
+- [Schema and visibility rule](docs/data-model.md) — tables, RLS, storage policies; the main document if you're figuring out how things work
+- [Client architecture](docs/client-architecture.md) — what the app is built with and what the client itself does on top of the schema
+- [Operations](docs/operations.md) — scheduled jobs, secrets, release, Edge Function deployment, update-notification broadcast
+- [Console](console/README.md) — the local admin console: what it does, how to run it and why it has a server half
+- [iOS deployment](docs/ios-deployment-guide.md) — the path from simulator to TestFlight: Xcode, icons, export compliance, IPA build
+- [iOS push notifications (APNs)](docs/ios-push-apns-setup.md) — APNs key, linking to Firebase Cloud Messaging
+- [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
+- [App Store listing draft](docs/review/app-store-listing-draft.md) — texts for App Store Connect, not yet submitted and awaiting proofreading
+- [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
+- [Changelog](CHANGELOG.md) — what shipped in which version
 
-Историческое — как проект задумывался и как шёл, а не как устроен сейчас:
+Historical — how the project was conceived and how it went, not how it works now:
 
-- [Бриф проекта](docs/project-brief.md) — исходная идея и MVP-скоуп
-- [План реализации](docs/implementation-plan.md) — как шёл MVP по этапам
-- [Архив отложенного](docs/future-development.archive.md) — список отложенных фич на момент закрытия MVP
+- [Project brief](docs/project-brief.md) — the original idea and MVP scope
+- [Implementation plan](docs/implementation-plan.md) — how the MVP went, stage by stage
+- [Deferred-features archive](docs/future-development.archive.md) — the list of deferred features as of the MVP's completion

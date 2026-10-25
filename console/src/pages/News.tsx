@@ -29,9 +29,10 @@ async function send(
   return parsed;
 }
 
-// Имя файла не шлётся: путь целиком минтит сервер по типу, и имя из браузера
-// в него не попадает (см. `POST /news/media`). Ответный `path` — ссылка на
-// стейджинг консоли, а не на бакет: туда файл уедет при публикации.
+// The file name isn't sent: the server mints the whole path from the type, and
+// the browser's file name never makes it in (see `POST /news/media`). The
+// returned `path` points at the console's staging, not the bucket: the file
+// moves there on publish.
 async function upload(file: File, type = file.type) {
   const response = await fetch(
     `/api/news/media?type=${encodeURIComponent(type)}`,
@@ -49,26 +50,26 @@ async function upload(file: File, type = file.type) {
   return parsed as { path: string; url: string | null; mediaType: string };
 }
 
-// Постер видео снимается прямо в браузере: кадр на первой секунде через
-// canvas. Иначе на сервере понадобился бы ffmpeg ради одной картинки, а без
-// постера видео в ленте показывать нечем.
+// The video poster is captured right in the browser: the frame at the first
+// second, via canvas. Otherwise the server would need ffmpeg for a single
+// image, and without a poster the feed has nothing to show for the video.
 //
-// Возвращает null, если браузер не смог декодировать файл, — публикация от
-// этого не срывается, постер просто не приложится.
+// Returns null if the browser couldn't decode the file — publishing doesn't
+// fail because of it, the poster just won't be attached.
 function posterFor(file: File): Promise<Blob | null> {
   return new Promise((resolve) => {
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
-    // Первый ответ выигрывает, остальные — ничего.
+    // The first answer wins, the rest do nothing.
     //
-    // Их тут бывает больше одного по построению: таймаут ниже не снимался
-    // при успехе, так что после снятого постера он всё равно срабатывал и
-    // звал `done` второй раз. Промису это безразлично — settled есть settled,
-    // — а вот `revokeObjectURL` выполнялся дважды, и до самого срабатывания
-    // таймер держал живыми и замыкание, и `<video>`, и blob-URL. Сегодня
-    // безвредно ровно потому, что в `done` больше ничего нет; флаг и
-    // `clearTimeout` здесь для того, чтобы это перестало зависеть от того,
-    // что в неё не добавят настоящей уборки.
+    // There can be more than one here by construction: the timeout below
+    // wasn't cleared on success, so after the poster was captured it still
+    // fired and called `done` a second time. The promise doesn't care —
+    // settled is settled — but `revokeObjectURL` ran twice, and until it
+    // fired the timer kept the closure, the `<video>` and the blob URL alive.
+    // Harmless today only because `done` does nothing else; the flag and
+    // `clearTimeout` are here so this stops depending on nobody adding real
+    // cleanup to it.
     let settled = false;
     let bailOut: ReturnType<typeof setTimeout>;
     const done = (blob: Blob | null) => {
@@ -98,7 +99,7 @@ function posterFor(file: File): Promise<Blob | null> {
         done(null);
       }
     };
-    // Не ждём вечно: битый или экзотический файл не должен подвесить форму.
+    // Don't wait forever: a broken or exotic file mustn't hang the form.
     bailOut = setTimeout(() => done(null), 10000);
   });
 }

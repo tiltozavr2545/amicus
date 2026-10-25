@@ -46,10 +46,10 @@ class ThemeToggleSwitch extends ConsumerWidget {
       return;
     }
     if (!context.mounted) return;
-    // `unawaited`, а не `await`: Future от `push()` завершается, когда с
-    // открытого экрана УЙДУТ, а не когда его откроют. Здесь после перехода
-    // делать нечего, так что ждать этого нечем и незачем — а слово говорит,
-    // что Future брошен намеренно.
+    // `unawaited`, not `await`: the Future from `push()` completes when the
+    // opened screen is LEFT, not when it opens. There is nothing to do here
+    // after the navigation, so there is nothing to wait for and no reason to —
+    // and the word says the Future is dropped on purpose.
     unawaited(
       Navigator.of(context).push(
         MaterialPageRoute<void>(

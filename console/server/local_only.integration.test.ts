@@ -5,13 +5,14 @@ import { after, before, describe, it } from 'node:test';
 import express from 'express';
 import { localOnly } from './local_only.ts';
 
-// Отдельно от табличного теста: тот проверяет решение, этот — что решение
-// вообще участвует в обработке запроса. `server/index.ts` целиком поднять
-// нельзя (он требует service_role-ключ на импорте и слушает фиксированный
-// порт), поэтому здесь собирается такая же связка на эфемерном порту: сначала
-// `localOnly`, потом всё остальное. Если middleware когда-нибудь уедет ниже
-// разбора тела или потеряется при правке `index.ts`, падать будет здесь.
-describe('localOnly в express', () => {
+// Separate from the table test: that one checks the decision, this one checks
+// that the decision takes part in request handling at all. `server/index.ts`
+// can't be brought up as a whole (it requires the service_role key on import
+// and listens on a fixed port), so the same chain is assembled here on an
+// ephemeral port: `localOnly` first, then everything else. If the middleware
+// ever moves below body parsing or gets lost in an edit of `index.ts`, this is
+// where it will fail.
+describe('localOnly in express', () => {
   let base: string;
   let server: ReturnType<express.Express['listen']>;
   let bodyParsed = false;
@@ -25,9 +26,9 @@ describe('localOnly в express', () => {
       res.json({ ok: true });
     });
     await new Promise<void>((resolve) => {
-      // Не `resolve` напрямую: колбэк `listen` объявлен как
-      // `(error?: Error) => void`, и передать туда `resolve` — значит
-      // пообещать, что ошибка сойдёт за `void`.
+      // Not `resolve` directly: the `listen` callback is declared as
+      // `(error?: Error) => void`, and passing `resolve` there means promising
+      // that an error can pass for `void`.
       server = app.listen(0, '127.0.0.1', () => resolve());
     });
     const { port } = server.address() as AddressInfo;
@@ -40,7 +41,7 @@ describe('localOnly в express', () => {
     });
   });
 
-  it('пропускает обычный запрос консоли', async () => {
+  it('lets an ordinary console request through', async () => {
     const response = await fetch(`${base}/api/probe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -51,7 +52,7 @@ describe('localOnly в express', () => {
     assert.equal(bodyParsed, true);
   });
 
-  it('отбивает 403 на чужой Origin и НЕ доходит до обработчика', async () => {
+  it('rejects a foreign Origin with 403 and does NOT reach the handler', async () => {
     bodyParsed = false;
     const response = await fetch(`${base}/api/probe`, {
       method: 'POST',
@@ -62,17 +63,17 @@ describe('localOnly в express', () => {
       body: JSON.stringify({ hello: 'world' }),
     });
     assert.equal(response.status, 403);
-    // Ключевая половина: обработчик не вызвался, то есть побочного эффекта не
-    // произошло — а не «произошёл, но ответ не показали».
+    // The key half: the handler wasn't called, so the side effect didn't
+    // happen — rather than "it happened, but the response wasn't shown".
     assert.equal(bodyParsed, false);
   });
 
-  // Через `fetch` этот случай не поставить: `Host` — forbidden header name, и
-  // undici его молча не отправляет, из-за чего запрос уходил с настоящим
-  // хостом и тест «проходил» проверку, которую не проверял. Поэтому здесь
-  // сырой `node:http`, где заголовок ставится как есть — ровно как его
-  // поставит браузер, разрешивший чужой домен в 127.0.0.1.
-  it('отбивает 403 на подменённый Host (DNS rebinding)', async () => {
+  // This case can't be set up through `fetch`: `Host` is a forbidden header
+  // name, and undici silently doesn't send it, so the request went out with
+  // the real host and the test "passed" a check it wasn't testing. Hence raw
+  // `node:http` here, where the header is set as is — exactly as a browser
+  // that resolved a foreign domain to 127.0.0.1 would set it.
+  it('rejects a spoofed Host with 403 (DNS rebinding)', async () => {
     bodyParsed = false;
     const { port } = server.address() as AddressInfo;
     const status = await new Promise<number>((resolve, reject) => {

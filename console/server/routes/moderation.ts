@@ -17,8 +17,8 @@ import { isUuid, uuidParam } from '../uuid.ts';
 export const moderationRouter = Router();
 moderationRouter.param('id', uuidParam);
 
-// Таблица и колонка, в которых живёт объект каждого вида. Одно место вместо
-// трёх веток в каждом обработчике.
+// The table and column where each kind of object lives. One place instead of
+// three branches in every handler.
 const TARGETS: Record<ModerationTargetKind, { table: string; author: string }> =
   {
     post: { table: 'posts', author: 'author_id' },
@@ -30,11 +30,11 @@ function isTargetKind(value: unknown): value is ModerationTargetKind {
   return value === 'post' || value === 'comment' || value === 'room_message';
 }
 
-// Уведомления модерации настройкой не выключаются — намеренно, по тому же
-// правилу, что и заявки в знакомые: они адресованы лично и приходят раз в
-// жизни, а «больше никогда не узнаю, что мой пост убрали» — не тот выбор,
-// который стоит предлагать. Поэтому `notification_preferences` здесь не
-// спрашивается вовсе.
+// Moderation notifications can't be turned off in settings — deliberately, by
+// the same rule as connection requests: they're addressed personally and come
+// once in a lifetime, and "I'll never find out my post was removed" isn't a
+// choice worth offering. So `notification_preferences` isn't consulted here
+// at all.
 async function enqueue(userId: string, kind: string, note?: string) {
   const trimmed = note?.trim();
   const { error } = await admin.from('notification_outbox').insert({
@@ -45,13 +45,13 @@ async function enqueue(userId: string, kind: string, note?: string) {
   if (error) throw new Error(`notification_outbox: ${error.message}`);
 }
 
-// Медиа объекта, на который жалуются. Без него решение по картинке принимать
-// нечем: снимок текста у такого поста пустой, а весь смысл жалобы — в том,
-// что на фотографии.
+// Media of the reported object. Without it there's nothing to base a decision
+// about a picture on: the text snapshot of such a post is empty, and the whole
+// point of the report is what's in the photo.
 //
-// Ссылки подписанные и живут час: бакет `media` приватный, и делать его
-// публичным ради консоли — последнее, что стоит делать. Подписывает сервер,
-// потому что service_role живёт только здесь.
+// The links are signed and live for an hour: the `media` bucket is private,
+// and making it public for the console's sake is the last thing to do. The
+// server signs them, because service_role lives only here.
 async function mediaForTargets(
   posts: string[],
   messages: string[],
@@ -139,9 +139,9 @@ async function mediaForTargets(
 moderationRouter.get('/reports', async (req, res, next) => {
   try {
     const onlyOpen = req.query.status !== 'all';
-    // Читается ВСЯ таблица независимо от фильтра: история жалобщика считается
-    // по всем его жалобам, а не по тем, что сейчас на экране. Фильтр
-    // применяется ниже, к выдаче.
+    // The WHOLE table is read regardless of the filter: a reporter's history
+    // is counted over all their reports, not just the ones on screen now. The
+    // filter is applied below, to the output.
     const rows = await fetchAll<{
       id: string;
       reporter_id: string;
@@ -163,8 +163,9 @@ moderationRouter.get('/reports', async (req, res, next) => {
     ]);
     const nameOf = new Map(users.map((u) => [u.id, u.name]));
 
-    // Жив ли ещё объект и не скрыт ли он уже — иначе в очереди не видно
-    // разницы между «надо разобрать» и «уже разобрано, жалоба осталась».
+    // Whether the object still exists and whether it's already hidden —
+    // otherwise the queue can't tell "needs handling" from "already handled,
+    // the report just remains".
     const state = new Map<string, { exists: boolean; hidden: boolean }>();
     for (const kind of ['post', 'comment', 'room_message'] as const) {
       const ids = [
@@ -202,9 +203,9 @@ moderationRouter.get('/reports', async (req, res, next) => {
       ],
     );
 
-    // Сколько жалоб подал сам жалобщик и сколько из них отклонили. Сигнал не
-    // про автора, а про того, кто жалуется: пятая отклонённая жалоба подряд
-    // говорит о человеке больше, чем любая из них по отдельности.
+    // How many reports the reporter filed and how many of them were rejected.
+    // The signal is about the reporter, not the author: a fifth rejected
+    // report in a row says more about a person than any one of them alone.
     const byReporter = new Map<string, { total: number; rejected: number }>();
     for (const r of rows) {
       const stat = byReporter.get(r.reporter_id) ?? { total: 0, rejected: 0 };
@@ -213,8 +214,8 @@ moderationRouter.get('/reports', async (req, res, next) => {
       byReporter.set(r.reporter_id, stat);
     }
 
-    // Сколько всего жалоб на этот же объект — главный сигнал очереди: одна
-    // жалоба и семь жалоб на одно и то же читаются по-разному.
+    // Total reports on the same object — the queue's main signal: one report
+    // and seven reports on the same thing read differently.
     const perTarget = new Map<string, number>();
     for (const r of rows) {
       const key = `${r.target_kind}:${r.target_id}`;
@@ -298,17 +299,17 @@ moderationRouter.post('/moderation/content', async (req, res, next) => {
       if (error) throw new Error(`${table}: ${error.message}`);
     } else if (action === 'delete') {
       if (kind === 'post') {
-        // Пост сносится строкой: комментарии и `post_media` уходят по
-        // внешним ключам, а объекты в бакете становятся ничьими и их
-        // выносит `reap-orphaned-media` — тот же путь, что и у поста,
-        // удалённого самим автором.
+        // A post is deleted as a row: comments and `post_media` go via
+        // foreign keys, and the bucket objects become orphaned and get
+        // cleared by `reap-orphaned-media` — the same path as for a post
+        // deleted by its own author.
         const { error } = await admin.from('posts').delete().eq('id', targetId);
         if (error) throw new Error(`posts: ${error.message}`);
       } else {
-        // Комментарий и сообщение — заглушкой, как это делает само
-        // приложение (`delete_own_comment`, `delete_own_room_message`):
-        // строка нужна, чтобы не оборвать ветку ответов на неё. Своей,
-        // второй семантики удаления у модерации нет намеренно.
+        // A comment or message becomes a tombstone, as the app itself does
+        // (`delete_own_comment`, `delete_own_room_message`): the row is
+        // needed so the reply thread under it isn't cut off. Moderation
+        // deliberately has no second deletion semantics of its own.
         const patch: Record<string, unknown> = {
           deleted_at: new Date().toISOString(),
           text: '',
@@ -342,8 +343,8 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
       return;
     }
 
-    // Разбор и границы — в `ban_duration.ts`, вместе с тем, почему они там
-    // вообще есть.
+    // Parsing and bounds live in `ban_duration.ts`, along with why they exist
+    // there at all.
     const parsed = parseBanDays(days);
     if (!parsed.ok) {
       res.status(400).json({ error: parsed.error });
@@ -351,11 +352,11 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
     }
 
     if (mode === 'write' || mode === 'none') {
-      // Запрет писать живёт не в `users`, а в `user_moderation` (IMM-541):
-      // `users` клиент читает целиком, и колонка оттуда утекала. Строка
-      // есть только у тех, кого банили, поэтому бан — апсерт, а снятие —
-      // обычный UPDATE: нет строки — снимать нечего, заводить её ради NULL
-      // незачем.
+      // The write ban lives in `user_moderation`, not `users` (IMM-541):
+      // the client reads `users` whole, and the column leaked from there. A
+      // row exists only for those who were banned, so a ban is an upsert
+      // and lifting it a plain UPDATE: no row — nothing to lift, and no
+      // point creating one just for a NULL.
       const { error } =
         mode === 'none'
           ? await admin
@@ -367,8 +368,9 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
               write_banned_until: writeBanUntil(parsed.days, Date.now()),
             });
       if (error) throw new Error(`user_moderation: ${error.message}`);
-      // Снятие запрета писать снимает и бан входа: иначе «none» означало бы
-      // разное в зависимости от того, чем банили, а из консоли это не видно.
+      // Lifting the write ban also lifts the sign-in ban: otherwise "none"
+      // would mean different things depending on how the user was banned,
+      // and that isn't visible from the console.
       if (mode === 'none') {
         const { error: authError } = await admin.auth.admin.updateUserById(
           userId,
@@ -379,9 +381,9 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
         if (authError) throw new Error(`auth: ${authError.message}`);
       }
     } else if (mode === 'auth') {
-      // Бан входа живёт в GoTrue, не в нашей схеме: своей копии этого факта
-      // заводить не стоит — разошлась бы с настоящей при первом же снятии
-      // через дашборд.
+      // The sign-in ban lives in GoTrue, not in our schema: keeping our own
+      // copy of that fact isn't worth it — it would drift from the real one
+      // the first time the ban is lifted via the dashboard.
       const { error } = await admin.auth.admin.updateUserById(userId, {
         ban_duration: authBanDuration(parsed.days),
       });
@@ -400,26 +402,26 @@ moderationRouter.post('/moderation/ban', async (req, res, next) => {
   }
 });
 
-// Какие готовые виды осмысленно послать ОДНОМУ человеку руками.
+// Which predefined kinds make sense to send to ONE person by hand.
 //
-// Список закрыт намеренно и короче, чем CHECK таблицы: остальные виды —
-// событийные. Послать «у вас новый комментарий» там, где комментария не
-// было, значит соврать человеку голосом приложения, и никакой удобный UI
-// этого не оправдывает. `report_resolved`/`report_rejected` сюда тоже не
-// входят: их текст описывает исход разбора жалобы и врозь с ним смысла не
-// имеет — они уходят из очереди жалоб.
+// The list is deliberately closed and shorter than the table's CHECK: the
+// other kinds are event-driven. Sending "you have a new comment" where there
+// was no comment means lying to a person in the app's voice, and no
+// convenient UI justifies that. `report_resolved`/`report_rejected` aren't
+// included either: their text describes the outcome of a report review and
+// makes no sense apart from it — they're sent from the reports queue.
 const MANUAL_KINDS: Record<string, { needsBuild: boolean; title: string }> = {
   app_update: { needsBuild: true, title: 'вышла новая версия' },
   app_update_important: { needsBuild: true, title: 'важное обновление' },
   moderation_notice: { needsBuild: false, title: 'сообщение модерации' },
 };
 
-// Адресная отправка одному человеку. Повторяет две проверки, которые для
-// массовой рассылки делает `enqueue_app_update_notifications()`: уважает
-// `notify_system_account` и не кладёт второе уведомление про ту же сборку.
-// Для `moderation_notice` ни то, ни другое не применяется — это личное
-// сообщение о его же материале, а не рассылка, и настройкой оно не
-// выключается (то же правило, что у заявок в знакомые).
+// A targeted send to one person. Repeats the two checks that
+// `enqueue_app_update_notifications()` does for a mass broadcast: respects
+// `notify_system_account` and doesn't queue a second notification about the
+// same build. Neither applies to `moderation_notice` — it's a personal
+// message about the person's own content, not a broadcast, and it can't be
+// turned off in settings (the same rule as for connection requests).
 moderationRouter.post('/users/:id/notify', async (req, res, next) => {
   try {
     const kind = String(req.body?.kind ?? '');
@@ -526,9 +528,9 @@ moderationRouter.post('/reports/:id/resolve', async (req, res, next) => {
     if (error) throw new Error(`content_reports: ${error.message}`);
 
     if (notifyReporter) {
-      // Вид зависит от исхода: «меры приняты» и «нарушения не нашли» — разные
-      // сообщения, и слать одно на оба означало бы, что два статуса разбора
-      // ни на что не влияют (20260913110000).
+      // The kind depends on the outcome: "action taken" and "no violation
+      // found" are different messages, and sending one for both would mean
+      // the two review statuses affect nothing (20260913110000).
       await enqueue(
         rows[0].reporter_id,
         status === 'resolved' ? 'report_resolved' : 'report_rejected',

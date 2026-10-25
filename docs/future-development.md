@@ -1,200 +1,203 @@
-# Отложенные фичи
+# Deferred features
 
-Всё, что сознательно отложено — ещё не реализовано и не запланировано на
-ближайшую версию. Готовое сюда не попадает — полная история фич в
-[../CHANGELOG.md](../CHANGELOG.md), исходный MVP-план — в
+Everything deliberately put off — not implemented yet and not planned for the
+next version. Finished work doesn't belong here — the full feature history is
+in [../CHANGELOG.md](../CHANGELOG.md), the original MVP plan is in
 [project-brief.md](project-brief.md).
 
-Предыдущая редакция этого списка, до закрытия MVP, лежит в
-[future-development.archive.md](future-development.archive.md) — только ради
-истории, часть перечисленного там с тех пор сделана.
+The previous edition of this list, from before the MVP was closed, lives in
+[future-development.archive.md](future-development.archive.md) — for history
+only; some of what it lists has been done since.
 
 ---
 
-## Загрузка GPS-треков (маршруты бега/вело, как в Strava)
+## GPS track upload (running/cycling routes, Strava-style)
 
-Возможность записать маршрут пробежки/велозаезда через GPS телефона или
-загрузить готовый трек-файл (GPX/TCX/FIT — форматы, которыми оперируют Strava,
-Garmin и большинство спортивных часов), с последующим отображением маршрута на
-карте в посте.
+The ability to record a run/ride route with the phone's GPS or upload a ready
+track file (GPX/TCX/FIT — the formats Strava, Garmin and most sports watches
+work with), and then show the route on a map in a post.
 
-**Механика (черновик):**
-- Запись трека на устройстве (фоновый GPS-трекинг во время активности) либо
-  импорт готового файла.
-- Разбор трека → ряд координат (lat/lon/timestamp, возможно высота) + агрегаты
-  (дистанция, длительность, средняя скорость/темп).
-- Отображение маршрута на карте в посте — нужен картографический SDK (Google
-  Maps / Mapbox / что-то на OpenStreetMap) — у каждого свои лимиты бесплатного
-  тарифа и стоимость, выбор отдельным вопросом.
+**Mechanics (draft):**
+- Record the track on the device (background GPS tracking during the activity)
+  or import a ready file.
+- Parse the track → a series of coordinates (lat/lon/timestamp, maybe
+  elevation) + aggregates (distance, duration, average speed/pace).
+- Show the route on a map in the post — needs a mapping SDK (Google
+  Maps / Mapbox / something OpenStreetMap-based) — each has its own free-tier
+  limits and pricing; choosing one is a separate question.
 
-**Модель данных (черновик):**
+**Data model (draft):**
 
-| Сущность | Ключевые поля | Комментарий |
+| Entity | Key fields | Comment |
 |---|---|---|
-| **Route** (или Activity) | id, post_id, type (run/ride), distance_m, duration_s, started_at | Агрегаты маршрута, привязка к посту |
-| **RoutePoint** | route_id, seq, lat, lon, elevation_m?, recorded_at | Точки трека — либо нормализовать так, либо хранить сырой GPX/FIT-файл в Storage и парсить на лету, вопрос открыт |
+| **Route** (or Activity) | id, post_id, type (run/ride), distance_m, duration_s, started_at | Route aggregates, tied to a post |
+| **RoutePoint** | route_id, seq, lat, lon, elevation_m?, recorded_at | Track points — either normalize like this, or keep the raw GPX/FIT file in Storage and parse on the fly; open question |
 
-**Открытые вопросы:**
-- Хранить трек как файл в Storage и парсить на лету, или нормализовать в
-  таблицу точек в БД — компромисс между простотой и возможностью
-  запросов/агрегации по трекам.
-- Какой картографический сервис использовать (стоимость, лимиты бесплатного
-  тарифа, доступность на Android без лишней настройки).
-- В первой итерации — только загрузка готового файла, или сразу и live-запись
-  GPS во время самой активности?
+**Open questions:**
+- Store the track as a file in Storage and parse on the fly, or normalize it
+  into a points table in the DB — a trade-off between simplicity and the
+  ability to query/aggregate over tracks.
+- Which mapping service to use (cost, free-tier limits, availability on
+  Android without extra setup).
+- First iteration: only uploading a ready file, or live GPS recording during
+  the activity right away?
 
-## iOS — что осталось после запуска в TestFlight
+## iOS — what's left after the TestFlight launch
 
-Симулятор и первая сборка в TestFlight пройдены — см.
-[ios-deployment-guide.md](ios-deployment-guide.md) и
-[ios-push-apns-setup.md](ios-push-apns-setup.md). Осталось до публикации
-в App Store:
+The simulator and the first TestFlight build are done — see
+[ios-deployment-guide.md](ios-deployment-guide.md) and
+[ios-push-apns-setup.md](ios-push-apns-setup.md). Left before publishing
+to the App Store:
 
-1. Спроектировать полноценный launch image (сейчас показывает просто иконку
-   приложения).
-2. Заполнить листинг в App Store Connect (описание, ключевые слова,
-   скриншоты) — черновик в
+1. Design a proper launch image (right now it just shows the app
+   icon).
+2. Fill in the App Store Connect listing (description, keywords,
+   screenshots) — draft in
    [review/app-store-listing-draft.md](review/app-store-listing-draft.md).
-3. Прогнать реальный `flutter build ios`/архив на устройстве, не только через
-   Transporter — проверить платформенные баги, которых не было на Android.
-4. Когда появится реальное шифрование — снять/сменить
-   `ITSAppUsesNonExemptEncryption` в `Info.plist` на актуальное значение.
+3. Run a real `flutter build ios`/archive on a device, not only through
+   Transporter — check for platform bugs that didn't show up on Android.
+4. Once real encryption appears — remove/change
+   `ITSAppUsesNonExemptEncryption` in `Info.plist` to the correct value.
 
-## Доработка интерфейса/UI-полировка
+## Interface work/UI polish
 
-Сверх того, что уже сделано — приложение функционально, но не более.
+Beyond what's already done — the app is functional, but no more than that.
 
-## Локализация новостного аккаунта Amicus
+## Localizing the Amicus news account
 
-Сейчас посты от новостного аккаунта (новые фичи, дайджесты, новости
-приложения) приходят только на русском. Нужно создать отдельный контент для
-каждой локали (или хотя бы для английской), отправлять посты от одного
-аккаунта, но с текстом на локали конкретного пользователя.
+Right now posts from the news account (new features, digests, app news) arrive
+only in Russian. Separate content is needed for each locale (or at least for
+English): posts sent from a single account, but with the text in the
+particular user's locale.
 
-## Deep link для подтверждения email
+## Deep link for email confirmation
 
-Сейчас ссылка из письма ведёт на статическую страницу-подтверждение на GitHub
-Pages (`site_url` в `supabase/config.toml` →
-`https://tiltozavr2545.github.io/amicus/`, исходник — ветка `gh-pages`, один
-`index.html`), потому что само подтверждение засчитывается на стороне Supabase
-ещё до редиректа. Это решает проблему непонятного лендинга (раньше вело прямо
-на GitHub-репозиторий), но открывать сразу экран приложения было бы удобнее —
-требует настройки custom URL scheme / Android App Links и обработки в
-`supabase_flutter`, отдельная задача.
+Right now the link in the email leads to a static confirmation page on GitHub
+Pages (`site_url` in `supabase/config.toml` →
+`https://tiltozavr2545.github.io/amicus/`, source — the `gh-pages` branch, a
+single `index.html`), because the confirmation itself is counted on the
+Supabase side before the redirect. That fixes the confusing landing page (it
+used to lead straight to the GitHub repository), but opening an app screen
+directly would be nicer — it needs a custom URL scheme / Android App Links set
+up and handling in `supabase_flutter`; a separate task.
 
-## Web-версия приложения
+## Web version of the app
 
-Flutter Web или отдельный frontend на React/Vue.
+Flutter Web or a separate React/Vue frontend.
 
-## Знакомство через NFC
+## Connecting via NFC
 
-Как альтернатива invite-ссылке/QR — совсем далёкая идея, не приоритет.
+As an alternative to the invite link/QR — a very distant idea, not a priority.
 
-## Полный аудит политики конфиденциальности и интеграция согласия в UI
+## Full privacy policy audit and consent integration in the UI
 
-Сейчас privacy policy статическая на GitHub Pages, согласие на
-email-подтверждение только, без опций в UI.
+Right now the privacy policy is static on GitHub Pages; consent is only the
+email confirmation, with no options in the UI.
 
-## Переезд с Supabase на собственный сервер (ASP.NET Core + PostgreSQL)
+## Moving from Supabase to our own server (ASP.NET Core + PostgreSQL)
 
-Не гипотеза, а решённый вопрос: рано или поздно вся база данных переедет с
-Supabase на собственный личный сервер — просто не сейчас, это избыточно, пока
-не понадобилось. Есть опыт с ASP.NET Core + PostgreSQL (по сути то же самое,
-что делалось в лабе с TransferScout), backend можно будет переписать на нём.
-RLS-политики сейчас пишутся как чистый Postgres SQL — переносить логику
-доступа при миграции не придётся, только слой Auth/Storage/Realtime.
+Not a hypothesis but a settled matter: sooner or later the whole database will
+move from Supabase to my own personal server — just not now; it's overkill
+until it's actually needed. There's experience with ASP.NET Core + PostgreSQL
+(essentially the same thing done in the TransferScout lab), and the backend
+can be rewritten on it. RLS policies are currently written as plain Postgres
+SQL — access logic won't need porting during the migration, only the
+Auth/Storage/Realtime layer.
 
-## Чат подпрыгивает, когда сообщение приходит во время чтения истории
+## Chat jumps when a message arrives while reading history
 
-Отложено сознательно в 0.18.10, вместе с остальной пачкой правок по чату
-(см. [../CHANGELOG.md](../CHANGELOG.md)). `ScrollablePositionedList` держит
-якорь по **индексу**, а вставка в начало списка сдвигает все индексы ниже на
-один — на два, если сообщение открывает новый календарный день и к нему
-добавляется разделитель. Поэтому у того, кто отлистал вверх и читает,
-разговор уезжает под пальцем на высоту сообщения.
+Deliberately deferred in 0.18.10, along with the rest of the batch of chat
+fixes (see [../CHANGELOG.md](../CHANGELOG.md)). `ScrollablePositionedList`
+anchors by **index**, and inserting at the start of the list shifts every
+index below by one — by two if the message opens a new calendar day and a
+divider is added for it. So for someone who has scrolled up and is reading,
+the conversation slides away under their finger by the height of a message.
 
-Арифметика компенсации тривиальна (сдвиг равен приросту длины списка
-элементов, потому что дописываются они только в начало), а вот применить её
-можно только `jumpTo` в post-frame колбэке — и он отменит инерцию, если
-сообщение придёт в момент броска. Узнать «палец сейчас на экране» пакет не
-даёт: своего `ScrollController` он наружу не отдаёт. То есть лекарство в
-худшем случае хуже болезни, и автотестом эту разницу не поймать — проверять
-придётся руками на устройстве.
+The compensation arithmetic is trivial (the shift equals the growth of the
+item list, because items are only ever prepended), but it can only be applied
+with `jumpTo` in a post-frame callback — and that cancels momentum if the
+message arrives mid-fling. The package doesn't let you tell whether "a finger
+is on the screen right now": it doesn't expose its own `ScrollController`. So
+in the worst case the cure is worse than the disease, and an automated test
+can't catch the difference — it would have to be checked by hand on a device.
 
-Возможный путь, если браться: посмотреть, не отдаёт ли более новая версия
-пакета `findChildIndexCallback` или сам контроллер — тогда решается и это, и
-пересоздание `State` у пузырей (см. «Грабли» в [../AGENTS.md](../AGENTS.md)).
+A possible path, if taken on: see whether a newer version of the package
+exposes `findChildIndexCallback` or the controller itself — then this gets
+solved together with bubbles recreating their `State` (see "Pitfalls" in
+[../AGENTS.md](../AGENTS.md)).
 
-## Мгновенное отображение новой аватарки в профиле
+## Instant display of a new avatar in the profile
 
-При загрузке новой аватарки она должна сразу становиться текущей (первой),
-чтобы отображаться в профиле сразу после загрузки, без дополнительных
-действий пользователя.
+When a new avatar is uploaded it should immediately become the current one
+(first), so that it shows in the profile right after upload, without any
+extra action from the user.
 
-## Pull-to-refresh на каждом экране приложения
+## Pull-to-refresh on every screen of the app
 
-Возможность обновить экран свайпом — сейчас есть не везде.
-
----
-
-## Идеи на потом
-
-Вряд ли будут сделаны — записаны, чтобы было к чему вернуться, если
-понадобится.
-
-- **QR-сканирование как второй способ знакомства** — в дополнение к
-  invite-ссылкам
-
-- **Интеграция с существующими соцсетями (Instagram, TikTok и т.д.)** —
-  возможность подключить аккаунт, перенести посты (с фото/видео) на
-  собственную стену в Amicus, однократная синхронизация или фоновая
-  периодическая. Синхронизация друзей на стену как опция (кто попадает из
-  подписок инсты в Connections или отдельный список). Лечит основное
-  возражение к отказу от соцсетей: контент друзей остаётся, но в кругу,
-  закрытом для всех остальных
-
-- **Счётчик просмотров поста** — формулировка задачи «своеобразная» (по словам
-  автора) — если когда-нибудь дойдут руки, перед началом реализации нужно
-  уточнить, как именно считать просмотр (при показе карточки в ленте / при
-  полном раскрытии / только уникальные юзеры / что с повторными просмотрами и
-  т.п.), не додумывать самостоятельно
-
-- **Push-уведомления о реакциях на свои посты** — отдельная от уже
-  реализованного (посты, комментарии/ответы) кусок той же идеи
-  push-уведомлений; свой `kind` в `notification_outbox`, триггер на
-  `reactions` вместо `posts`/`comments`
-
-- **Видео-сообщения («кружочки», как в Telegram)** — круглые видео-сообщения,
-  записываемые с камеры прямо в приложении — как альтернатива/дополнение к
-  фото в посте или комментарии.
-
-  **Механика (черновик):**
-  - Запись через камеру устройства (обычно фронтальную), с ограничением по
-    длительности (например, 60 сек, как в Telegram).
-  - Круглая маска — скорее клиентское отображение (`ClipPath`/оверлей), а не
-    перекодировка самого видеофайла в круглую форму.
-  - Хранение — Storage (тот же бакет, что и фото, либо отдельный), видимость
-    по тем же правилам приватности, что уже действуют для фото/аватарок
-    (Connections-only).
-
-  **Открытые вопросы:**
-  - Отдельный тип вложения к посту, или только к комментарию (либо и то, и
-    другое)?
-  - Лимит размера/длительности и нужна ли перекодировка/сжатие на клиенте
-    перед загрузкой.
-  - Автовоспроизведение в ленте (со звуком или без) — вопрос UX, решать
-    отдельно.
-
-
+The ability to refresh a screen with a swipe — currently not available
+everywhere.
 
 ---
 
-## Открытые вопросы
+## Ideas for later
 
-Не обязательно отвечать на них прямо сейчас — это чек-лист на потом, когда
-дойдёшь до соответствующей фичи:
+Unlikely to get done — written down so there's something to come back to if
+needed.
 
-- Нужна ли возможность разорвать Connection (условно «удалить из знакомых»)?
+- **QR scanning as a second way to connect** — in addition to
+  invite links
 
-Список контактов решено оставить приватным — см. «Правило видимости» в
+- **Integration with existing social networks (Instagram, TikTok, etc.)** —
+  the ability to link an account, move posts (with photos/videos) to your
+  own wall in Amicus, as a one-off sync or a periodic background one.
+  Syncing friends to the wall as an option (who from your Insta follows ends
+  up in Connections or in a separate list). Addresses the main objection to
+  quitting social networks: friends' content stays, but in a circle closed to
+  everyone else
+
+- **Post view counter** — the task is worded "peculiarly" (in the author's
+  words) — if it ever gets picked up, before implementing it you need to
+  clarify exactly how a view is counted (when the card is shown in the feed /
+  when fully expanded / unique users only / what about repeat views,
+  etc.), not make it up on your own
+
+- **Push notifications about reactions to your own posts** — a separate piece
+  of the same push-notification idea from what's already implemented
+  (posts, comments/replies); its own `kind` in `notification_outbox`, a
+  trigger on `reactions` instead of `posts`/`comments`
+
+- **Video messages ("circles", like in Telegram)** — round video messages
+  recorded with the camera right in the app — as an alternative/addition to a
+  photo in a post or comment.
+
+  **Mechanics (draft):**
+  - Record with the device camera (usually the front one), with a duration
+    limit (e.g. 60 sec, like in Telegram).
+  - The round mask is more likely a client-side rendering (`ClipPath`/overlay)
+    than re-encoding the video file itself into a round shape.
+  - Storage — Storage (the same bucket as photos, or a separate one),
+    visibility under the same privacy rules that already apply to
+    photos/avatars (Connections-only).
+
+  **Open questions:**
+  - A separate attachment type for posts, or only for comments (or
+    both)?
+  - Size/duration limit, and whether client-side re-encoding/compression is
+    needed before upload.
+  - Autoplay in the feed (with or without sound) — a UX question, to be
+    decided separately.
+
+
+
+---
+
+## Open questions
+
+No need to answer them right now — this is a checklist for later, when you
+get to the corresponding feature:
+
+- Should it be possible to break a Connection (roughly, "remove from
+  connections")?
+
+It was decided to keep the contact list private — see "Visibility rule" in
 [data-model.md](data-model.md).

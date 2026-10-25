@@ -39,12 +39,12 @@ async function post(path: string, body: unknown): Promise<void> {
   }
 }
 
-/** С заглавной — эти подписи начинают предложение. */
+/** Capitalized — these labels start a sentence. */
 function cap(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-/** Существительное объекта в винительном падеже — для описаний действий. */
+/** The object's noun in the accusative case — for action descriptions. */
 const ACCUSATIVE: Record<string, string> = {
   post: 'пост',
   comment: 'комментарий',
@@ -85,8 +85,8 @@ function MediaStrip({ media }: { media: ReportMedia[] }) {
   return (
     <div className="media-strip">
       {media.map((m) => {
-        // У видео показываем постер: проигрывать в карточке нечего, а по
-        // ссылке файл открывается в отдельной вкладке как есть.
+        // For video we show the poster: there's nothing to play in the card,
+        // and the link opens the file as-is in a separate tab.
         const src = m.kind === 'video' ? (m.posterUrl ?? m.url) : m.url;
         if (!src) {
           return (

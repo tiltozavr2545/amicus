@@ -27,7 +27,7 @@ class _FakeFeedRepository implements FeedRepository {
   /// its target was tombstoned or its author blocked while it was being typed.
   bool addThrows = false;
 
-  /// Стоит ли отдавать список как обрезанный по [commentFetchLimit].
+  /// Whether to return the list as truncated at [commentFetchLimit].
   bool isTruncated = false;
 
   @override
@@ -365,9 +365,9 @@ void main() {
   testWidgets('a truncated list says so and leaves the card counter alone', (
     tester,
   ) async {
-    // Длина обрезанного списка — потолок, а не количество. Подставить её в
-    // счётчик значило бы уронить настоящее число до 500; карточка должна
-    // остаться с тем, что посчитал `comment_summary()` на сервере.
+    // The length of a truncated list is a ceiling, not a count. Putting it in
+    // the counter would drop the real number to 500; the card must keep what
+    // `comment_summary()` counted on the server.
     final repo = _FakeFeedRepository()
       ..comments = [_comment('c1'), _comment('c2', minute: 1)]
       ..isTruncated = true;

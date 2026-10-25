@@ -57,9 +57,9 @@ class _FakeFeedRepository implements FeedRepository {
     List<String> mediaStoragePaths = const [],
   }) async {
     deletedPostIds.add(postId);
-    // Как сервер: следующая страница этот пост уже не отдаёт. Без этого
-    // перезагрузка по тику вернула бы его обратно, и тест не отличил бы
-    // «список перечитан» от «список не тронут».
+    // Like the server: the next page no longer returns this post. Without
+    // this, the tick-driven reload would bring it back, and the test couldn't
+    // tell "the list was re-read" from "the list was left alone".
     pageToReturn = [
       for (final post in pageToReturn)
         if (post.id != postId) post,
@@ -516,12 +516,12 @@ void main() {
     expect(urls, hasLength(2));
   });
 
-  // Лента и профиль — два живых PostListView в IndexedStack'е shell'а.
-  // Удаление убирало пост только из своего списка, и во втором он оставался
-  // кликабельной карточкой: реакцию по нему отбивает RLS (и [_react] эту
-  // ошибку молча откатывает), комментарии открываются пустыми. Правка поста,
-  // mute/block и новый пост через этот тик уже проходили — удаление было
-  // единственной мутацией ленты, которая его не дёргала.
+  // The feed and the profile are two live PostListViews in the shell's
+  // IndexedStack. Deleting removed the post only from its own list, and in
+  // the other one it stayed a tappable card: RLS rejects a reaction on it
+  // (and [_react] silently rolls that error back), comments open empty.
+  // Editing a post, mute/block and a new post already went through this tick
+  // — deletion was the only feed mutation that didn't bump it.
   testWidgets('deleting a post bumps the tick the other lists listen on', (
     tester,
   ) async {
@@ -529,7 +529,7 @@ void main() {
       ..pageToReturn = [
         Post(
           id: 'p1',
-          // Меню «⋮» рисуется только на своём посте.
+          // The "⋮" menu is drawn only on your own post.
           authorId: 'test-user',
           authorName: 'Me',
           createdAt: DateTime(2026, 1, 1, 12),
@@ -549,7 +549,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete').last);
     await tester.pumpAndSettle();
-    // Подтверждение — вторая «Delete», уже в диалоге.
+    // The confirmation is the second "Delete", in the dialog.
     await tester.tap(find.text('Delete').last);
     await tester.pumpAndSettle();
 
@@ -558,15 +558,16 @@ void main() {
     expect(container.read(feedRefreshTickProvider), greaterThan(before));
   });
 
-  // Экран комментариев открывался без `.then`, ничего не возвращал и тик не
-  // дёргал, поэтому число на карточке не менялось никогда: написал коммент,
-  // вернулся — прежняя цифра, до первого pull-to-refresh.
+  // The comments screen was opened without `.then`, returned nothing and
+  // didn't bump the tick, so the number on the card never changed: you wrote
+  // a comment, came back — the old number, until the first pull-to-refresh.
   testWidgets('the comment count on the card follows what the thread loaded', (
     tester,
   ) async {
     final repo = _FakeFeedRepository()
-      // Стартовое число заведомо не совпадает ни с одним счётчиком реакций
-      // (те по нулям), чтобы обе проверки ниже били в нужный Text.
+      // The starting number deliberately matches none of the reaction
+      // counters (those are all zero), so both checks below hit the right
+      // Text.
       ..pageToReturn = [_post('p1').copyWith(commentCount: 5)]
       ..commentsToReturn = [
         for (var i = 0; i < 2; i++)
@@ -577,8 +578,8 @@ void main() {
             text: 'comment $i',
             createdAt: DateTime(2026, 1, 1, 13),
           ),
-        // Заглушка удалённого комментария: `comment_summary()` считает
-        // `deleted_at is null`, так что в число она не попадает.
+        // A deleted-comment placeholder: `comment_summary()` counts
+        // `deleted_at is null`, so it doesn't make it into the number.
         Comment(
           id: 'c-gone',
           authorId: 'author-1',

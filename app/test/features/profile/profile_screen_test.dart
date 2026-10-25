@@ -18,16 +18,16 @@ class _FakeProfileRepository implements ProfileRepository {
   bool photosThrow = false;
   String? savedName;
 
-  /// Чем отвечает `updateName`, если не успехом. `Exception?`, а не `Object?`:
-  /// сюда кладут только то, что действительно приходит с сервера.
+  /// What `updateName` answers with when it doesn't succeed. `Exception?`, not
+  /// `Object?`: only what actually comes from the server goes in here.
   Exception? updateNameError;
 
   @override
   Future<Profile> fetchProfile(String userId) async =>
       Profile(id: userId, name: name);
 
-  /// Сколько раз галерею перечитали — на этом стоит проверка про возврат с
-  /// экрана удаления.
+  /// How many times the gallery was re-read — the test about returning from
+  /// the delete screen relies on this.
   int fetchPhotosCalls = 0;
 
   @override
@@ -178,15 +178,15 @@ void main() {
     expect(find.text('Failed to load photos. Please try again.'), findsNothing);
   });
 
-  // Галерея перечитывается при ЛЮБОМ возврате с экрана удаления, а не только
-  // когда тот вернул `true`. `true` он возвращает лишь на полном успехе, а
-  // `.timeout()` перестаёт ждать, не отменяя запрос: строки в
-  // `profile_photos` могли уже уйти (deleteRowsThenObjects удаляет их
-  // первыми), экран показал ошибку и остался открытым, и сюда возвращаются с
-  // `null`. Со старым `if (changed == true)` список на профиле оставался со
-  // строками, которых нет, и `reorder_profile_photos()` после этого навсегда
-  // отвечал PT422 — экран профиля живёт веткой shell'а и сам себя не
-  // перечитывает.
+  // The gallery is re-read on ANY return from the delete screen, not only
+  // when it returned `true`. It returns `true` only on full success, and
+  // `.timeout()` stops waiting without cancelling the request: the rows in
+  // `profile_photos` may already be gone (deleteRowsThenObjects deletes them
+  // first), the screen showed an error and stayed open, and we come back here
+  // with `null`. With the old `if (changed == true)` the profile's list kept
+  // rows that no longer existed, and `reorder_profile_photos()` then answered
+  // PT422 forever — the profile screen lives as a shell branch and doesn't
+  // re-read itself.
   testWidgets('backing out of the delete screen still re-reads the gallery', (
     tester,
   ) async {
@@ -201,18 +201,19 @@ void main() {
 
     await tester.tap(find.text('Delete photo'));
     await tester.pumpAndSettle();
-    // Уходим без единой мутации — маршрут отдаёт `null`.
+    // Leave without a single mutation — the route returns `null`.
     Navigator.of(tester.element(find.byType(Scaffold).last)).pop();
     await tester.pumpAndSettle();
 
     expect(repo.fetchPhotosCalls, greaterThan(before));
   });
 
-  // До 20260924100000 запрет писать держался только на BEFORE INSERT, и смена
-  // имени под баном проходила — то есть AMB01 отсюда был недостижим, и экран
-  // его не разбирал. Миграция добавила `before update of name on users`, и
-  // вместе с ней появилась возможность показать забанённому «попробуйте ещё
-  // раз» — приглашение повторить то, что до конца срока не выйдет.
+  // Before 20260924100000 the write ban was enforced only by BEFORE INSERT,
+  // and a rename under a ban went through — so AMB01 was unreachable from
+  // here, and the screen didn't handle it. The migration added `before update
+  // of name on users`, and with it came the chance to show a banned user
+  // "try again" — an invitation to retry something that won't work until the
+  // ban expires.
   testWidgets('a write ban on rename names the date instead of "try again"', (
     tester,
   ) async {
@@ -230,7 +231,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
-    // Дата берётся из DETAIL, а не сочиняется, поэтому проверяется именно она.
+    // The date comes from DETAIL, not made up, so that's exactly what's
+    // checked.
     expect(
       find.textContaining('the restriction lasts until Oct 1, 2026'),
       findsOneWidget,
@@ -239,9 +241,9 @@ void main() {
     expect(repo.savedName, isNull);
   });
 
-  // Обратная половина той же ветки: обычный отказ обязан остаться обычным.
-  // Проверка «показали дату» без неё проходила бы и на коде, который всегда
-  // говорит про бан.
+  // The other half of the same branch: an ordinary failure must stay
+  // ordinary. Without it, the "showed the date" check would also pass on code
+  // that always talks about a ban.
   testWidgets('an ordinary failure to save the name still says "try again"', (
     tester,
   ) async {

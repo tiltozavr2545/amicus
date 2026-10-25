@@ -4,12 +4,12 @@ import { Component } from 'react';
 type Props = { children: ReactNode };
 type State = { error: Error | null };
 
-// Консоль будет обрастать разделами, и цена необработанного исключения в
-// React — пустая белая страница без единого слова: React снимает всё дерево,
-// включая меню, и понять, что случилось, можно только в devtools. Один раз
-// это уже произошло на ровном месте (поле, которого не было в ответе, пока
-// не перезапустился API). Граница стоит десяти строк и оставляет на экране
-// хотя бы текст ошибки и кнопку.
+// The console will keep growing sections, and the cost of an unhandled
+// exception in React is a blank white page without a single word: React
+// unmounts the whole tree, menu included, and the only way to see what
+// happened is devtools. This already happened once out of nowhere (a field
+// missing from the response until the API was restarted). The boundary costs
+// ten lines and leaves at least the error text and a button on screen.
 export class Boundary extends Component<Props, State> {
   state: State = { error: null };
 

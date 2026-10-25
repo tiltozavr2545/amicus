@@ -22,12 +22,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # Пришпилено по SHA, как и во всех остальных workflow этого репозитория,
-      # и здесь это было нужнее всего: у джоба `contents: write`, то есть
-      # переставленный тег `v4` получил бы право на запись в репозиторий. Это
-      # ровно та причина, которой deploy-closed-testing.yml объясняет свои
-      # пины, — а единственный workflow, который её пропустил, оказался
-      # пишущим.
+      # Pinned by SHA, like every other workflow in this repository, and here
+      # it mattered most: the job has `contents: write`, so a moved `v4` tag
+      # would get write access to the repository. That is exactly the reason
+      # deploy-closed-testing.yml gives for its pins, and the one workflow
+      # that missed it turned out to be the one that writes.
       - name: Checkout source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

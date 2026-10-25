@@ -1,443 +1,461 @@
 # AGENTS.md
 
-Контекст для AI-агента при работе в этом репозитории — общий для любого
-инструмента (Codex, Claude Code и т.д.).
+Context for an AI agent working in this repository — shared by any tool
+(Codex, Claude Code, etc.).
 
-Этот файл — только то, чего нет в коде: ограничения среды, конвенции работы и
-грабли. Всё остальное лежит там, где его и надо читать:
+This file holds only what isn't in the code: environment constraints, working
+conventions and pitfalls. Everything else lives where it should be read:
 
-| что | где |
+| what | where |
 |---|---|
-| что за проект, что уже работает, стек | [README.md](README.md) |
-| история версий | [CHANGELOG.md](CHANGELOG.md) |
-| **почему** решение принято так | комментарий в baseline-миграции, затем архив истории (теги `pre-baseline-migrations` и `pre-baseline-migrations-2`), затем `git log` |
-| схема БД, правило видимости, storage-политики | [docs/data-model.md](docs/data-model.md) |
-| устройство клиента, решения по умолчанию | [docs/client-architecture.md](docs/client-architecture.md) |
-| расписания, секреты, релиз, рассылка «обновитесь» | [docs/operations.md](docs/operations.md) |
-| отложенное, открытые вопросы | [docs/future-development.md](docs/future-development.md) |
-| сборка и деплой iOS, push через APNs (на английском — шаги идут по Xcode/App Store Connect, там всё на английском) | [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md), [docs/ios-push-apns-setup.md](docs/ios-push-apns-setup.md) |
-| сборка iOS через Xcode Cloud вместо локальной машины (на английском, по той же причине) | [docs/xcode-cloud-setup.md](docs/xcode-cloud-setup.md) |
-| запуск Xcode Cloud билда через App Store Connect API вместо веб-интерфейса, без входа по паролю/2FA (на английском, по той же причине) | [docs/app-store-connect-api-automation.md](docs/app-store-connect-api-automation.md) |
-| опубликованные privacy policy и terms of use, страницы подтверждения email и сброса пароля | [docs/gh-pages/](docs/gh-pages/) — правится здесь, а не в ветке `gh-pages`: её переписывает CI при пуше в `main` |
-| черновик листинга App Store (на английском, по той же причине) | [docs/review/app-store-listing-draft.md](docs/review/app-store-listing-draft.md) |
-| историческое: замысел, как шёл MVP, старый список отложенного | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
+| what the project is, what already works, the stack | [README.md](README.md) |
+| version history | [CHANGELOG.md](CHANGELOG.md) |
+| **why** a decision was made the way it was | the comment in the baseline migration, then the history archive (tags `pre-baseline-migrations` and `pre-baseline-migrations-2`), then `git log` |
+| DB schema, the visibility rule, storage policies | [docs/data-model.md](docs/data-model.md) |
+| how the client is built, default decisions | [docs/client-architecture.md](docs/client-architecture.md) |
+| schedules, secrets, release, the "please update" broadcast | [docs/operations.md](docs/operations.md) |
+| deferred work, open questions | [docs/future-development.md](docs/future-development.md) |
+| building and deploying iOS, push via APNs (in English — the steps follow Xcode/App Store Connect, which are all in English) | [docs/ios-deployment-guide.md](docs/ios-deployment-guide.md), [docs/ios-push-apns-setup.md](docs/ios-push-apns-setup.md) |
+| building iOS with Xcode Cloud instead of a local machine (in English, for the same reason) | [docs/xcode-cloud-setup.md](docs/xcode-cloud-setup.md) |
+| triggering an Xcode Cloud build through the App Store Connect API instead of the web UI, without a password/2FA login (in English, for the same reason) | [docs/app-store-connect-api-automation.md](docs/app-store-connect-api-automation.md) |
+| the published privacy policy and terms of use, the email confirmation and password reset pages | [docs/gh-pages/](docs/gh-pages/) — edited here, not on the `gh-pages` branch: CI overwrites it on every push to `main` |
+| App Store listing draft (in English, for the same reason) | [docs/review/app-store-listing-draft.md](docs/review/app-store-listing-draft.md) |
+| historical: the original idea, how the MVP went, the old deferred list | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
 
-## Проект
+## Project
 
-Пилотный/портфолио-проект: автор — новичок в мобильной разработке, но с опытом
-SQL/PostgreSQL и C#/.NET. Работать пошагово, не забегая вперёд — это осознанное
-решение, а не отсутствие плана.
+A pilot/portfolio project: the author is new to mobile development but has
+experience with SQL/PostgreSQL and C#/.NET. Work step by step, without getting
+ahead — this is a deliberate decision, not the absence of a plan.
 
-## Ограничения среды
+## Environment constraints
 
-- **Два разработчика, две машины.** Android — на старом Intel MacBook Pro (с
-  Touch Bar), macOS 12.7.6. Flutter новее 3.32.8 на нём не запускается (нужна
-  macOS 14+), SDK закреплён на 3.32.8. Не предлагать обновление — машина
-  физически не тянет более новую macOS, это тупик. iOS — на M4 MacBook Pro
-  (Apple Silicon), этого ограничения там нет.
-- **iOS.** Собирается и деплоится в TestFlight; актуальный процесс и
-  ограничения — `docs/ios-deployment-guide.md`. Если машина для iOS-сборки
-  стоит на бета-версии macOS, локальный `flutter build ipa`/`make release-ios`
-  всё равно проходит, но App Store Connect отклоняет бинарник (`ITMS-90111:
-  Unsupported SDK or Xcode version`) — в бинарник зашивается версия хостовой
-  ОС сборочной машины (`BuildMachineOSBuild` в `Info.plist`), а не только
-  версия Xcode.app. Xcode Cloud обходит это, собирая на стабильном образе
-  Apple независимо от локальной macOS — см. `docs/xcode-cloud-setup.md`.
-- `compileSdk`/`targetSdk` прибиты числом **36** в `android/app/build.gradle.kts`
-  (требование Play), AGP **8.9.3** на Gradle **8.12** — более новый AGP потребует
-  Gradle 8.13.
-- Запуск: `flutter run --dart-define-from-file=.env` из `app/`. `.env` не в
-  репозитории, шаблон — `app/.env.example`.
+- **Two developers, two machines.** Android is on an old Intel MacBook Pro
+  (with Touch Bar), macOS 12.7.6. Flutter newer than 3.32.8 doesn't run on it
+  (needs macOS 14+), so the SDK is pinned to 3.32.8. Don't suggest upgrading —
+  the machine physically can't run a newer macOS, it's a dead end. iOS is on an
+  M4 MacBook Pro (Apple Silicon), which has no such constraint.
+- **iOS.** Built and deployed to TestFlight; the current process and
+  constraints are in `docs/ios-deployment-guide.md`. If the iOS build machine
+  runs a beta macOS, a local `flutter build ipa`/`make release-ios` still
+  succeeds, but App Store Connect rejects the binary (`ITMS-90111:
+  Unsupported SDK or Xcode version`) — the binary embeds the build machine's
+  host OS version (`BuildMachineOSBuild` in `Info.plist`), not just the
+  Xcode.app version. Xcode Cloud gets around this by building on a stable Apple
+  image regardless of the local macOS — see `docs/xcode-cloud-setup.md`.
+- `compileSdk`/`targetSdk` are hard-coded to **36** in
+  `android/app/build.gradle.kts` (a Play requirement), AGP **8.9.3** on Gradle
+  **8.12** — a newer AGP would require Gradle 8.13.
+- Running: `flutter run --dart-define-from-file=.env` from `app/`. `.env` is not
+  in the repository; the template is `app/.env.example`.
 
-## Конвенции работы
+## Working conventions
 
 - **Write all repo-facing text in English**: commit messages, docs,
   code comments/docstrings, and GitHub release bodies. Exception:
   anything genuinely user-facing that the app itself produces, and any
   real localization resource — those stay as-is.
-- **Миграции применяются вручную** через Supabase Management API
-  (`POST /v1/projects/<ref>/database/query`). CI **не** делает `supabase db push`.
-  Токен даёт пользователь на время задачи, в репозиторий и в память не пишется.
-  После применения — дописать строку в `supabase_migrations.schema_migrations`,
-  иначе будущий `db push` накатит миграцию повторно.
-- **История свёрнута в baseline.** `20261018000000_baseline_schema.sql` — не шаг
-  истории, а конечное состояние схемы; следующие миграции ложатся поверх него
-  обычным порядком. Свёрнута она дважды, и обе части лежат в тегах: первые
-  104 миграции (`20260707221946`…`20260825120000`) — в `pre-baseline-migrations`,
-  первый baseline и 27 миграций поверх него (`20260826000000`…`20261010100000`)
-  — в `pre-baseline-migrations-2`. На них по номерам ссылаются комментарии в
-  `app/lib`, `docs/` и в самом baseline:
-  `git show <тег>:supabase/migrations/<версия>_*.sql` — первый тег для номеров
-  до `20260825120000` включительно, второй для остальных.
-  Baseline **не накатывается** на живой проект — он там уже применён построчно;
-  его дело — поднять эквивалентную схему на чистой базе. Как сворачивать и
-  проверять свёртку — «Свёртка истории» в [docs/operations.md](docs/operations.md).
-- **RLS проверять симуляцией**, а не на глаз: `begin; set local role authenticated;
-  select set_config('request.jwt.claims','{"sub":"<uuid>"}',true); … rollback;`.
-  Management API работает суперпользователем и RLS не применяет. Сначала
-  воспроизвести дыру, потом закрыть, потом сверить контрольные числа до/после.
-  Порядок внутри транзакции: `set_config` ДО `set local role` — после
-  переключения роли подзапрос, которым ищется подопытный uuid, сам проходит
-  через RLS, отдаёт NULL, и все контрольные числа честно выходят нулями по
-  совершенно другой причине.
-- **Миграцию прогонять целиком в `begin; … rollback;` до наката.** Management
-  API принимает многооператорный запрос, DDL в Postgres транзакционный, и
-  откат возвращает всё — включая `alter function`, `create trigger` и гранты.
-  Это не формальность: на 20260924100000 dry-run поймал, что «закрыть лишнюю
-  ручку» выключило бы все вложения в чатах (функция стояла в storage-политике),
-  а поведенческая проба в том же откатываемом блоке — что пункт про смену имени
-  не работает вовсе, хотя сама миграция и все её проверки проходили. Пробу
-  писать так, чтобы ОТСУТСТВИЕ отказа роняло её (`raise exception`, если
-  запрещённое действие прошло), иначе она проверяет только то, что запрос
-  синтаксически верен.
-- **Версия бампается в каждом PR**: `make verify-version BASE_REF=origin/main`,
-  формат `name+build`.
-- **Перед сдачей**: `make verify` (deps, формат, analyze, тесты) для `app/`.
-  Консоль в него не входит — она нигде не выкладывается и на сборку
-  приложения не влияет, поэтому у неё свой workflow,
-  `.github/workflows/console-ci.yml`: гоняет `npm run lint` (Biome),
-  `npm run typecheck`, `npm test` и `npm run build` при изменениях в
-  `console/**`. То же самое можно прогнать локально перед пушем:
+- **Migrations are applied manually** through the Supabase Management API
+  (`POST /v1/projects/<ref>/database/query`). CI does **not** run
+  `supabase db push`. The user provides the token for the duration of the
+  task; it is never written to the repository or to memory. After applying —
+  add a row to `supabase_migrations.schema_migrations`, otherwise a future
+  `db push` will apply the migration again.
+- **The history is squashed into a baseline.**
+  `20261018000000_baseline_schema.sql` is not a step of history but the final
+  state of the schema; later migrations go on top of it in the usual order. It
+  has been squashed twice, and both parts live in tags: the first 104
+  migrations (`20260707221946`…`20260825120000`) are in
+  `pre-baseline-migrations`, the first baseline and the 27 migrations on top of
+  it (`20260826000000`…`20261010100000`) are in `pre-baseline-migrations-2`.
+  Comments in `app/lib`, `docs/` and the baseline itself refer to them by
+  number: `git show <tag>:supabase/migrations/<version>_*.sql` — the first tag
+  for numbers up to and including `20260825120000`, the second for the rest.
+  The baseline is **not applied** to the live project — it is already applied
+  there row by row; its job is to bring up an equivalent schema on a clean
+  database. How to squash and verify the squash — "Migration squash" in
+  [docs/operations.md](docs/operations.md).
+- **Verify RLS by simulation**, not by eye: `begin; set local role
+  authenticated; select set_config('request.jwt.claims','{"sub":"<uuid>"}',true);
+  … rollback;`. The Management API runs as a superuser and doesn't apply RLS.
+  First reproduce the hole, then close it, then compare the control numbers
+  before/after. Order inside the transaction: `set_config` BEFORE
+  `set local role` — after the role switch, the subquery that looks up the
+  test subject's uuid itself goes through RLS, returns NULL, and all the
+  control numbers honestly come out as zeros for an entirely different reason.
+- **Run the whole migration inside `begin; … rollback;` before applying it.**
+  The Management API accepts a multi-statement query, DDL in Postgres is
+  transactional, and the rollback undoes everything — including
+  `alter function`, `create trigger` and grants. This is not a formality: on
+  20260924100000 the dry run caught that "closing an unneeded endpoint" would
+  have switched off all attachments in chats (the function was used in a
+  storage policy), and a behavioral probe in the same rolled-back block caught
+  that the name-change item didn't work at all, even though the migration
+  itself and all its checks passed. Write the probe so that the ABSENCE of a
+  rejection fails it (`raise exception` if the forbidden action went through),
+  otherwise it only checks that the query is syntactically valid.
+- **The version is bumped in every PR**: `make verify-version BASE_REF=origin/main`,
+  format `name+build`.
+- **Before handing off**: `make verify` (deps, format, analyze, tests) for
+  `app/`. The console isn't part of it — it isn't deployed anywhere and doesn't
+  affect the app build, so it has its own workflow,
+  `.github/workflows/console-ci.yml`: it runs `npm run lint` (Biome),
+  `npm run typecheck`, `npm test` and `npm run build` on changes in
+  `console/**`. The same can be run locally before pushing:
   `cd console && npm run lint && npm run typecheck && npm test && npm run build`.
-  Тесты консоли — на `node --test` через уже имеющийся `tsx`, отдельного
-  раннера в зависимостях нет намеренно (см. «Что дальше» в
-  [console/README.md](console/README.md)).
-- **Локализация**: строки в `app/lib/l10n/app_{en,ru}.arb`, генерация —
-  `flutter gen-l10n`, сгенерированные файлы коммитятся. Править ARB **текстом**:
-  переписывание через `json.dump` съедает пустые строки, которыми файл разбит на
-  смысловые группы.
-- **`CLAUDE.md` — тонкая обёртка вокруг этого файла**, содержит только
-  специфичные для Claude Code отличия (сейчас их нет — файл целиком
-  переадресует сюда). Общие конвенции и грабли живут только здесь, не
-  дублировать.
+  Console tests run on `node --test` via the already present `tsx`; there is
+  deliberately no separate test runner in the dependencies (see "What's next"
+  in [console/README.md](console/README.md)).
+- **Localization**: strings live in `app/lib/l10n/app_{en,ru}.arb`, generated
+  with `flutter gen-l10n`, and the generated files are committed. Edit ARB files
+  **as text**: rewriting them via `json.dump` eats the blank lines that split
+  the file into meaningful groups.
+- **`CLAUDE.md` is a thin wrapper around this file**, holding only Claude
+  Code-specific differences (there are none right now — the file redirects here
+  entirely). Shared conventions and pitfalls live only here; don't duplicate
+  them.
 
-## Грабли
+## Pitfalls
 
-- **Правило видимости жило в четырёх копиях, две отстали от mute/block и стали
-  дырами.** Сведено в одну `is_author_visible(uuid)`; схема и её потребители —
-  [docs/data-model.md](docs/data-model.md). Менять правило только там, не
-  заводить вторую копию.
-- **RLS применяется и к подзапросам внутри политики.** Подзапрос к
-  `blocked_users` сам фильтруется политикой `blocked_users`, поэтому ветка «меня
-  заблокировали» молча отваливалась. Отсюда весь паттерн `security definer` +
-  `set search_path`. Это самая нагруженная мысль во всей схеме.
-- **`security definer`-функцию планировщик не инлайнит.** Не ставить её
-  построчным фильтром в `using`, если она зависит только от `auth.uid()` —
-  поднимать в некоррелированный `IN (SELECT …)`, он хэшируется один раз. Разница
-  на ленте была 217 мс → 3.5 мс.
-- **В новых политиках писать `(select auth.uid())`, а не голый `auth.uid()`.**
-  Голый вызов считается на каждую строку, обёрнутый — один раз на запрос
-  (Advisor: `auth_rls_initplan`, миграция `20261010100000`).
-- **Каждая функция в `public` — эндпоинт PostgREST.** Выдавать
-  `grant execute … to authenticated` только если каждый аргумент про самого
-  вызывающего; иначе она отвечает на чужие вопросы.
-- **Дефолтные гранты Supabase дают `authenticated` писать все колонки.** Любая
-  новая колонка, которую заполняет сервер, должна быть явно упомянута в
-  INSERT-политике.
-- **У `order()` в postgrest-dart дефолт `ascending: false`.** Стоило реального
-  бага с перевёрнутыми ветками.
-- **`timestamptz` из PostgREST парсится как UTC.** Конвертировать
-  `parseTimestamp()` на границе «строка → модель», а не в местах отображения.
-- **Жест «назад» нельзя проверять на экранах через `context.go()`** — он
-  заменяет маршрут, стек пуст, и сворачивание приложения законно на любой версии
-  Android. Проверять только `Navigator.push()`-экраны. Отмену жеста через `adb`
-  достоверно проверить нельзя — вердикт выносит система, а инъецированные
-  события идут без скорости.
-- **`BEFORE INSERT`-триггер срабатывает до арбитража `ON CONFLICT`.** Строка,
-  которую `DO NOTHING` в итоге отбросит, всё равно проходит через триггер — так
-  backstop-лимит на 20 медиа ловил не 21-й элемент, а ретрай уже
-  опубликованного поста, и запирал пользователя на ошибке навсегда. Триггер,
-  считающий строки, обязан сам пропускать дубликат по тому же ключу, по
-  которому разрешается конфликт.
-- **`SUPABASE_SERVICE_ROLE_KEY` в Edge Function — не тот ключ, что лежит в
-  Vault.** У проекта одновременно живут два поколения ключей (legacy JWT и
-  `sb_secret_…`): cron шлёт из Vault legacy JWT, а платформа инжектит в функцию
-  значение другого формата и длины. Сравнение bearer с этой переменной выглядит
-  очевидным и выключает пуши целиком. Секрет для «свой/чужой» заводить
-  отдельный и в своём заголовке — `Authorization` занят `verify_jwt`-гейтом.
-- **`create or replace function` переписывает ВСЁ тело, а не правит ветку.**
-  Исходник надо брать из миграции, которая трогала эту функцию последней, — не
-  из той, что помнится. Дважды подряд `enqueue_post_notifications()` пересоздали
-  из дореформенного текста ради правки одной ветки, вернув запись в
-  `pending_post_counts`, дропнутую промежуточной миграцией. `check_function_bodies`
-  проверяет plpgsql только синтаксически — имена таблиц разрешаются в рантайме,
-  так что накат прошёл молча, а `AFTER INSERT`-триггер стал откатывать сам пост:
-  публиковать не мог никто, у кого есть Connection без mute/block/избранного.
-  Проверять после наката не «применилось ли», а `prosrc` на признаки старого
-  тела.
-- **Что сейчас разрешено — спрашивать у живой схемы, а не у миграции, которая
-  это завела.** Находка «`users.avatar_path` пишет кто угодно» была выведена из
-  `20260820140000` (`grant update (name, avatar_path)`) и оказалась неверной:
-  `20260822210000` этот грант уже сняла, а триггер синка сделала
-  `security definer`. Миграции — журнал намерений, а не состояние, и чем старше
-  проект, тем чаще нужная строка отменена более поздней. Ответ стоит один
-  запрос: `information_schema.column_privileges` для грантов, `pg_policy` для
-  политик, `prosrc` для тел функций (см. пункт выше). То же и в обратную
-  сторону — прежде чем снимать грант, стоит проверить, достижим ли он: команда,
-  под которой нет ни одной политики, отклоняется всегда, и `revoke` на ней
-  ничего не меняет, кроме будущего.
-- **Инвариант, который держится на best-effort вызове уходящего клиента, — не
-  инвариант.** Право на FCM-токен снимал только `unregisterDevice()` перед
-  выходом, обёрнутый в пустой catch (выйти надо уметь и без сети) — в норме он
-  не срабатывает регулярно, и следующий владелец устройства получал чужие
-  пуши. Правило переехало на сервер (`claim_device_token()`); история и
-  детали — «Один аппарат — один аккаунт» в
-  [docs/data-model.md](docs/data-model.md). Спрашивать не «вызывает ли кто-то
-  очистку», а «что будет, если этот вызов не состоится ни разу».
-- **`upsert` из PostgREST требует НЕчастичного индекса и UPDATE-гранта.**
-  `on_conflict=a,b` просит планировщик вывести индекс, а вывод по частичному
-  индексу (`where … is not null`) срабатывает, только если запрос повторяет
-  его предикат, — послать такое PostgREST не умеет, и ответ 42P10 «нет
-  ограничения, подходящего под ON CONFLICT». Вдобавок `upsert` всегда
-  разворачивается в `DO UPDATE`, то есть требует права на UPDATE — которого у
-  таблицы может не быть намеренно. Так молча не работала ВСЯ отправка
-  сообщений в комнатах. Если UPDATE не нужен, идемпотентность делается
-  обычным `insert` и обработкой 23505: дубликат по уникальному индексу
-  означает «эта отправка уже дошла», и строка, с которой она столкнулась, —
-  и есть ответ. И третье право, которое всплыло на `push_registration_status`
-  (20260913120000): `ON CONFLICT DO UPDATE` требует ещё и **SELECT, причём на
-  таблицу, а не на колонку**. Он читает строку, с которой столкнулся, чтобы
-  применить к ней `using`-выражение политики, и поколоночного гранта ровно на
-  ту колонку, что в выражении, ему НЕ хватает — отбивается по 42501
-  «permission denied for table». Проверяется зондом за минуту: плоский
-  `insert` проходит, апсерт по тому же ключу — нет. И четвёртое, из-за чего
-  та же таблица не работала во второй раз: PostgREST кладёт в `DO UPDATE SET`
-  **все присланные колонки, включая ту, по которой шёл конфликт**, то есть
-  всегда пишет `user_id = excluded.user_id`. Поколоночный UPDATE-грант без
-  ключевой колонки («менять ключ незачем») отбивает весь апсерт. Общий вывод
-  дороже частного: **симулировать надо ту форму запроса, которую шлёт клиент,
-  а не ту, которую удобно набрать руками** — написанный вручную `SET` без
-  `user_id` прошёл симуляцию и не поймал ничего.
-- **Добавить параметр в RPC — значит сначала дропнуть старую функцию.**
-  `create or replace function f(a, b, c default …)` с новым списком аргументов
-  не заменяет `f(a, b)`, а заводит ВТОРУЮ перегрузку. Для PostgREST вызов с
-  тремя именованными параметрами становится после этого неоднозначным (300
-  Multiple Choices), то есть ломается у всех выложенных клиентов сразу.
-  Порядок один: `drop function` со старой сигнатурой, потом `create`, потом
-  `grant execute` заново — грант уходит вместе с функцией.
-- **Префиксная ветвь в storage-политике равна построчному правилу только
-  до первой более узкой аудитории.** У `avatars/<uid>/…` три ветви (своё,
-  системный аккаунт, Connection) отвечали «да» про весь префикс, и это
-  совпадало с RLS на `profile_photos`, которая показывает Connection всю
-  галерею. Ветвь «сосед по комнате» совпадение сломала: строк галереи он не
-  видит вовсе, а объекты видел все — `storage.list()` идёт через ту же
-  SELECT-политику и перечислял до 80 фотографий. Добавляя в storage-политику
-  аудиторию, которой построчное правило даёт МЕНЬШЕ, надо переписывать ветвь
-  с префикса на объект (`is_room_peer_avatar()`), а не дописывать её рядом.
-  Тот же класс, что и «правило видимости в четырёх копиях», только копии тут
-  в разных подсистемах. Подробности — «Storage» в
+- **The visibility rule lived in four copies; two fell behind mute/block and
+  became holes.** Consolidated into a single `is_author_visible(uuid)`; the
+  schema and its consumers — [docs/data-model.md](docs/data-model.md). Change
+  the rule only there; never create a second copy.
+- **RLS applies to subqueries inside a policy too.** A subquery against
+  `blocked_users` is itself filtered by the `blocked_users` policy, so the
+  "I've been blocked" branch silently fell off. That is where the whole
+  `security definer` + `set search_path` pattern comes from. This is the most
+  load-bearing idea in the entire schema.
+- **The planner doesn't inline a `security definer` function.** Don't use it as
+  a per-row filter in `using` if it depends only on `auth.uid()` — lift it into
+  an uncorrelated `IN (SELECT …)`, which is hashed once. The difference on the
+  feed was 217 ms → 3.5 ms.
+- **In new policies write `(select auth.uid())`, not a bare `auth.uid()`.** A
+  bare call is evaluated per row, a wrapped one once per query (Advisor:
+  `auth_rls_initplan`, migration `20261010100000`).
+- **Every function in `public` is a PostgREST endpoint.** Grant
+  `grant execute … to authenticated` only if every argument is about the caller
+  themselves; otherwise it answers questions about other people.
+- **Supabase's default grants let `authenticated` write every column.** Any
+  new column filled in by the server must be explicitly mentioned in the
+  INSERT policy.
+- **`order()` in postgrest-dart defaults to `ascending: false`.** This cost a
+  real bug with reversed threads.
+- **`timestamptz` from PostgREST is parsed as UTC.** Convert with
+  `parseTimestamp()` at the "string → model" boundary, not where it's displayed.
+- **The back gesture must not be tested on screens reached via
+  `context.go()`** — it replaces the route, the stack is empty, and
+  backgrounding the app is legitimate on any Android version. Test only
+  `Navigator.push()` screens. Cancelling the gesture can't be reliably tested
+  via `adb` — the system makes the call, and injected events carry no velocity.
+- **A `BEFORE INSERT` trigger fires before `ON CONFLICT` arbitration.** A row
+  that `DO NOTHING` will eventually discard still passes through the trigger —
+  that's how the backstop limit of 20 media caught not the 21st item but a
+  retry of an already published post, and locked the user into an error
+  forever. A trigger that counts rows must itself skip a duplicate on the same
+  key the conflict is resolved by.
+- **`SUPABASE_SERVICE_ROLE_KEY` in an Edge Function is not the key stored in
+  Vault.** The project has two generations of keys alive at once (legacy JWT
+  and `sb_secret_…`): cron sends the legacy JWT from Vault, while the platform
+  injects into the function a value of a different format and length. Comparing
+  the bearer against this variable looks obvious and switches off pushes
+  entirely. Create a separate secret for "us/them", in its own header —
+  `Authorization` is taken by the `verify_jwt` gate.
+- **`create or replace function` rewrites the ENTIRE body, it doesn't patch a
+  branch.** Take the source from the migration that touched this function
+  last — not the one you remember. Twice in a row `enqueue_post_notifications()`
+  was recreated from the pre-reform text to edit a single branch, bringing back
+  the write to `pending_post_counts`, which an intermediate migration had
+  dropped. `check_function_bodies` checks plpgsql only syntactically — table
+  names are resolved at runtime, so the migration applied silently, and the
+  `AFTER INSERT` trigger started rolling back the post itself: nobody who had a
+  Connection without mute/block/favorites could publish. After applying, check
+  not "did it apply" but `prosrc` for signs of the old body.
+- **Ask the live schema what is allowed right now, not the migration that
+  introduced it.** The finding "anyone can write `users.avatar_path`" was
+  derived from `20260820140000` (`grant update (name, avatar_path)`) and turned
+  out to be wrong: `20260822210000` had already revoked that grant and made the
+  sync trigger `security definer`. Migrations are a journal of intentions, not
+  state, and the older the project, the more often the line you need has been
+  undone by a later one. The answer costs one query:
+  `information_schema.column_privileges` for grants, `pg_policy` for policies,
+  `prosrc` for function bodies (see the item above). The same goes the other
+  way — before revoking a grant, check whether it's reachable: a command with no
+  policy under it is always rejected, and a `revoke` on it changes nothing
+  except the future.
+- **An invariant that rests on a best-effort call from a departing client is
+  not an invariant.** The right to an FCM token was removed only by
+  `unregisterDevice()` before sign-out, wrapped in an empty catch (signing out
+  has to work without a network too) — normally it doesn't fire reliably, and
+  the next owner of the device received someone else's pushes. The rule moved
+  to the server (`claim_device_token()`); history and details — "One device,
+  one account" in [docs/data-model.md](docs/data-model.md). Ask not "does
+  anyone call the cleanup", but "what happens if this call never happens even
+  once".
+- **`upsert` from PostgREST requires a NON-partial index and an UPDATE grant.**
+  `on_conflict=a,b` asks the planner to infer an index, and inference from a
+  partial index (`where … is not null`) only works if the query repeats its
+  predicate — PostgREST can't send that, and the response is 42P10 "there is no
+  unique or exclusion constraint matching the ON CONFLICT specification". On
+  top of that, `upsert` always expands into `DO UPDATE`, i.e. it requires the
+  UPDATE privilege — which the table may deliberately lack. That is how ALL
+  message sending in rooms silently didn't work. If UPDATE isn't needed,
+  idempotency is done with a plain `insert` and handling 23505: a duplicate on
+  the unique index means "this send already went through", and the row it
+  collided with is the answer. And a third privilege, which surfaced on
+  `push_registration_status` (20260913120000): `ON CONFLICT DO UPDATE` also
+  requires **SELECT, and on the table, not on a column**. It reads the row it
+  collided with to apply the policy's `using` expression to it, and a
+  per-column grant on exactly the column in the expression is NOT enough — it
+  gets rejected with 42501 "permission denied for table". A probe checks this
+  in a minute: a plain `insert` goes through, an upsert on the same key
+  doesn't. And a fourth, which is why the same table broke a second time:
+  PostgREST puts **all the columns sent, including the conflict column**, into
+  `DO UPDATE SET`, i.e. it always writes `user_id = excluded.user_id`. A
+  per-column UPDATE grant without the key column ("no reason to change the
+  key") rejects the whole upsert. The general lesson is worth more than the
+  specific one: **simulate the query shape the client actually sends, not the
+  one convenient to type by hand** — a hand-written `SET` without `user_id`
+  passed the simulation and caught nothing.
+- **Adding a parameter to an RPC means dropping the old function first.**
+  `create or replace function f(a, b, c default …)` with a new argument list
+  doesn't replace `f(a, b)` but creates a SECOND overload. After that, a
+  PostgREST call with three named parameters becomes ambiguous (300 Multiple
+  Choices), i.e. it breaks for every released client at once. There is only
+  one order: `drop function` with the old signature, then `create`, then
+  `grant execute` again — the grant goes away together with the function.
+- **A prefix branch in a storage policy equals the per-row rule only until
+  the first narrower audience.** For `avatars/<uid>/…`, three branches (own,
+  system account, Connection) answered "yes" for the whole prefix, and that
+  matched the RLS on `profile_photos`, which shows a Connection the whole
+  gallery. The "room peer" branch broke the match: a room peer doesn't see the
+  gallery rows at all, yet saw all the objects — `storage.list()` goes through
+  the same SELECT policy and listed up to 80 photos. When adding an audience to
+  a storage policy that the per-row rule grants LESS, rewrite the branch from
+  prefix to object (`is_room_peer_avatar()`), don't add it alongside. Same
+  class as "the visibility rule in four copies", only here the copies are in
+  different subsystems. Details — "Storage" in
   [docs/data-model.md](docs/data-model.md).
-- **`if not f(...)`, где `f` умеет вернуть NULL, не срабатывает никогда.**
-  `owns_room()` — это `room_owner_id(...) = auth.uid()`, то есть NULL для
-  несуществующей комнаты; `not NULL` — тоже NULL, ветка пропускается целиком.
-  В `set_room_avatar()` это было прикрыто стоявшей выше проверкой
-  существования, и вылезло ровно тогда, когда ту проверку убрали. Форма
-  `is distinct from` NULL-ловушки не имеет и годится всегда.
-- **Идемпотентный ретрай — это UPDATE, а `AFTER INSERT`-триггер на него не
-  сработает.** Ветка `on conflict` в `create_post_with_media()` приводит пост
-  к присланному состоянию, но всё, что триггер разложил по очередям на первой
-  (закоммитившейся) попытке, там и осталось — сузив аудиторию ретраем, пуш о
-  посте отозвать было некому. Заводя RPC, которая переписывает уже
-  существующую строку, спрашивать не только «то ли теперь в строке», но и
-  «что успели сделать её триггеры в прошлый раз».
-- **`ref` у Riverpod после `await` бросает, и в release тоже.** `WidgetRef`
-  держится на `BuildContext`; ушли с экрана, пока запрос летел, — и
-  `ref.invalidate()` кидает `StateError`, который ловит собственный `catch`
-  метода и глушит вместе с самим обновлением. Переставить `mounted` выше не
-  лечит: списки, которые надо перечитать, принадлежат другим, всё ещё живым
-  экранам. Контейнер захватывается ДО `await` — `refreshAfterAwait()`,
-  подробности в [docs/client-architecture.md](docs/client-architecture.md).
-- **Проверка на устройстве**: английскую локаль включать пер-приложенчески
-  (`adb shell cmd locale set-app-locales <pkg> --locales en-US`), а не системной
-  настройкой — не трогает телефон пользователя и откатывается пустым значением.
-- **`flutter build appbundle`/`make build-android` берёт JDK от Android Studio,
-  не `JAVA_HOME`.** На новых версиях Studio встроенный JBR отдаёт версию вида
-  `25.0.2`, которую не парсит Kotlin-компилятор Gradle — сборка падает с голым
-  `25.0.2` вместо внятной ошибки. Чинится не в `gradle.properties` (это
-  закоммиченный файл, путь к JDK у каждого разный), а per-machine:
+- **`if not f(...)`, where `f` can return NULL, never fires.**
+  `owns_room()` is `room_owner_id(...) = auth.uid()`, i.e. NULL for a
+  nonexistent room; `not NULL` is also NULL, and the branch is skipped
+  entirely. In `set_room_avatar()` this was covered by an existence check
+  higher up, and it surfaced exactly when that check was removed. The
+  `is distinct from` form has no NULL trap and always works.
+- **An idempotent retry is an UPDATE, and an `AFTER INSERT` trigger won't
+  fire on it.** The `on conflict` branch in `create_post_with_media()` brings
+  the post to the submitted state, but everything the trigger put into queues
+  on the first (committed) attempt stays there — having narrowed the audience
+  with a retry, there was nobody to revoke the push about the post. When
+  creating an RPC that rewrites an already existing row, ask not only "is the
+  row right now", but also "what did its triggers manage to do last time".
+- **Riverpod's `ref` throws after `await`, in release too.** `WidgetRef`
+  hangs on a `BuildContext`; leave the screen while the request is in flight —
+  and `ref.invalidate()` throws a `StateError`, which the method's own `catch`
+  catches and swallows together with the refresh itself. Moving `mounted`
+  higher doesn't fix it: the lists that need re-reading belong to other, still
+  alive screens. The container is captured BEFORE `await` —
+  `refreshAfterAwait()`, details in
+  [docs/client-architecture.md](docs/client-architecture.md).
+- **On-device testing**: switch to the English locale per app
+  (`adb shell cmd locale set-app-locales <pkg> --locales en-US`), not via the
+  system setting — it doesn't touch the user's phone and is reverted with an
+  empty value.
+- **`flutter build appbundle`/`make build-android` uses Android Studio's JDK,
+  not `JAVA_HOME`.** On newer Studio versions the bundled JBR reports a version
+  like `25.0.2`, which Gradle's Kotlin compiler can't parse — the build fails
+  with a bare `25.0.2` instead of a meaningful error. The fix is not in
+  `gradle.properties` (that's a committed file, and everyone's JDK path is
+  different) but per-machine:
   `flutter config --jdk-dir="$(/usr/libexec/java_home -v 21)"`.
-- **Запрет писать проверяется триггером, а не INSERT-политикой — потому что
-  вся запись в этом проекте идёт мимо RLS.** Девятнадцать пишущих RPC
-  (`create_post_with_media`, `request_connection`, `create_room`, …) — это
-  `security definer`, выданные `authenticated`, а `force row level security`
-  не включён ни на одной таблице: внутри такой функции политики НЕ
-  применяются вовсе. Условие «забанен» в INSERT-политике `posts` не
-  остановило бы никого, потому что посты создаются RPC, а не прямой вставкой.
-  Триггер привязан к таблице, а не к роли, и срабатывает одинаково на обоих
-  путях — поэтому `reject_write_when_banned()` (20260913100000) висит на семи
-  таблицах с одним телом. Проверять «а дойдёт ли до политики» надо КАЖДЫЙ
-  раз, когда правило касается записи: ответ здесь почти всегда «нет».
-- **Новая таблица и новая функция в `public` приезжают с полными правами для
-  `authenticated`.** Дефолтные привилегии схемы (`pg_default_acl`) выдают на
-  таблицы `a/r/w/d`, а на функции — `execute`; baseline снял это насовсем
-  только у `anon`, а у `authenticated` сузил ПОКОЛОНОЧНО у каждой
-  существующей таблицы по отдельности. Поэтому у всего нового порядок один:
-  сначала `revoke all … from anon, authenticated`, потом выдать ровно нужные
-  колонки. С функциями хуже: `execute` по умолчанию делает КАЖДУЮ из них
-  эндпоинтом PostgREST, включая вспомогательные предикаты, которые задумывались
-  внутренними. Тот же дефолт — причина, по которой поколоночный грант,
-  добавленный без `revoke`, не сужает ничего, а просто ложится поверх уже
-  выданного на всю таблицу.
-- **Подзапрос к СВОЕЙ ЖЕ таблице внутри её политики — не «лишний фильтр», а
-  42P17 `infinite recursion detected in policy`.** У `blocked_users`
-  («RLS применяется и к подзапросам», выше) это была дыра: подзапрос молча
-  давал более узкий результат, чем ожидалось. Здесь — `room_messages`,
-  голый `EXISTS (SELECT 1 FROM room_messages …)` внутри её же INSERT-политики
-  (проверка «`reply_to_id` — из этой же комнаты», 20260911100000) уронила
-  ЛЮБУЮ вставку в таблицу, включая строки без `reply_to_id` вовсе: RLS
-  компилирует план подзапроса на уровне запроса, а не построчно, так что от
-  значения конкретной строки это не зависело. Заметно сразу — приложение
-  вообще не может писать в таблицу, — но снести всю отправку сообщений в
-  проде это уже успело один раз. Лечится тем же приёмом, что и
-  `blocked_users`: вынести проверку в `security definer`-функцию
-  (`room_message_in_room()`), внутри которой RLS не действует вовсе.
-  Правило: как только политика на таблицу T ссылается на T саму — хоть
-  строкой, хоть подзапросом, — этой ссылке место только внутри
-  `security definer`.
-- **Realtime не переигрывает пропущенное, а сокет рвётся при каждом уходе в
-  фон.** Postgres Changes — поток, а не журнал: подписчику приходит то, что
-  случилось, пока он подписан. При этом `supabase_flutter` сам рвёт сокет на
-  `AppLifecycleState.paused` и пересоединяет на `resumed`, так что разрыв — не
-  краевой случай, а то, что происходит при каждом переключении между
-  приложениями. Значит **любой** экран на подписке обязан уметь догнать
-  пропущенное, иначе он показывает состояние на момент ухода в фон и молчит.
-  В чате комнат этого не было: подгрузка умела только `before`-курсор, то есть
-  страницы старее, и сказанное за время в фоне не появлялось никогда — до
-  закрытия и повторного открытия экрана. Пропадали и удаления: снос приезжает
-  правкой уже лежащей строки, не вставкой. Спрашивать надо не «подписан ли
-  экран», а «что он покажет, если подписка помолчит десять минут».
-- **Канал буферизует то, что послано до join, и отдаёт это РАНЬШЕ колбэка
-  `subscribe`.** Хук, который сливает `_pushBuffer`, `RealtimeChannel` вешает
-  в собственном конструкторе, а колбэк из `subscribe()` регистрируется после —
-  и вызываются они в порядке регистрации. Поэтому «объявить состояние на join»
-  затирает то, что пользователь успел наделать, пока канал поднимался: в
-  комнатах `track({typing: false})` в колбэке гасил только что поднятое
-  «печатает…», а экран к тому моменту уже считал объявление сделанным и не
-  повторял его ни на одном следующем нажатии. Состояние, объявляемое на join,
-  надо спрашивать у того, кто его знает, а не предполагать. И помнить, что
-  колбэк вызывается на КАЖДОМ join, включая пересоединение после фона.
-- **Riverpod отказывается менять провайдер из любого метода жизненного цикла
-  виджета** — `build`, `initState`, `didChangeDependencies`, `didUpdateWidget`,
-  `deactivate` и `dispose` одинаково («Tried to modify a provider while the
-  widget tree was building»). Отложить в `Future.microtask` из `dispose` тоже
-  не выход: к моменту выполнения контейнера может уже не быть. Рабочая форма —
-  `addPostFrameCallback` из `deactivate()` по контейнеру, захваченному в
-  `initState` (см. «Обновление, которое переживает свой экран» в
-  [docs/client-architecture.md](docs/client-architecture.md)), с `catch` на
-  случай, когда весь `ProviderScope` сносится тем же кадром.
-- **`State` внутри элемента ленивого списка не переживает сдвиг индексов.**
-  Слайверы не переставляют элементы по ключам так, как это делает обычный
-  многодетный элемент: `SliverMultiBoxAdaptorElement` обновляет слот по
-  индексу, и если ключ не совпал — старый элемент сносится, новый строится с
-  нуля. Спасает только `findChildIndexCallback`, а `ScrollablePositionedList`
-  его не пробрасывает. Поэтому вставка в начало чата уничтожала `State` всех
-  видимых пузырей, и подписанные ссылки на фотографии, жившие в этом `State`,
-  подписывались заново — по разу на пузырь, на каждое сообщение. Добавление
-  ключей тут не лечит, а ухудшает. Правило: всё, что дорого получить, должно
-  жить не в `State` элемента списка, а в кеше, который этот `State` переживёт.
-- **`SelectionArea` не вставляет разделитель между соседними selectable-виджетами,
-  а `\n` внутри одного `TextSpan` — не дешёвый способ его туда добавить.**
-  Проверено эмпирически (виджет-тестом, симулирующим drag-select и тап по
-  «Copy» в тулбаре, а не догадками): выделение через несколько подряд идущих
-  `Text`/`Text.rich` копируется одной слитной строкой, без пробела и без
-  переноса. Добавить `\n` последним span'ом внутри своего же параграфа не
-  выходит по двум независимым причинам: (1) любая дополнительная строка в
-  `Text.rich` стоит целой лишней высоты строки — от `fontSize` этого конкретного
-  run'а высота не зависит вообще (проверено на 0/1/4/8/16 — всегда одна и та же
-  высота, как у первой строки); (2) `\n`, стоящий самым последним символом
-  selectable-контента, при копировании молча обрезается, то есть его и вовсе
-  не было бы видно в результате. Рабочая связка: невидимый маркер (`​`,
-  добавленный последним span'ом — веса и высоты не имеет, в отличие от `\n`)
-  в конце текста каждого сообщения, плюс свой `contextMenuBuilder` у
-  `SelectionArea`, который у кнопки «Copy» после штатного нажатия ещё раз
-  вычитывает `Clipboard.getData` и меняет маркер на настоящий `\n` перед тем,
-  как положить обратно. Копирование на мобильном идёт через тап по кнопке в
-  тулбаре (`SelectableRegionState._copy()`), а не через `Actions`/`Intents` —
-  оверрайд `CopySelectionTextIntent` выше по дереву перехватывает только
-  Ctrl+C/Cmd+C и на реальном тапе в тулбар не сработает ни на йоту, поэтому
-  правка именно через `contextMenuBuilder`, не через `Actions`. Пример —
-  `_messageSeparator`/`_chatSelectionToolbarBuilder` в
+- **The write ban is enforced by a trigger, not an INSERT policy — because all
+  writes in this project bypass RLS.** Nineteen writing RPCs
+  (`create_post_with_media`, `request_connection`, `create_room`, …) are
+  `security definer`, granted to `authenticated`, and `force row level security`
+  is not enabled on any table: inside such a function policies are NOT applied
+  at all. A "banned" condition in the `posts` INSERT policy wouldn't have
+  stopped anyone, because posts are created by an RPC, not a direct insert. A
+  trigger is bound to the table, not the role, and fires the same way on both
+  paths — which is why `reject_write_when_banned()` (20260913100000) sits on
+  seven tables with a single body. Check "will this even reach the policy"
+  EVERY time a rule concerns writes: the answer here is almost always "no".
+- **A new table and a new function in `public` arrive with full privileges for
+  `authenticated`.** The schema's default privileges (`pg_default_acl`) grant
+  `a/r/w/d` on tables and `execute` on functions; the baseline removed this
+  for good only for `anon`, while for `authenticated` it narrowed privileges
+  PER COLUMN on each existing table individually. So for anything new there is
+  only one order: first `revoke all … from anon, authenticated`, then grant
+  exactly the needed columns. Functions are worse: the default `execute` makes
+  EVERY one of them a PostgREST endpoint, including helper predicates that were
+  meant to be internal. The same default is why a per-column grant added
+  without a `revoke` narrows nothing and just lands on top of what's already
+  granted for the whole table.
+- **A subquery against the table's OWN self inside its policy is not "an extra
+  filter" but 42P17 `infinite recursion detected in policy`.** With
+  `blocked_users` ("RLS applies to subqueries", above) it was a hole: the
+  subquery silently returned a narrower result than expected. Here it's
+  `room_messages`: a bare `EXISTS (SELECT 1 FROM room_messages …)` inside its
+  own INSERT policy (the "`reply_to_id` is from this same room" check,
+  20260911100000) broke ANY insert into the table, including rows without a
+  `reply_to_id` at all: RLS compiles the subquery plan at the query level, not
+  per row, so it didn't depend on a particular row's value. It's noticeable
+  immediately — the app can't write to the table at all — but it had already
+  managed to take down all message sending in prod once. The cure is the same
+  trick as for `blocked_users`: move the check into a `security definer`
+  function (`room_message_in_room()`), inside which RLS doesn't apply at all.
+  Rule: as soon as a policy on table T refers to T itself — whether as a row
+  or a subquery — that reference belongs only inside a `security definer`.
+- **Realtime doesn't replay what was missed, and the socket drops every time
+  the app goes to the background.** Postgres Changes is a stream, not a
+  journal: a subscriber gets what happened while it was subscribed. Meanwhile
+  `supabase_flutter` itself drops the socket on `AppLifecycleState.paused` and
+  reconnects on `resumed`, so a disconnect isn't an edge case but what happens
+  on every switch between apps. Which means **any** screen on a subscription
+  must be able to catch up on what it missed, otherwise it shows the state as
+  of going to the background and stays silent. The room chat didn't have this:
+  loading only knew the `before` cursor, i.e. older pages, and what was said
+  while in the background never appeared — until the screen was closed and
+  reopened. Deletions got lost too: a deletion arrives as an edit of an
+  existing row, not an insert. Ask not "is the screen subscribed", but "what
+  will it show if the subscription stays silent for ten minutes".
+- **A channel buffers what was sent before join, and delivers it BEFORE the
+  `subscribe` callback.** The hook that flushes `_pushBuffer` is attached by
+  `RealtimeChannel` in its own constructor, while the callback from
+  `subscribe()` is registered afterwards — and they're called in registration
+  order. So "announce state on join" overwrites whatever the user managed to do
+  while the channel was coming up: in rooms, `track({typing: false})` in the
+  callback cleared the just-raised "typing…", and by then the screen already
+  considered the announcement made and didn't repeat it on any subsequent
+  keystroke. State announced on join must be asked of whoever knows it, not
+  assumed. And remember that the callback is called on EVERY join, including
+  reconnects after the background.
+- **Riverpod refuses to modify a provider from any widget lifecycle method** —
+  `build`, `initState`, `didChangeDependencies`, `didUpdateWidget`,
+  `deactivate` and `dispose` alike ("Tried to modify a provider while the
+  widget tree was building"). Deferring to `Future.microtask` from `dispose` is
+  no way out either: by the time it runs, the container may already be gone.
+  The working form is `addPostFrameCallback` from `deactivate()` on a container
+  captured in `initState` (see "A refresh that outlives its screen" in
+  [docs/client-architecture.md](docs/client-architecture.md)), with a `catch`
+  for the case when the whole `ProviderScope` is torn down in the same frame.
+- **`State` inside a lazy list item doesn't survive an index shift.** Slivers
+  don't reorder elements by key the way a regular multi-child element does:
+  `SliverMultiBoxAdaptorElement` updates a slot by index, and if the key
+  doesn't match, the old element is torn down and a new one is built from
+  scratch. Only `findChildIndexCallback` helps, and `ScrollablePositionedList`
+  doesn't pass it through. So inserting at the start of the chat destroyed the
+  `State` of every visible bubble, and the signed photo URLs that lived in that
+  `State` were signed again — once per bubble, for every message. Adding keys
+  doesn't fix this, it makes it worse. Rule: anything expensive to obtain must
+  live not in a list item's `State` but in a cache that outlives that `State`.
+- **`SelectionArea` doesn't insert a separator between adjacent selectable
+  widgets, and a `\n` inside a single `TextSpan` is not a cheap way to add
+  one.** Verified empirically (with a widget test simulating drag-select and a
+  tap on "Copy" in the toolbar, not by guesswork): a selection across several
+  consecutive `Text`/`Text.rich` is copied as one fused string, with no space
+  and no line break. Adding `\n` as the last span inside your own paragraph
+  doesn't work for two independent reasons: (1) any extra line in `Text.rich`
+  costs a whole extra line height — the height doesn't depend on that
+  particular run's `fontSize` at all (checked at 0/1/4/8/16 — always the same
+  height as the first line); (2) a `\n` that is the very last character of the
+  selectable content is silently trimmed on copy, i.e. it wouldn't even show up
+  in the result. The working combination: an invisible marker (`​`,
+  added as the last span — it has no width or height, unlike `\n`) at the end
+  of each message's text, plus a custom `contextMenuBuilder` on
+  `SelectionArea` which, after the stock press of the "Copy" button, reads
+  `Clipboard.getData` once more and replaces the marker with a real `\n`
+  before putting it back. On mobile, copying goes through a tap on the toolbar
+  button (`SelectableRegionState._copy()`), not through `Actions`/`Intents` —
+  an override of `CopySelectionTextIntent` higher up the tree intercepts only
+  Ctrl+C/Cmd+C and won't fire one bit on a real toolbar tap, so the fix goes
+  through `contextMenuBuilder`, not `Actions`. Example —
+  `_messageSeparator`/`_chatSelectionToolbarBuilder` in
   `app/lib/features/rooms/room_chat_screen.dart`.
-- **`revoke ... from anon, authenticated` не снимает грант, выданный PUBLIC.**
-  `create function` в PostgreSQL по умолчанию выдаёт EXECUTE роли **PUBLIC**, а
-  PUBLIC — это в том числе `anon` и `authenticated`. Поэтому перечисление двух
-  ролей по именам закрывает функцию только на вид, и заметить это нечем:
-  `revoke` от роли, у которой права и не было, проходит молча, без единого
-  NOTICE. Так 20260913100000 «закрыла» шесть своих функций, и четыре из них
-  отвечали анониму до 20260924100000 — в том числе `is_write_banned(uuid)`,
-  то есть решение модерации про любой аккаунт по его uuid, доступное всякому,
-  у кого есть публичный ключ приложения (а он вшит в APK). Baseline пишет
-  правильную форму — `from public, anon, authenticated`, — так что это было
-  пропущенное слово в одной миграции, а не незнание.
-  Тот же промах на уровень выше и он же объясняет, почему не поймали: baseline
-  снимает `alter default privileges ... revoke all on functions from anon` и
-  комментарием считает вопрос закрытым, но дефолт на функции выдаётся PUBLIC, и
-  эта строка его не касалась. Обе строки теперь есть (`from public` и
-  `from authenticated`), поэтому новая функция по умолчанию закрыта и забытый
-  `grant` ломает фичу громко (42501), а не открывает её тихо.
-  Проверять правами, а не текстом ACL: `has_function_privilege('anon', oid,
-  'execute')` — и именно чтение `proacl` глазами тут и подводит, потому что
-  PUBLIC выглядит в нём как безымянное `=X/postgres`.
-- **Выражение политики исполняется от ВЫЗЫВАЮЩЕЙ роли.** Значит каждая
-  функция, названная прямо в `using`/`with check`, обязана иметь EXECUTE у
-  `authenticated`, иначе политика отбивается 42501 и фича встаёт целиком.
-  Вложенные вызовы внутри `security definer`-функции под это правило не
-  попадают — они уже идут от владельца, и именно поэтому закрытые
-  `are_connected`/`has_muted`/`is_post_visible` работают. На этом чуть не
-  сломались все вложения в чатах: `room_message_media_visible()` стоит в
-  SELECT-политике `storage.objects` и держалась ровно на гранте PUBLIC, так
-  что «закрыть лишнюю ручку» означало бы выключить их всем. Список берётся из
-  `pg_policies` запросом, а не по памяти; проверка на это есть в
-  20260924100000.
-- **`<>` с `auth.uid()` даёт NULL, а не true, когда пишет сервер.** У
-  service_role (консоль, cron, миграция) `auth.uid()` — NULL, и ветка
-  `if v_author is null or v_author <> auth.uid() then return new` не
-  срабатывала: `false or NULL` — это NULL, то есть «не наше дело» не
-  выполнялось и функция шла проверять бан автора ЧУЖОЙ строки.
-  `is distinct from` верно в обе стороны сразу. Пока триггер стоял только на
-  INSERT, спасало то, что так пишет один системный аккаунт и он не забанен.
-- **«Запись» — это не только INSERT.** `reject_write_when_banned` висел семью
-  BEFORE INSERT, и забанённый не мог завести новый пост, но мог переписать
-  текст любого своего старого (`grant update (text)` на `posts`) и сменить себе
-  имя (`grant update (name)` на `users`). Запрет, который не мешает
-  переписывать, — это задержка, а не запрет. Спрашивать не «откуда строка
-  появляется», а «какими командами её содержимое может измениться», и сверять
-  с поколоночными грантами. Триггеры на правку обязаны быть поколоночными
-  (`before update of text`): полный BEFORE UPDATE на `users` отобрал бы у
-  забанённого удаление собственной фотографии, потому что оно переписывает
-  `avatar_path` триггером синка.
-- **Общее тело на все таблицы находит автора по имени колонки, и у `users` его
-  нет.** `reject_write_when_banned` берёт автора из NEW через
-  `coalesce(author_id, user_id, owner_id, requester_id)`, а у `public.users`
-  автор строки — это её первичный ключ `id`. Триггер срабатывал, автора не
-  находил и выходил как «пишет сервер», то есть смена имени под баном
-  оставалась разрешённой. Безусловный `id` пятым элементом цепочки был бы
-  хуже: `id` есть и у `posts`, и у `comments`, и у `rooms`, и там это не
-  человек — поэтому ветка условная по `tg_table_name`. Поймано пробой в
-  транзакции с `rollback`, а не чтением кода: накат прошёл, проверки миграции
-  прошли, и только поведенческая проба показала, что пункт не работает.
-- **Дубль ключа в YAML git сливает без конфликта, а YAML молча оставляет
-  последний.** Две ветки завели в `app/analysis_options.yaml` по своему ключу
-  `analyzer:` — одна `exclude:` для `build/`/`android/`/`ios/` (её дописывает
-  сам `flutter build ios`), другая `language:`/`errors:` со strict-режимами.
-  Строки разные, областей пересечения нет, поэтому слияние прошло чисто и
-  файл стал синтаксически верным — с двумя `analyzer:` подряд. Победил бы
-  один, то есть тихо выключились бы либо исключения, либо strict-режимы, и
-  `flutter analyze` продолжал бы отвечать «No issues found». Отсюда правило
-  шире одного файла: **после слияния конфигов, где ключ верхнего уровня может
-  повториться (YAML, TOML, `.plist`), смотреть не только на маркеры
-  конфликта.** Чистый автомерж конфига — не то же самое, что верный автомерж.
-  Проверяется одной строкой: `grep -c '^analyzer:' app/analysis_options.yaml`
-  должна отвечать `1`.
-- **`[ "$x" -le "$y" ]` на нечисле — не ложь, а ошибка употребления.** `[`
-  пишет `Illegal number` в stderr и возвращает 2, а внутри условия `if` любой
-  ненулевой код читается как «ложно», и `set -e` туда не достаёт. То есть
-  проверка не просто не срабатывает — она уводит в ветку «всё хорошо».
-  `scripts/verify-version.sh` так и делал: `version: 0.18.13+` даёт пустой
-  `${v##*+}`, прежний шаблон `*[!0-9:]*|:*` его не ловил (нецифр нет,
-  двоеточие не в начале), и единственная проверка, которая гарантирует, что
-  PR несёт номер сборки, печатала `Version check passed` для версии вовсе без
-  номера. Лечится не добавлением ещё одного шаблона «что бывает плохого», а
-  перечислением разрешённого по каждому значению отдельно (`'' | *[!0-9]*`).
-  Общее: **в shell валидировать до сравнения, а не сравнением** — у
-  сравнения нет способа сказать «на вход подали не то».
+- **`revoke ... from anon, authenticated` doesn't remove a grant given to
+  PUBLIC.** `create function` in PostgreSQL grants EXECUTE to **PUBLIC** by
+  default, and PUBLIC includes `anon` and `authenticated`. So listing the two
+  roles by name closes the function only in appearance, and there's nothing to
+  notice it by: a `revoke` from a role that never had the privilege passes
+  silently, without a single NOTICE. That's how 20260913100000 "closed" six of
+  its functions, and four of them answered anonymous callers until
+  20260924100000 — including `is_write_banned(uuid)`, i.e. the moderation
+  decision about any account by its uuid, available to anyone who has the
+  app's public key (and it's baked into the APK). The baseline writes the
+  correct form — `from public, anon, authenticated` — so this was a missed word
+  in one migration, not ignorance.
+  The same slip one level up also explains why it wasn't caught: the baseline
+  runs `alter default privileges ... revoke all on functions from anon` and its
+  comment considers the matter closed, but the default for functions is
+  granted to PUBLIC, and that line didn't touch it. Both lines are there now
+  (`from public` and `from authenticated`), so a new function is closed by
+  default, and a forgotten `grant` breaks the feature loudly (42501) instead of
+  quietly opening it.
+  Check with privileges, not the ACL text: `has_function_privilege('anon', oid,
+  'execute')` — reading `proacl` by eye is exactly what lets you down here,
+  because PUBLIC shows up in it as a nameless `=X/postgres`.
+- **A policy expression runs as the CALLING role.** So every function named
+  directly in `using`/`with check` must have EXECUTE for `authenticated`,
+  otherwise the policy is rejected with 42501 and the feature stops entirely.
+  Nested calls inside a `security definer` function don't fall under this
+  rule — they already run as the owner, and that is exactly why the closed
+  `are_connected`/`has_muted`/`is_post_visible` work. This nearly broke all
+  attachments in chats: `room_message_media_visible()` is used in the
+  `storage.objects` SELECT policy and relied precisely on the PUBLIC grant, so
+  "closing an unneeded endpoint" would have switched them off for everyone. Get
+  the list from `pg_policies` with a query, not from memory; 20260924100000 has
+  a check for this.
+- **`<>` with `auth.uid()` yields NULL, not true, when the server writes.** For
+  service_role (console, cron, migration) `auth.uid()` is NULL, and the branch
+  `if v_author is null or v_author <> auth.uid() then return new` didn't fire:
+  `false or NULL` is NULL, i.e. "not our business" didn't execute, and the
+  function went on to check the ban of the author of SOMEONE ELSE'S row.
+  `is distinct from` is right in both directions at once. While the trigger
+  was only on INSERT, what saved it was that only one system account writes
+  that way, and it isn't banned.
+- **"Write" is not just INSERT.** `reject_write_when_banned` sat on seven
+  BEFORE INSERT triggers, and a banned user couldn't create a new post but
+  could rewrite the text of any of their old ones (`grant update (text)` on
+  `posts`) and change their name (`grant update (name)` on `users`). A ban
+  that doesn't prevent rewriting is a delay, not a ban. Ask not "where does
+  the row come from", but "which commands can change its contents", and
+  cross-check with the per-column grants. Update triggers must be per-column
+  (`before update of text`): a full BEFORE UPDATE on `users` would have taken
+  away from a banned user the ability to delete their own photo, because that
+  rewrites `avatar_path` via the sync trigger.
+- **A shared body for all tables finds the author by column name, and `users`
+  doesn't have one.** `reject_write_when_banned` takes the author from NEW via
+  `coalesce(author_id, user_id, owner_id, requester_id)`, while in
+  `public.users` the row's author is its primary key `id`. The trigger fired,
+  found no author and exited as "the server is writing", i.e. a name change
+  under a ban remained allowed. An unconditional `id` as the fifth element of
+  the chain would have been worse: `posts`, `comments` and `rooms` have an
+  `id` too, and there it isn't a person — so the branch is conditional on
+  `tg_table_name`. Caught by a probe in a transaction with `rollback`, not by
+  reading the code: the migration applied, the migration's checks passed, and
+  only the behavioral probe showed that the item didn't work.
+- **git merges a duplicate YAML key without a conflict, and YAML silently
+  keeps the last one.** Two branches each added their own `analyzer:` key to
+  `app/analysis_options.yaml` — one with `exclude:` for
+  `build/`/`android/`/`ios/` (`flutter build ios` itself appends it), the other
+  with `language:`/`errors:` with strict modes. The lines differ, there are no
+  overlapping regions, so the merge went through cleanly and the file became
+  syntactically valid — with two `analyzer:` in a row. One would win, i.e.
+  either the excludes or the strict modes would be quietly switched off, and
+  `flutter analyze` would keep answering "No issues found". Hence a rule wider
+  than one file: **after merging configs where a top-level key can repeat
+  (YAML, TOML, `.plist`), look at more than the conflict markers.** A clean
+  automerge of a config is not the same as a correct automerge. Checked with
+  one line: `grep -c '^analyzer:' app/analysis_options.yaml` must answer `1`.
+- **`[ "$x" -le "$y" ]` on a non-number is not false but a usage error.** `[`
+  writes `Illegal number` to stderr and returns 2, and inside an `if`
+  condition any non-zero code reads as "false", and `set -e` doesn't reach
+  there. That is, the check doesn't just fail to fire — it leads into the
+  "all good" branch. `scripts/verify-version.sh` did exactly that:
+  `version: 0.18.13+` gives an empty `${v##*+}`, the old pattern
+  `*[!0-9:]*|:*` didn't catch it (no non-digits, no colon at the start), and
+  the only check that guarantees a PR carries a build number printed
+  `Version check passed` for a version with no number at all. The fix is not
+  adding yet another "what can go wrong" pattern but enumerating what's
+  allowed for each value separately (`'' | *[!0-9]*`).
+  In general: **in shell, validate before comparing, not by comparing** — a
+  comparison has no way to say "the input is wrong".

@@ -1,17 +1,17 @@
 import type { NextFunction, Request, Response } from 'express';
 
-/// Хостнеймы, под которыми консоль сама себя зовёт. Порт не проверяется
-/// намеренно: браузер работает с Vite на 5173, а тот проксирует в API на 5174,
-/// **сохраняя исходный `Host`** (`changeOrigin: false` в vite.config.ts). То
-/// есть сюда законно приходит и `127.0.0.1:5173`, и `127.0.0.1:5174`, и
-/// `localhost:*`. Значение имеет именно хостнейм: чужое доменное имя в `Host`
-/// — это и есть подпись DNS rebinding.
+/// Hostnames the console calls itself by. The port is deliberately not
+/// checked: the browser talks to Vite on 5173, which proxies to the API on
+/// 5174 **preserving the original `Host`** (`changeOrigin: false` in
+/// vite.config.ts). So `127.0.0.1:5173`, `127.0.0.1:5174` and `localhost:*`
+/// all legitimately arrive here. What matters is the hostname: a foreign
+/// domain name in `Host` is the signature of DNS rebinding.
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
-/// Origin'ы, из которых консоли позволено ходить в своё же API. Любой другой —
-/// это страница, открытая в том же браузере, а не консоль.
+/// Origins the console is allowed to call its own API from. Any other one
+/// is a page open in the same browser, not the console.
 function isLoopbackOrigin(origin: string): boolean {
-  // `null` шлёт, например, страница с `data:`/`file:` — это не консоль.
+  // `null` is sent by, for example, a `data:`/`file:` page — not the console.
   if (origin === 'null') return false;
   let url: URL;
   try {
@@ -35,35 +35,38 @@ function hostnameOf(host: string): string | null {
 
 export type GuardVerdict = { ok: true } | { ok: false; reason: string };
 
-/// Пускать ли этот запрос в локальное API.
+/// Whether to let this request into the local API.
 ///
-/// Почему проверка нужна, хотя `listen()` и так слушает только петлю: петля
-/// закрывает сеть, но не браузер разработчика. Две атаки проходят мимо
-/// биндинга целиком, и обе требуют только того, чтобы человек открыл вкладку:
+/// Why the check is needed even though `listen()` only listens on loopback:
+/// loopback closes off the network, but not the developer's browser. Two
+/// attacks bypass the binding entirely, and both only require a person to
+/// open a tab:
 ///
-///   * **DNS rebinding.** Чужой домен отвечает A-записью `127.0.0.1`. Тогда
-///     для браузера страница и API — ОДИН origin, никакого CORS не возникает,
-///     и скрипт со страницы читает ответы консоли как свои. Это и есть путь к
-///     базе целиком: консоль ходит service_role-ключом, мимо RLS. Отличает
-///     такой запрос ровно одно — в `Host` стоит домен атакующего, а не
-///     `127.0.0.1`. Поэтому проверка `Host` здесь главная.
+///   * **DNS rebinding.** A foreign domain answers with an A record of
+///     `127.0.0.1`. Then, to the browser, the page and the API are ONE origin,
+///     no CORS arises, and the page's script reads the console's responses as
+///     its own. This is the path to the whole database: the console uses the
+///     service_role key, bypassing RLS. Exactly one thing tells such a request
+///     apart: `Host` holds the attacker's domain, not `127.0.0.1`. That is why
+///     the `Host` check is the main one here.
 ///
-///   * **Cross-origin запись.** Ответ браузер не покажет, но сам запрос
-///     уйдёт, а запись этим и опасна: `POST /api/moderation/ban` побочный
-///     эффект произведёт. `express.json()` разбирает только
-///     `application/json`, а он требует preflight, и на него никто не
-///     отвечает — но полагаться на это значит полагаться на то, что список
-///     «простых» Content-Type никогда не поменяется и что ни один обработчик
-///     не начнёт читать параметры из URL. Проверка `Origin` делает отказ
-///     явным.
+///   * **Cross-origin writes.** The browser won't show the response, but the
+///     request itself goes out, and that is what makes writes dangerous:
+///     `POST /api/moderation/ban` will produce its side effect.
+///     `express.json()` only parses `application/json`, which requires a
+///     preflight that nobody answers — but relying on that means relying on
+///     the list of "simple" Content-Types never changing and on no handler
+///     ever starting to read parameters from the URL. The `Origin` check makes
+///     the rejection explicit.
 ///
-/// Третий признак — `Sec-Fetch-Site`. Его ставит сам браузер, подделать со
-/// страницы нельзя (это forbidden header), и для запроса из консоли он всегда
-/// `same-origin`. Он не заменяет две проверки выше (у curl его нет вовсе), но
-/// ловит случай, где `Origin` почему-то не приехал.
+/// The third signal is `Sec-Fetch-Site`. The browser sets it itself, a page
+/// can't forge it (it is a forbidden header), and for a request from the
+/// console it is always `same-origin`. It doesn't replace the two checks above
+/// (curl doesn't send it at all), but it catches the case where `Origin` for
+/// some reason didn't arrive.
 ///
-/// Пустая функция от строк, а не middleware: у неё есть таблица случаев, и
-/// таблицу надо проверять тестом, а не глазами.
+/// A pure function of strings, not middleware: it has a table of cases, and
+/// the table should be verified by a test, not by eye.
 export function guardLocalRequest(headers: {
   host?: string;
   origin?: string;
@@ -85,16 +88,16 @@ export function guardLocalRequest(headers: {
   }
 
   const site = headers.secFetchSite?.trim();
-  // `none` — адрес набрали руками или открыли из закладки; `same-origin` —
-  // сама консоль. `same-site` и `cross-site` для петли означают чужую
-  // страницу.
+  // `none` — the address was typed by hand or opened from a bookmark;
+  // `same-origin` — the console itself. `same-site` and `cross-site` on
+  // loopback mean a foreign page.
   if (site && site !== 'same-origin' && site !== 'none') {
     return { ok: false, reason: `Sec-Fetch-Site: ${site}` };
   }
 
   const remote = headers.remoteAddress;
-  // Лишний рубеж на случай, если биндинг когда-нибудь расширят: `::ffff:` —
-  // это IPv4-адрес в IPv6-сокете, так его отдаёт Node.
+  // An extra line of defence in case the binding is ever widened: `::ffff:`
+  // is an IPv4 address on an IPv6 socket, which is how Node reports it.
   if (remote !== undefined) {
     const plain = remote.startsWith('::ffff:') ? remote.slice(7) : remote;
     if (plain !== '127.0.0.1' && plain !== '::1') {
@@ -120,9 +123,9 @@ export function localOnly(req: Request, res: Response, next: NextFunction) {
     next();
     return;
   }
-  // Логируется, потому что сработавшая проверка — это не опечатка в URL, а
-  // либо перенастроенный запуск, либо вкладка, которая только что попыталась
-  // сходить в базу проекта.
+  // Logged because a tripped check is not a typo in a URL, but either a
+  // reconfigured launch or a tab that just tried to reach the project's
+  // database.
   console.warn('[api] отказ локальной проверки:', verdict.reason);
   res
     .status(403)

@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const PUBSPEC = resolve(here, '..', '..', 'app', 'pubspec.yaml');
 
-// Консоль лежит в том же репозитории, что и приложение, — значит может
-// сказать не только «какой максимум сообщили устройства», но и «что вообще
-// собрано». Расхождение между этими числами и есть интересное: установка не
-// может сообщить сборку, которой нет в pubspec, если её номер не подняли
-// где-то по дороге к стору.
+// The console lives in the same repository as the app, so it can say not only
+// "what maximum the devices have reported" but also "what has actually been
+// built". The discrepancy between those numbers is the interesting part: an
+// install can't report a build that isn't in pubspec unless its number was
+// bumped somewhere on the way to the store.
 export async function repoVersion(): Promise<{
   name: string;
   build: number;

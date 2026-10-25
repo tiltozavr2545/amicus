@@ -1,2609 +1,2737 @@
 # Changelog
 
-История версий Amicus. Вынесена из CLAUDE.md/AGENTS.md, чтобы те не грузились
-целиком в контекст на каждой сессии — здесь она читается по запросу, когда
-действительно нужна.
+Amicus version history. Moved out of CLAUDE.md/AGENTS.md so that they are not
+loaded into context in full on every session — here it is read on demand, when
+it is actually needed.
 
-Про **почему** конкретное решение принято именно так лучше смотреть не сюда, а в
-комментарий в `supabase/migrations/` (он лежит рядом с кодом) или в `git log`.
-Номера миграций до `20260826000000` — это имена файлов в теге
-`pre-baseline-migrations`, куда история свёрнута из репозитория:
-`git show pre-baseline-migrations:supabase/migrations/<версия>_*.sql`.
-Номера от `20260826000000` до `20261010100000` — в теге
-`pre-baseline-migrations-2` (вторая свёртка, 2026-10-18).
-Здесь — хронология и что в какой версии появилось.
+For **why** a particular decision was made this way, look not here but at the
+comment in `supabase/migrations/` (it sits next to the code) or at `git log`.
+Migration numbers before `20260826000000` are file names in the
+`pre-baseline-migrations` tag, where the history was squashed out of the
+repository: `git show pre-baseline-migrations:supabase/migrations/<version>_*.sql`.
+Numbers from `20260826000000` to `20261010100000` are in the
+`pre-baseline-migrations-2` tag (the second squash, 2026-10-18).
+Here: the chronology and what appeared in which version.
 
-Всё перечисленное сделано вне очереди относительно пошагового плана
-(`docs/implementation-plan.md`) — осознанное отступление, см. там же.
+Everything listed was done out of order relative to the step-by-step plan
+(`docs/implementation-plan.md`) — a deliberate deviation, see the same place.
 
-Первый аудит кода (до 0.4.0) — полное ревью проекта (RLS, Storage-политики,
-клиент, секреты, вся история git) прошло чисто: критичных дыр нет, секретов в
-репозитории и истории git нет, `service_role`/secret-ключ в клиенте не
-используется, anon-ключ публичный by design. Сильные места — `security
-definer` + `set search_path` на функциях, `for update` против гонки при
-активации инвайта, канонический порядок пар, `revoke execute … from anon`,
-лимит размера + allow-list MIME, `enable_anonymous_sign_ins = false`,
-email-подтверждение, `additional_redirect_urls = []`. Ниже — то, что аудит всё
-же нашёл и что было закрыто следующими версиями.
+The first code audit (before 0.4.0) — a full review of the project (RLS, Storage
+policies, the client, secrets, the entire git history) came back clean: no
+critical holes, no secrets in the repository or in git history, the
+`service_role`/secret key is not used in the client, the anon key is public by
+design. Strong points — `security definer` + `set search_path` on functions,
+`for update` against the race on invite activation, the canonical pair order,
+`revoke execute … from anon`, the size limit + MIME allow-list,
+`enable_anonymous_sign_ins = false`, email confirmation, `additional_redirect_urls = []`.
+Below is what the audit did find after all and what was closed by the following versions.
 
-Вне очереди (до Этапа 5, осознанное отступление от пошагового плана) добавлено:
-- удаление своих постов и комментариев (0.2.0) — DELETE RLS-политики на `posts`/`comments`/фото поста + подтверждение в UI, релиз [v0.2.0](https://github.com/tiltozavr2545/amicus/releases/tag/v0.2.0);
-- несколько типов реакций (0.3.0) — вместо одного лайка три взаимоисключающие реакции 👍/😐/👎: колонка `type` в `reactions` (`like`/`neutral`/`dislike`, уникальность `(post_id, user_id)` осталась — одна реакция на пост) + UPDATE RLS-политика для смены реакции, upsert в репозитории, у каждой реакции свой счётчик, повторный тап снимает.
-- приватность видимости данных (0.4.0) — сузили две широкие RLS-политики чтения, закрыв два пункта из раздела «Безопасность и приватность» future-development.md: (1) профили (`users`) теперь видны только себе и своим Connections вместо `using(true)` — раньше любой залогиненный мог перечислить всю адресную книгу; (2) реакции — SELECT только своих строк, а настоящий счётчик на пост отдаёт `security definer`-функция `reaction_summary(uuid[])` (только числа + собственная реакция, без чужих `user_id`), так что «кто что поставил» больше не утекает, а счётчик остаётся истинным тоталом. Миграция `20260712100000_scope_profile_and_reaction_visibility.sql`.
-- «Знакомы N дней/месяцев/лет — с DD MMM YYYY» (0.5.0) на экране «Знакомства» — метка под именем каждого знакомого, посчитанная от `created_at` строки `connections` (уже читался для сортировки, просто раньше не прокидывался дальше). Чисто клиентская фича: без миграций и RLS, покрыта юнит-тестами на склонение (день/дня/дней и т.п.) и на формат даты. Изначально реализована вручную — своя функция `_pluralize()` в `connection_duration.dart` и глобальная `Intl.defaultLocale = 'ru'` в `main.dart` (заодно тогда же нашли и исправили баг: `DateFormat` без явной локали не подхватывал `ru` на реальном устройстве, месяцы шли по-английски). В 0.7.0 эта ручная логика полностью заменена официальной Flutter-локализацией — см. ниже.
-- Аватарки знакомых на экране «Знакомства» (0.5.0) — раньше список показывал только заглушку `Icon(Icons.person)` для всех. `Friend` теперь несёт `avatarPath` (из `users.avatar_path` через join), общий `avatarBytesProvider` (family по пути, `keepAlive` на успешном результате — не перекачивает при возврате на экран) в `profile_repository.dart` реально переиспользуется экраном профиля и списком знакомых (экран профиля переведён на него, свой отдельный провайдер удалён). `uploadAvatar()` пишет уникальное имя файла на каждую загрузку (старый файл удаляется best-effort), так что смена фото меняет путь → кэш сам сбрасывается, залипания нет. Storage-политику на `media`-бакете сузили в 0.5.0: аватарку видно только себе и своим Connections (миграция `20260712120000_scope_avatar_storage_visibility.sql`, заменяет широкую `20260707222025`).
-- Сброс пароля (0.6.0) — ссылка «Забыли пароль?» на экране входа ведёт на `ForgotPasswordScreen` (`/forgot-password`), которая вызывает `auth.resetPasswordForEmail()`. Тот же приём, что и с подтверждением email (см. выше про deep link): раз deep link в приложение не настроен, письмо ведёт на отдельную интерактивную страницу `reset-password.html` на том же GitHub Pages (`gh-pages`, рядом с `index.html`) — она сама читает `access_token`/`refresh_token` из URL через Supabase JS SDK, вызывает `setSession()` и даёт ввести новый пароль (`auth.updateUser()`), без чтения RLS-таблиц и без сохранения сессии в `localStorage` (`persistSession: false`). URL страницы добавлен в `additional_redirect_urls` в `supabase/config.toml` и применён к живому проекту через Management API.
-  Важная деталь: `Supabase.initialize()` в `main.dart` теперь явно ставит `authFlowType: AuthFlowType.implicit` вместо PKCE по умолчанию. PKCE устроен так, что обменять `code` из ссылки на сессию может только клиент, изначально хранящий code verifier (телефон), — а не браузер, где реально открывается ссылка из письма. Implicit-flow кладёт `access_token`/`refresh_token` прямо в URL, поэтому `reset-password.html` может их прочитать сама. Подтверждение email это не затрагивает — та страница токены вообще не читает, подтверждение засчитывается на сервере до редиректа. Проверено end-to-end на физическом устройстве: запрос ссылки → письмо → `reset-password.html` → новый пароль → вход.
-- Нижняя навигация (0.6.0) — общий bottom `NavigationBar` (по образцу Instagram) с четырьмя пунктами: Лента / Знакомства / Новый пост / Профиль. Раньше переходы между лентой, знакомствами и профилем шли через кнопки в `AppBar`, а создание поста — через `FloatingActionButton` на ленте; теперь все точки входа собраны в одном месте. `router.dart` оборачивает три вкладки (`/`, `/connections`, `/profile`) в `StatefulShellRoute.indexedStack` (`MainShellScreen`) — при переключении вкладка держит свой скролл/состояние формы, в отличие от обычного `push`. «Новый пост» — не вкладка, а модальный экран (`CreatePostScreen`), открывается поверх шелла по кнопке в баре; чтобы лента обновлялась и когда её экран не активен в момент публикации, добавлен `feedRefreshTickProvider` — счётчик-нотифаер, на который лента подписывается через `ref.listen`. Чисто клиентская фича: без миграций и RLS. Проверено вручную на физическом устройстве: переключение всех вкладок сохраняет состояние, модальный экран поста открывается и корректно возвращает на ту вкладку, с которой был открыт. (Обе фичи версии 0.6.0 — сброс пароля и нижняя навигация — задеплоены в Google Play; отдельного GitHub-релиза/тега `v0.6.0` для этой версии, в отличие от 0.2.0–0.5.0/0.7.0/0.8.0, не создали.)
-- Локализация (0.7.0) — закрыт пункт «Локализация (i18n)» из future-development.md: интерфейс переведён на английский (язык по умолчанию), русский показывается только если системная локаль русская. Официальный инструментарий Flutter, а не самописный: `flutter_localizations` + `intl`, `l10n.yaml` (`arb-dir: lib/l10n`) генерирует `AppLocalizations` из `lib/l10n/app_en.arb`/`app_ru.arb` (`flutter gen-l10n`, включено через `generate: true` в `pubspec.yaml`). `MaterialApp.router` в `app.dart` объявляет `localizationsDelegates`/`supportedLocales: [en, ru]` без явного `locale:` — Flutter сам берёт первую подходящую системную локаль из списка, иначе первую в списке (en), это и даёт нужное поведение «по умолчанию». `connection_duration.dart` (склонение «Known for N days» / «Знакомы N дней/месяцев/лет») переведён на ICU plural-формы прямо в ARB — категории `one/other` для английского и `one/few/many/other` для русского обрабатывает сам пакет `intl`, старая ручная функция `_pluralize()` больше не нужна. `DateFormat` во всех местах (лента, комментарии, знакомства) теперь получает локаль явно из `AppLocalizations.localeName` вместо старого глобального `Intl.defaultLocale = 'ru'` в `main.dart` — там вместо этого `initializeDateFormatting()` вызывается для каждой локали из `AppLocalizations.supportedLocales`. Юнит-тесты `connection_duration_test.dart` и виджет-тесты экранов входа/регистрации/сброса пароля обновлены и проверяют обе локали явно (через `AppLocalizationsEn()`/`AppLocalizationsRu()`, без завязки на системную локаль тестового окружения). Проверено на физическом устройстве переключением системной локали между `ru-RU` и `en-US` без переустановки: лента, «Знакомства» (включая правильное склонение «день/дня/дней» и «day/days» на реальных данных знакомых), «Новый пост», профиль — в обоих языках корректный текст без регрессий.
-- Тёмная тема (0.8.0) — закрыт пункт «Тёмная тема» из раздела 1.0 future-development.md: тумблер light/dark в `AppBar` каждой из трёх основных вкладок (Лента/Знакомства/Профиль), с противоположной от заголовка стороны — переиспользуемый `ThemeToggleSwitch` (`lib/theme/theme_toggle_switch.dart`). Состояние — Riverpod `NotifierProvider<ThemeModeNotifier, ThemeMode>` (`lib/theme/theme_mode_provider.dart`): по умолчанию `ThemeMode.system` (тема приложения = системная тема устройства, `MaterialApp.router` в `app.dart` получил `darkTheme`-вариант той же `ColorScheme.fromSeed`), а после первого тапа по тумблеру выбор фиксируется явно (`ThemeMode.light`/`ThemeMode.dark`, вычисляется от текущей системной яркости на момент тапа) и переживает перезапуск приложения через `shared_preferences`. Чисто клиентская фича: без миграций и RLS. Строка тултипа локализована (`darkThemeToggleTooltip` в обоих ARB). Проверено на физическом устройстве: при первом запуске тема совпадает с системной, ручное переключение тумблором работает на всех трёх вкладках и сохраняется после перезапуска приложения.
-- Багфиксы и мелкая закалка (0.8.1) — пачка правок без изменения функционала, найденных ревью кода: (1) регистрация и профиль отвергают пустое имя (`nameRequiredError` в обоих ARB), серверный fallback `'Без имени'` в `handle_new_user()` тоже починен на случай прямого вызова API мимо клиента (`coalesce(nullif(trim(...), ''), ...)`, миграция `20260714120000_fallback_empty_display_name.sql`); (2) активация инвайта на пустом коде показывает понятную ошибку (`inviteCodeRequiredError`) вместо сырой «Invite code not found», а `activateInviteLink()` в `connections_repository.dart` не падает `StateError`-ом на пустом ответе RPC; (3) лента переведена с offset-пагинации (`range()`) на keyset (курсор по последнему посту, `(created_at, id)` в `feed_repository.dart`) — вставка или удаление поста сверху между подгрузками страниц больше не даёт дублей/пропусков; чистая функция `keysetFilter()` покрыта юнит-тестами; (4) `_refresh()`/`_loadMore()` в ленте (`feed_screen.dart`) защищены счётчиком `_loadEpoch` от гонки pull-to-refresh с загрузкой «в полёте»; откат оптимистичной реакции и удаление поста ищут запись по `id`, а не по захваченному `index`, который мог сместиться за время `await`; (5) `setState` после `dispose` защищён проверками `mounted` в ленте, комментариях и знакомствах; (6) расширение файла для фото/аватарки берётся безопасным хелпером `fileExtension()` (`lib/shared/file_extension.dart`) вместо `name.split('.').last`, который на файле без точки в имени возвращал мусор; (7) `ColorScheme.fromSeed` для обеих тем в `app.dart` вынесен в top-level константы вместо пересчёта на каждой перестройке `KrugApp` — тяжёлая кросс-фейд анимация переключения темы больше не подтормаживала в debug-сборке. Проверено вручную на физическом устройстве (debug и profile) по всем перечисленным сценариям — исключений в логе нет.
-- Mute и блокировка знакомого (0.9.0) — на экране «Знакомства» у каждого знакомого две обратимые кнопки, не разрывающие саму запись Connection: mute (я перестаю видеть его посты в ленте, он мои — видит) и block (взаимное скрытие постов в обе стороны). Обе таблицы новые и симметрично устроены: `muted_users (muter_id, muted_id)` и `blocked_users (blocker_id, blocked_id)`, RLS — доступ только к своим строкам; отдельные таблицы, а не общий "тип отношения", потому что семантика видимости разная (односторонняя vs взаимная). Видимость постов, как и раньше, целиком на RLS — SELECT-политика `posts` расширена условиями на mute/block, `feed_repository.dart`/`feed_screen.dart` не тронуты. Миграция `20260715120000_add_muted_and_blocked_users.sql`. Mute и block запрашивают подтверждение через тот же `AlertDialog`-паттерн, что и удаление поста/комментария (замьютить/заблокировать — потенциально неожиданное для другой стороны действие); снятие — unmute прямо на экране «Знакомства», unblock — на новом экране «Заблокированные» (`blocked_users_screen.dart`, открывается по кнопке в `AppBar` «Знакомств»), оба без диалога, одним тапом.
-  Багфикс в тот же день, найден при ручной проверке на двух живых аккаунтах (mute работал, block — нет): изначально проверка блока в политике `posts` была инлайновым `not exists (... from blocked_users where (blocker_id=auth.uid() and blocked_id=author) or (blocker_id=author and blocked_id=auth.uid()))` — но этот subquery сам подчиняется RLS-политике `blocked_users` (`blocker_id = auth.uid()`), и вторая ветка OR (нужно увидеть строку, где `blocker_id` — это автор поста, а не сам вызывающий) молча отфильтровывалась ещё до вычисления OR. В итоге заблокированный человек всё равно видел посты того, кто его заблокировал (mute не задело — его проверка всегда self-referential на `muter_id = auth.uid()`, что и так удовлетворяет RLS `muted_users`). Исправлено по образцу `reaction_summary()` — вынесено в `security definer`-функцию `is_blocked_pair(uuid, uuid)`, которая читает `blocked_users` с правами владельца функции в обход построчной RLS-проверки и возвращает только булево. Миграция `20260715150000_fix_mutual_block_visibility_check.sql`. Проверено на живой схеме симуляцией RLS через Management API (`set local role authenticated` + `set_config('request.jwt.claims', ...)`) в обе стороны — до фикса заблокированный видел 2 поста блокирующего, после фикса не видит ни одного, при этом обычная лента по Connections не пострадала. После фикса пользователь подтвердил вручную на двух живых аккаунтах на физическом устройстве: mute и mutual-блокировка оба работают корректно.
-- Лимит длины текста и скрытие сырых ошибок (0.9.1) — закрыт пункт «Мелкая закалка» из раздела «Безопасность и приватность» future-development.md: (1) текст поста и комментария теперь ограничен 5000 символами и на клиенте (`maxLength: 5000` на `TextField` в `create_post_screen.dart`/`comments_screen.dart`, счётчик символов встроенный, от Flutter), и на сервере (`check (char_length(text) <= 5000)` на `posts.text`/`comments.text`, миграция `20260716120000_add_post_comment_text_length_limits.sql`) — раньше ограничения не было ни там, ни там; (2) сообщения об ошибках во всех экранах, где они выводились (вход/регистрация/сброс пароля, лента, знакомства, заблокированные, комментарии, профиль) перестали показывать сырой текст исключения (было `"Failed to load feed: $e"`) — заменены на общие локализованные формулировки (`"Failed to load feed. Please try again."`), плейсхолдер `{error}` убран из соответствующих строк в обоих ARB и из сгенерированных `AppLocalizations*`. Чисто клиентская правка UI + одна БД-миграция, без изменения RLS. Проверено: серверный constraint подтверждён прямым SQL-запросом к живой БД через Management API (обе проверки на месте, миграция записана в `supabase_migrations.schema_migrations`, повторный `supabase db push` её не продублирует); скрытие сырой ошибки проверено на физическом устройстве отключением сети на время публикации поста — показалось общее сообщение вместо raw exception.
-- Вложенные комментарии (0.10.0) — закрыт пункт «Вложенные комментарии» из раздела 1.0 future-development.md и заодно старый открытый вопрос «нужны ли треды»: у каждого комментария кнопка «Ответить», ответы рисуются с отступом под своим корневым. Вложенность **ровно один уровень** (как в Instagram/YouTube): ответ на ответ попадает в ту же ветку, а не третьим уровнем, а кому он адресован, показывает метка «В ответ: Имя» (только когда адресат — не сам корень ветки, иначе она была бы шумом). Отступы поэтому не уезжают за экран, а чтение остаётся одним плоским запросом без рекурсии.
-  Схема (миграция `20260725120000_add_nested_comments.sql`): важное расхождение с документацией — `parent_comment_id`, про который бриф и future-development.md утверждали «уже заложено в схему на будущее», в реальной схеме MVP **отсутствовал** (остался только в черновике модели данных), так что колонка добавлялась с нуля. Всего добавлено три: `parent_comment_id` — корень ветки (`on delete cascade`), `reply_to_id` — адресат ответа, только для метки (`on delete set null`), `deleted_at` — маркер заглушки; плюс индекс по `parent_comment_id`. Хранить корень отдельно от адресата — именно то, что позволяет не рекурсировать при чтении: `order by created_at` + группировка по `parent_comment_id` на клиенте.
-  Глубину и согласованность нельзя выразить check-constraint-ом (они зависят от другой строки), поэтому это триггер `enforce_comment_reply_rules()` — и он `security definer`, как `is_blocked_pair()`: SELECT-политика `comments` сужена до своих Connections, а подзапрос под RLS на невидимом родителе вернул бы «строк нет», что прочиталось бы как «родитель — корень» и дало бы обход ограничения глубины прямым вызовом API. Триггер проверяет: родитель существует, принадлежит тому же посту, сам является корнем, не удалён; адресат — внутри той же ветки и не удалён; у корневого комментария `reply_to_id` не задан.
-  Удаление: комментарий **с ответами** превращается в заглушку (`deleted_at` + текст реально затирается, строка живёт, чтобы ветка осталась читаемой), **без ответов** — удаляется по-настоящему, как раньше. Решение принимается на сервере в `security definer`-функции `delete_own_comment()`, а не политиками, потому что выбор hard/soft должен быть атомарным и потому что альтернатива (UPDATE-политика на `comments`) выдала бы клиенту редактирование текста комментариев, а это сознательно не фича. DELETE-политику из 0.2.0 при этом **снял**: с ней клиент мог обойти RPC и хард-удалить корень, унеся каскадом чужие ответы. Отвечать на заглушку нельзя ни в UI, ни на сервере.
-  Клиент: чистая функция `threadComments()` (`comment_thread.dart`) строит порядок отображения и режет две вещи — ответ, чей корень не виден (автор корня не мой Connection: RLS вернула ответ, но не родителя, и показывать его как корневой значило бы вырвать из контекста, поэтому скрывается вся ветка) и заглушку, под которой не осталось видимых ответов (она нужна только чтобы держать ветку). Счётчик комментариев на посте в ленте не тронут — считает всё, включая ответы (`feed_repository.dart` тут не менялся).
-  Багфикс в тот же день, найден при ручной проверке на устройстве (ответ на ответ рисовался **выше** того, на что отвечали): у `order()` в postgrest-dart дефолт `ascending = false`, а в `fetchComments()` стояло просто `.order('created_at')` — то есть комментарии с самого MVP приходили от новых к старым, в плоском списке это выглядело как «новые сверху», а в ветках дало обратный порядок внутри ветки. Исправлено явным `ascending: true` + `id` как тайбрейк, и заодно сам порядок теперь гарантирует `threadComments()`, а не запрос — на этом стоит регресс-тест с перевёрнутым входом. Побочный эффект: корневые комментарии теперь идут старые сверху (как в переписке), а не новые сверху.
-  Проверено: миграция применена к живой БД через Management API и проверена симуляцией RLS (`set local role authenticated` + `request.jwt.claims`, всё в транзакции с `rollback`) — 12 проверок, включая отказы «глубина 2», «адресат из другой ветки», «родитель из другого поста», «ответ на заглушку», «удаление чужого комментария», «прямой UPDATE комментария» (0 строк — политики нет), и что удаление корня с ответами даёт заглушку с живым ответом, а листового — реальный delete. Затем вручную на физическом устройстве: ветки, метка, оба вида удаления, счётчик, английская локаль.
-  Известные смежные дыры, найденные тогда же: (1) mute/block из 0.9.0 на комментарии не распространялись — закрыто в 0.10.1, см. ниже; (2) подписи времени показывают UTC, а не местное время (`DateTime.parse()` на строке с `Z` даёт UTC-момент, `.toLocal()` не вызывается) — касается не только комментариев, но и дат постов в ленте и даты знакомства на «Знакомствах»; закрыто в 0.10.2, см. ниже.
-- Mute/block на комментарии + два багфикса заглушек (0.10.1) — mute и блокировка из 0.9.0 фильтровали только посты, поэтому под постом общего знакомого комментарии замьюченного/заблокированного продолжали показываться; это единственное место, где двое спрятавших друг друга ещё встречались. Правило (с оглядкой на вложенность в один уровень): корневой комментарий виден, если виден его автор; ответ виден, если виден его автор **и** автор корня ветки **и** автор того комментария, которому он адресован. То есть ничего, что висит под замьюченным или разговаривает с ним. Миграция `20260725150000_scope_comment_visibility_to_mute_and_block.sql`.
-  «Автор мне виден» вынесено в `security definer`-функцию `is_comment_author_visible(uuid)` (я сам, либо Connection без mute и без block в любую сторону) — `definer` по двум независимым причинам: урок `is_blocked_pair()` из 0.9.0 про RLS на `blocked_users`, плюс функция вызывается из политики `comments` про автора *другого* комментария и не должна перефильтровываться той же политикой, которую помогает вычислять. Прочитать автора другого комментария изнутри политики самой таблицы — рекурсия через эту же политику, поэтому вторая функция `comment_author(uuid)` тоже `definer`; глубина в один уровень означает, что `parent_comment_id` всегда корень и хватает одного прыжка, без рекурсивного обхода. INSERT-политику заодно сузили: ответить можно только на видимый тебе комментарий (в UI и так невозможно, но прямой вызов API мог парковать ответы под комментарием заблокированного).
-  Следствие правила, неочевидное на первый взгляд: **свой собственный** ответ под комментарием замьюченного тоже пропадает из твоей ленты комментариев (строка жива, другие её видят) — ветка скрыта целиком. И из ветки исчезает реплика незамьюченного знакомого, если она адресована замьюченному. Оба поведения выбраны сознательно.
-  Побочно: после этой политики «осиротевший ответ» (ответ виден, корень нет) с сервера в принципе перестаёт приходить — если автор корня виден, то виден и корень. Фильтр в `threadComments()` из-за этого стал страховкой, а не основным правилом.
-  Два багфикса по заглушкам, найденных при ручной проверке на устройстве: (1) счётчик комментариев на посте считал **все** строки, включая заглушки, поэтому пост с одной осиротевшей заглушкой показывал «1» при пустом экране (клиент заглушку без ответов не рисует) — в `feed_repository.dart` добавлен `.isFilter('deleted_at', null)`, цифра теперь означает «столько живых комментариев», а не «столько строк на экране» (у поста с заглушкой и одним ответом счётчик покажет 1, а строк на экране будет две); (2) сама осиротевшая заглушка больше не остаётся в базе — `delete_own_comment()`, удалив листовой ответ, удаляет и родителя, если тот заглушка и ответов под ним не осталось, плюс одноразовая зачистка уже накопившихся. Миграция `20260725180000_drop_childless_comment_tombstones.sql`. Клиентский фильтр в `threadComments()` при этом оставлен: заглушка всё ещё может осиротеть в обход RPC — если автор ответа удалит аккаунт, его ответы уедут каскадом по FK, минуя функцию.
-  Проверено: обе миграции применены к живой БД через Management API и проверены симуляцией RLS (`set local role authenticated` + `request.jwt.claims`, в транзакции с `rollback`) — 30 проверок видимости на дереве из семи комментариев в четырёх сценариях (без mute/block — контроль, что не переужали; замьютил; заблокировал; **заблокировали меня** — та сторона, которую RLS проглатывала в 0.9.0) плюс отказ INSERT под скрытым корнем, и 5 проверок жизненного цикла заглушки (корень с ответами → заглушка, заглушка держится пока жив хоть один ответ, последний ответ уносит её с собой, осиротевших в базе не осталось). Затем вручную на физическом устройстве.
-- Местное время вместо UTC в подписях (0.10.2) — закрыт последний хвост от 0.10.0: PostgREST отдаёт `timestamptz` с явным смещением (`...Z`), поэтому `DateTime.parse()` возвращал `DateTime` с `isUtc == true`, а `DateFormat` его так и печатал — комментарий, написанный в 13:02 по Москве, был подписан 10:02. Для подписи без времени («Знакомы N дней — с 25 июл. 2026») тот же сдвиг мог назвать соседний день. Конвертация добавлена одним хелпером `parseTimestamp()` (`lib/shared/parse_timestamp.dart`) на границе «строка из БД → модель», а не в местах отображения, чтобы новый экран не мог её забыть; через него переведены все четыре точки парсинга (`Post.fromRow`, `Comment.fromRow`, `Friend.connectedAt`, `BlockedUser.blockedAt`), других в `lib` нет. Чисто клиентская правка: без миграций и RLS. Keyset-пагинация ленты не пострадала — `keysetFilter()` отправляет курсор назад в PostgREST через `.toUtc()`, момент времени тот же, существующие тесты на «в фильтре нет `+`» проходят. Три юнит-теста на хелпер написаны против момента времени и флага `isUtc`, а не против ожидаемых цифр на часах, иначе падали бы на машине или в CI в другой зоне. Проверено на физическом устройстве: подпись свежего комментария совпадает с часами телефона.
-- targetSdk 36 под требование Google Play (0.10.3) — Play Console прислала предупреждение: с 31 августа 2026 обновления не принимаются, если `targetSdk` старше года от последнего релиза Android; приложение шло на 35. Функционала правка не добавляет, это чистое соответствие требованию стора. `compileSdk`/`targetSdk` прописаны в `android/app/build.gradle.kts` числом 36 вместо наследования от `flutter.compileSdkVersion`/`targetSdkVersion` — Flutter сам поднимает дефолт до 36 только с 3.35, а SDK закреплён на 3.32.8 из-за macOS (см. ниже). AGP пришлось поднять 8.7.3 → 8.9.3 (`android/settings.gradle.kts`): 8.7.3 тестировался максимум до `compileSdk 35` и против 36 падает; 8.9.x — первая линия с поддержкой 36, которая ещё работает на текущем Gradle 8.12 (8.11+ потребовал бы Gradle 8.13). Отход на случай проблем — `android.suppressUnsupportedCompileSdk=36` со старым AGP — не понадобился, Flutter 3.32.8 с AGP 8.9.3 собрался без единой правки. В `deploy-closed-testing.yml` заменён `platforms;android-35` на `android-36`, иначе деплойная сборка в CI упала бы (`build-tools;35.0.0` оставлен — AGP 8.9 сам подтягивает именно его).
-  Опасение, что macOS 12.7.6 не даст поставить SDK 36, не подтвердилось: пакеты Android SDK Platform — это jar-ники и ресурсы, их обрабатывает JDK 21 из Android Studio, версия системы ни при чём. Ограничение macOS 14+ касается только Flutter SDK и Xcode, где нативные бинарники.
-  Проверено на физическом устройстве с Android 16 (API 36) — той версией, где новое поведение и проявляется. Два риска targetSdk 36: принудительный edge-to-edge (отключить уже нельзя) и predictive back, который система включает по умолчанию, — в манифесте `enableOnBackInvokedCallback` не объявлен вовсе, так что применяется системный дефолт. Ни один не выстрелил: вёрстка не уехала под системные панели ни на одном экране, а жест «назад» с пушнутых экранов (комментарии, «Новый пост», «Заблокированные») возвращает на предыдущий экран, а не сворачивает приложение.
-  Грабли при проверке, на будущее: экраны входа для теста жеста «назад» не годятся — они ходят через `context.go()`, который заменяет маршрут, стек пустой, и «назад» законно сворачивает приложение на любой версии Android. Выглядит как регрессия, ей не являясь. Проверять нужно только `Navigator.push()`-экраны. Отмену незавершённого жеста через `adb` достоверно проверить нельзя: решение «довести или отменить» принимает система, а инъецированные события идут без скорости и с паузами в сотни миллисекунд — её вердикт на них ничего не говорит о приложении, нужен живой палец.
+Added out of order (before Stage 5, a deliberate deviation from the step-by-step plan):
+- deleting your own posts and comments (0.2.0) — DELETE RLS policies on `posts`/`comments`/post photos + confirmation in the UI, release [v0.2.0](https://github.com/tiltozavr2545/amicus/releases/tag/v0.2.0);
+- several reaction types (0.3.0) — instead of a single like, three mutually exclusive reactions 👍/😐/👎: a `type` column in `reactions` (`like`/`neutral`/`dislike`, the `(post_id, user_id)` uniqueness stayed — one reaction per post) + an UPDATE RLS policy for changing a reaction, upsert in the repository, each reaction has its own counter, tapping again removes it.
+- data visibility privacy (0.4.0) — narrowed two broad read RLS policies, closing two items from the "Security and privacy" section of future-development.md: (1) profiles (`users`) are now visible only to yourself and your own Connections instead of `using(true)` — previously any logged-in user could enumerate the whole address book; (2) reactions — SELECT only of your own rows, while the real per-post counter is served by the `security definer` function `reaction_summary(uuid[])` (only numbers + your own reaction, no other people's `user_id`), so "who reacted with what" no longer leaks, and the counter stays a true total. Migration `20260712100000_scope_profile_and_reaction_visibility.sql`.
+- "Known for N days/months/years — since DD MMM YYYY" (0.5.0) on the Connections screen — a label under each connection's name, computed from the `created_at` of the `connections` row (it was already being read for sorting, it just wasn't passed further before). A purely client-side feature: no migrations or RLS, covered by unit tests for pluralization (день/дня/дней etc.) and for the date format. Originally implemented by hand — its own `_pluralize()` function in `connection_duration.dart` and a global `Intl.defaultLocale = 'ru'` in `main.dart` (at the same time we found and fixed a bug: `DateFormat` without an explicit locale did not pick up `ru` on a real device, months came out in English). In 0.7.0 this manual logic was fully replaced by the official Flutter localization — see below.
+- Connection avatars on the Connections screen (0.5.0) — previously the list showed only the `Icon(Icons.person)` placeholder for everyone. `Friend` now carries `avatarPath` (from `users.avatar_path` via a join), and the shared `avatarBytesProvider` (a family by path, `keepAlive` on a successful result — doesn't re-download when returning to the screen) in `profile_repository.dart` is genuinely reused by the profile screen and the connections list (the profile screen was moved onto it, its own separate provider was removed). `uploadAvatar()` writes a unique file name on every upload (the old file is deleted best-effort), so changing the photo changes the path → the cache resets itself, no sticking. The Storage policy on the `media` bucket was narrowed in 0.5.0: an avatar is visible only to yourself and your own Connections (migration `20260712120000_scope_avatar_storage_visibility.sql`, replaces the broad `20260707222025`).
+- Password reset (0.6.0) — the "Forgot password?" link on the sign-in screen leads to `ForgotPasswordScreen` (`/forgot-password`), which calls `auth.resetPasswordForEmail()`. The same approach as with email confirmation (see the deep link note above): since a deep link into the app is not set up, the email leads to a separate interactive page `reset-password.html` on the same GitHub Pages (`gh-pages`, next to `index.html`) — it reads `access_token`/`refresh_token` from the URL itself through the Supabase JS SDK, calls `setSession()` and lets the user enter a new password (`auth.updateUser()`), without reading RLS tables and without persisting the session in `localStorage` (`persistSession: false`). The page URL was added to `additional_redirect_urls` in `supabase/config.toml` and applied to the live project through the Management API.
+  An important detail: `Supabase.initialize()` in `main.dart` now explicitly sets `authFlowType: AuthFlowType.implicit` instead of the default PKCE. PKCE works in such a way that only the client that originally stores the code verifier (the phone) can exchange the `code` from the link for a session — not the browser where the link from the email actually gets opened. Implicit flow puts `access_token`/`refresh_token` right into the URL, so `reset-password.html` can read them itself. Email confirmation is not affected — that page doesn't read tokens at all, the confirmation is counted on the server before the redirect. Verified end-to-end on a physical device: requesting the link → the email → `reset-password.html` → new password → sign-in.
+- Bottom navigation (0.6.0) — a shared bottom `NavigationBar` (modeled on Instagram) with four items: Feed / Connections / New post / Profile. Previously, transitions between the feed, connections and profile went through buttons in the `AppBar`, and post creation went through a `FloatingActionButton` on the feed; now all entry points are gathered in one place. `router.dart` wraps the three tabs (`/`, `/connections`, `/profile`) in a `StatefulShellRoute.indexedStack` (`MainShellScreen`) — when switching, a tab keeps its own scroll/form state, unlike a plain `push`. "New post" is not a tab but a modal screen (`CreatePostScreen`), opened on top of the shell by the button in the bar; so that the feed refreshes even when its screen is not active at the moment of publishing, `feedRefreshTickProvider` was added — a counter notifier that the feed subscribes to via `ref.listen`. A purely client-side feature: no migrations or RLS. Verified manually on a physical device: switching all the tabs preserves state, the modal post screen opens and correctly returns to the tab it was opened from. (Both 0.6.0 features — password reset and bottom navigation — were deployed to Google Play; a separate GitHub release/`v0.6.0` tag was not created for this version, unlike 0.2.0–0.5.0/0.7.0/0.8.0.)
+- Localization (0.7.0) — closed the "Localization (i18n)" item from future-development.md: the interface was translated into English (the default language), Russian is shown only if the system locale is Russian. Official Flutter tooling rather than a home-grown one: `flutter_localizations` + `intl`, `l10n.yaml` (`arb-dir: lib/l10n`) generates `AppLocalizations` from `lib/l10n/app_en.arb`/`app_ru.arb` (`flutter gen-l10n`, enabled via `generate: true` in `pubspec.yaml`). `MaterialApp.router` in `app.dart` declares `localizationsDelegates`/`supportedLocales: [en, ru]` without an explicit `locale:` — Flutter itself takes the first matching system locale from the list, otherwise the first one in the list (en), and this gives the desired "default" behavior. `connection_duration.dart` (pluralization of "Known for N days" / "Знакомы N дней/месяцев/лет" (Russian: "Known for N days/months/years")) was moved to ICU plural forms right in the ARB — the `one/other` categories for English and `one/few/many/other` for Russian are handled by the `intl` package itself, the old manual `_pluralize()` function is no longer needed. `DateFormat` everywhere (feed, comments, connections) now gets the locale explicitly from `AppLocalizations.localeName` instead of the old global `Intl.defaultLocale = 'ru'` in `main.dart` — there, `initializeDateFormatting()` is now called for each locale from `AppLocalizations.supportedLocales` instead. The unit tests `connection_duration_test.dart` and the widget tests of the sign-in/sign-up/password-reset screens were updated and check both locales explicitly (via `AppLocalizationsEn()`/`AppLocalizationsRu()`, without depending on the test environment's system locale). Verified on a physical device by switching the system locale between `ru-RU` and `en-US` without reinstalling: the feed, Connections (including the correct pluralization "день/дня/дней" and "day/days" on real connection data), "New post", the profile — correct text in both languages with no regressions.
+- Dark theme (0.8.0) — closed the "Dark theme" item from section 1.0 of future-development.md: a light/dark toggle in the `AppBar` of each of the three main tabs (Feed/Connections/Profile), on the side opposite the title — a reusable `ThemeToggleSwitch` (`lib/theme/theme_toggle_switch.dart`). The state is a Riverpod `NotifierProvider<ThemeModeNotifier, ThemeMode>` (`lib/theme/theme_mode_provider.dart`): by default `ThemeMode.system` (the app theme = the device's system theme, `MaterialApp.router` in `app.dart` got a `darkTheme` variant of the same `ColorScheme.fromSeed`), and after the first tap on the toggle the choice is fixed explicitly (`ThemeMode.light`/`ThemeMode.dark`, computed from the current system brightness at the moment of the tap) and survives an app restart via `shared_preferences`. A purely client-side feature: no migrations or RLS. The tooltip string is localized (`darkThemeToggleTooltip` in both ARBs). Verified on a physical device: on first launch the theme matches the system one, manual switching with the toggle works on all three tabs and persists after restarting the app.
+- Bugfixes and minor hardening (0.8.1) — a batch of fixes with no change in functionality, found by a code review: (1) sign-up and the profile reject an empty name (`nameRequiredError` in both ARBs), the server fallback `'Без имени'` ("No name") in `handle_new_user()` is also fixed for the case of a direct API call bypassing the client (`coalesce(nullif(trim(...), ''), ...)`, migration `20260714120000_fallback_empty_display_name.sql`); (2) invite activation on an empty code shows a clear error (`inviteCodeRequiredError`) instead of the raw "Invite code not found", and `activateInviteLink()` in `connections_repository.dart` no longer throws a `StateError` on an empty RPC response; (3) the feed was moved from offset pagination (`range()`) to keyset (a cursor on the last post, `(created_at, id)` in `feed_repository.dart`) — inserting or deleting a post at the top between page loads no longer produces duplicates/gaps; the pure function `keysetFilter()` is covered by unit tests; (4) `_refresh()`/`_loadMore()` in the feed (`feed_screen.dart`) are protected by a `_loadEpoch` counter against a race between pull-to-refresh and an in-flight load; the rollback of an optimistic reaction and the post deletion look up the record by `id`, not by a captured `index`, which could have shifted during the `await`; (5) `setState` after `dispose` is guarded by `mounted` checks in the feed, comments and connections; (6) the file extension for a photo/avatar is taken by the safe helper `fileExtension()` (`lib/shared/file_extension.dart`) instead of `name.split('.').last`, which returned garbage for a file with no dot in its name; (7) `ColorScheme.fromSeed` for both themes in `app.dart` was moved into top-level constants instead of being recomputed on every rebuild of `KrugApp` — the heavy cross-fade animation of the theme switch no longer stuttered in a debug build. Verified manually on a physical device (debug and profile) across all the listed scenarios — no exceptions in the log.
+- Mute and block of a connection (0.9.0) — on the Connections screen each connection has two reversible buttons that do not break the Connection record itself: mute (I stop seeing their posts in the feed, they still see mine) and block (mutual hiding of posts in both directions). Both tables are new and symmetrically designed: `muted_users (muter_id, muted_id)` and `blocked_users (blocker_id, blocked_id)`, RLS — access only to your own rows; separate tables rather than a general "relation type", because the visibility semantics differ (one-way vs mutual). Post visibility, as before, is entirely up to RLS — the `posts` SELECT policy was extended with mute/block conditions, `feed_repository.dart`/`feed_screen.dart` were not touched. Migration `20260715120000_add_muted_and_blocked_users.sql`. Mute and block ask for confirmation through the same `AlertDialog` pattern as deleting a post/comment (muting/blocking is an action that is potentially unexpected for the other side); undoing — unmute right on the Connections screen, unblock on the new "Blocked" screen (`blocked_users_screen.dart`, opened by a button in the `AppBar` of Connections), both without a dialog, in a single tap.
+  A bugfix the same day, found during a manual check on two live accounts (mute worked, block didn't): originally the block check in the `posts` policy was an inline `not exists (... from blocked_users where (blocker_id=auth.uid() and blocked_id=author) or (blocker_id=author and blocked_id=auth.uid()))` — but this subquery is itself subject to the `blocked_users` RLS policy (`blocker_id = auth.uid()`), and the second OR branch (which needs to see a row where `blocker_id` is the post's author, not the caller) was silently filtered out before the OR was even evaluated. As a result, the blocked person still saw the posts of whoever had blocked them (mute was unaffected — its check is always self-referential on `muter_id = auth.uid()`, which satisfies the `muted_users` RLS anyway). Fixed following the `reaction_summary()` pattern — moved into a `security definer` function `is_blocked_pair(uuid, uuid)`, which reads `blocked_users` with the function owner's rights, bypassing the per-row RLS check, and returns only a boolean. Migration `20260715150000_fix_mutual_block_visibility_check.sql`. Verified on the live schema by simulating RLS through the Management API (`set local role authenticated` + `set_config('request.jwt.claims', ...)`) in both directions — before the fix the blocked person saw 2 posts of the blocker, after the fix they see none, while the regular feed by Connections was unaffected. After the fix the user confirmed manually on two live accounts on a physical device: mute and mutual block both work correctly.
+- Text length limit and hiding raw errors (0.9.1) — closed the "Minor hardening" item from the "Security and privacy" section of future-development.md: (1) post and comment text is now limited to 5000 characters both on the client (`maxLength: 5000` on the `TextField` in `create_post_screen.dart`/`comments_screen.dart`, with the built-in Flutter character counter) and on the server (`check (char_length(text) <= 5000)` on `posts.text`/`comments.text`, migration `20260716120000_add_post_comment_text_length_limits.sql`) — previously there was no limit in either place; (2) error messages on all screens where they were shown (sign-in/sign-up/password reset, feed, connections, blocked, comments, profile) stopped showing the raw exception text (it used to be `"Failed to load feed: $e"`) — replaced with generic localized wording (`"Failed to load feed. Please try again."`), the `{error}` placeholder was removed from the corresponding strings in both ARBs and from the generated `AppLocalizations*`. A purely client-side UI fix + one DB migration, with no RLS change. Verified: the server constraint was confirmed by a direct SQL query against the live DB through the Management API (both checks are in place, the migration is recorded in `supabase_migrations.schema_migrations`, a repeated `supabase db push` won't duplicate it); hiding of the raw error was verified on a physical device by turning off the network while publishing a post — the generic message was shown instead of the raw exception.
+- Nested comments (0.10.0) — closed the "Nested comments" item from section 1.0 of future-development.md and, along with it, the old open question "do we need threads": every comment has a "Reply" button, replies are drawn indented under their root. Nesting is **exactly one level** (as on Instagram/YouTube): a reply to a reply goes into the same thread rather than a third level, and who it is addressed to is shown by an "In reply to: Name" label (only when the addressee is not the thread's root itself, otherwise it would be noise). So the indents don't run off the screen, and reading stays a single flat query with no recursion.
+  Schema (migration `20260725120000_add_nested_comments.sql`): an important discrepancy with the documentation — `parent_comment_id`, which the brief and future-development.md claimed was "already provisioned in the schema for the future", was **absent** from the real MVP schema (it remained only in the data model draft), so the column was added from scratch. Three were added in total: `parent_comment_id` — the thread root (`on delete cascade`), `reply_to_id` — the reply addressee, for the label only (`on delete set null`), `deleted_at` — the tombstone marker; plus an index on `parent_comment_id`. Storing the root separately from the addressee is exactly what makes it possible not to recurse on read: `order by created_at` + grouping by `parent_comment_id` on the client.
+  Depth and consistency cannot be expressed as a check constraint (they depend on another row), so this is the trigger `enforce_comment_reply_rules()` — and it is `security definer`, like `is_blocked_pair()`: the `comments` SELECT policy is narrowed to your own Connections, and a subquery under RLS on an invisible parent would return "no rows", which would be read as "the parent is a root" and allow bypassing the depth limit with a direct API call. The trigger checks: the parent exists, belongs to the same post, is itself a root, is not deleted; the addressee is within the same thread and not deleted; a root comment has no `reply_to_id`.
+  Deletion: a comment **with replies** turns into a tombstone (`deleted_at` + the text is actually wiped, the row lives on so the thread stays readable), **without replies** — it is really deleted, as before. The decision is made on the server in the `security definer` function `delete_own_comment()`, not by policies, because the hard/soft choice must be atomic and because the alternative (an UPDATE policy on `comments`) would have given the client the ability to edit comment text, which is deliberately not a feature. The DELETE policy from 0.2.0 was **dropped** in the process: with it the client could bypass the RPC and hard-delete a root, taking other people's replies along by cascade. Replying to a tombstone is impossible both in the UI and on the server.
+  Client: the pure function `threadComments()` (`comment_thread.dart`) builds the display order and cuts out two things — a reply whose root is not visible (the root's author is not my Connection: RLS returned the reply but not the parent, and showing it as a root would tear it out of context, so the whole thread is hidden) and a tombstone under which no visible replies remain (it is only needed to hold the thread). The comment counter on a post in the feed is untouched — it counts everything, including replies (`feed_repository.dart` was not changed here).
+  A bugfix the same day, found during a manual check on the device (a reply to a reply was drawn **above** what it replied to): `order()` in postgrest-dart defaults to `ascending = false`, while `fetchComments()` had just `.order('created_at')` — meaning comments had been coming from newest to oldest since the MVP; in a flat list this looked like "newest on top", while in threads it gave a reversed order within the thread. Fixed with an explicit `ascending: true` + `id` as a tiebreaker, and in addition the order itself is now guaranteed by `threadComments()`, not by the query — a regression test with a reversed input rests on this. Side effect: root comments now go oldest on top (like in a conversation), not newest on top.
+  Verified: the migration was applied to the live DB through the Management API and checked by simulating RLS (`set local role authenticated` + `request.jwt.claims`, all inside a transaction with `rollback`) — 12 checks, including the rejections "depth 2", "addressee from another thread", "parent from another post", "reply to a tombstone", "deleting someone else's comment", "direct UPDATE of a comment" (0 rows — there is no policy), and that deleting a root with replies yields a tombstone with a live reply, while deleting a leaf yields a real delete. Then manually on a physical device: threads, the label, both kinds of deletion, the counter, the English locale.
+  Known adjacent holes found at the same time: (1) the mute/block from 0.9.0 did not extend to comments — closed in 0.10.1, see below; (2) time labels show UTC rather than local time (`DateTime.parse()` on a string with `Z` gives a UTC instant, `.toLocal()` is not called) — this affects not only comments but also post dates in the feed and the connection date on Connections; closed in 0.10.2, see below.
+- Mute/block on comments + two tombstone bugfixes (0.10.1) — the mute and block from 0.9.0 filtered only posts, so under a post by a mutual connection the comments of a muted/blocked person kept being shown; this is the only place where two people who had hidden each other still met. The rule (keeping the one-level nesting in mind): a root comment is visible if its author is visible; a reply is visible if its author is visible **and** the author of the thread's root **and** the author of the comment it is addressed to. That is, nothing that hangs under a muted person or talks to them. Migration `20260725150000_scope_comment_visibility_to_mute_and_block.sql`.
+  "The author is visible to me" was extracted into the `security definer` function `is_comment_author_visible(uuid)` (myself, or a Connection with no mute and no block in either direction) — `definer` for two independent reasons: the lesson of `is_blocked_pair()` from 0.9.0 about RLS on `blocked_users`, plus the function is called from the `comments` policy about the author of *another* comment and must not be re-filtered by the same policy it helps to evaluate. Reading another comment's author from inside the table's own policy is recursion through that same policy, so the second function `comment_author(uuid)` is also `definer`; the one-level depth means `parent_comment_id` is always a root and one hop suffices, with no recursive traversal. The INSERT policy was narrowed too: you can only reply to a comment visible to you (impossible in the UI anyway, but a direct API call could park replies under the comment of someone blocked).
+  A consequence of the rule that is not obvious at first glance: **your own** reply under a muted person's comment also disappears from your comment feed (the row is alive, others see it) — the thread is hidden entirely. And a remark by an unmuted connection disappears from a thread if it is addressed to the muted person. Both behaviors were chosen deliberately.
+  Incidentally: after this policy an "orphaned reply" (the reply is visible, the root is not) in principle stops arriving from the server — if the root's author is visible, so is the root. The filter in `threadComments()` has therefore become a safety net rather than the main rule.
+  Two tombstone bugfixes found during a manual check on the device: (1) the comment counter on a post counted **all** rows, including tombstones, so a post with one orphaned tombstone showed "1" on an empty screen (the client doesn't draw a tombstone without replies) — `.isFilter('deleted_at', null)` was added in `feed_repository.dart`, the number now means "this many live comments", not "this many rows on screen" (for a post with a tombstone and one reply the counter will show 1, while there will be two rows on screen); (2) the orphaned tombstone itself no longer stays in the database — `delete_own_comment()`, after deleting a leaf reply, also deletes the parent if it is a tombstone and no replies remain under it, plus a one-off cleanup of the ones already accumulated. Migration `20260725180000_drop_childless_comment_tombstones.sql`. The client filter in `threadComments()` was kept nonetheless: a tombstone can still become orphaned bypassing the RPC — if a reply's author deletes their account, their replies go away by FK cascade, bypassing the function.
+  Verified: both migrations were applied to the live DB through the Management API and checked by simulating RLS (`set local role authenticated` + `request.jwt.claims`, in a transaction with `rollback`) — 30 visibility checks on a tree of seven comments in four scenarios (no mute/block — a control that we didn't over-tighten; I muted; I blocked; **I was blocked** — the side that RLS swallowed in 0.9.0) plus the INSERT rejection under a hidden root, and 5 tombstone lifecycle checks (a root with replies → a tombstone, the tombstone holds as long as at least one reply is alive, the last reply takes it along, no orphans left in the database). Then manually on a physical device.
+- Local time instead of UTC in labels (0.10.2) — closed the last tail from 0.10.0: PostgREST returns `timestamptz` with an explicit offset (`...Z`), so `DateTime.parse()` returned a `DateTime` with `isUtc == true`, and `DateFormat` printed it as is — a comment written at 13:02 Moscow time was labeled 10:02. For a label without a time ("Знакомы N дней — с 25 июл. 2026" ("Known for N days — since 25 Jul 2026")) the same shift could name the neighboring day. The conversion was added with a single helper `parseTimestamp()` (`lib/shared/parse_timestamp.dart`) at the "string from the DB → model" boundary, not at the display sites, so that a new screen can't forget it; all four parsing points were moved onto it (`Post.fromRow`, `Comment.fromRow`, `Friend.connectedAt`, `BlockedUser.blockedAt`), there are no others in `lib`. A purely client-side fix: no migrations or RLS. The feed's keyset pagination was not affected — `keysetFilter()` sends the cursor back to PostgREST via `.toUtc()`, the instant is the same, the existing tests for "there is no `+` in the filter" pass. Three unit tests for the helper are written against the instant in time and the `isUtc` flag, not against expected clock digits, otherwise they would fail on a machine or in CI in a different zone. Verified on a physical device: the label of a fresh comment matches the phone's clock.
+- targetSdk 36 for the Google Play requirement (0.10.3) — Play Console sent a warning: from August 31, 2026 updates are not accepted if `targetSdk` is more than a year older than the latest Android release; the app was on 35. The change adds no functionality, it is pure compliance with the store's requirement. `compileSdk`/`targetSdk` are set in `android/app/build.gradle.kts` as the number 36 instead of inheriting from `flutter.compileSdkVersion`/`targetSdkVersion` — Flutter itself raises the default to 36 only from 3.35, and the SDK is pinned at 3.32.8 because of macOS (see below). AGP had to be raised 8.7.3 → 8.9.3 (`android/settings.gradle.kts`): 8.7.3 was tested at most up to `compileSdk 35` and fails against 36; 8.9.x is the first line with 36 support that still works on the current Gradle 8.12 (8.11+ would have required Gradle 8.13). The fallback in case of problems — `android.suppressUnsupportedCompileSdk=36` with the old AGP — was not needed, Flutter 3.32.8 with AGP 8.9.3 built without a single edit. In `deploy-closed-testing.yml`, `platforms;android-35` was replaced with `android-36`, otherwise the deploy build in CI would have failed (`build-tools;35.0.0` was left — AGP 8.9 pulls in exactly that one itself).
+  The worry that macOS 12.7.6 would not allow installing SDK 36 did not pan out: Android SDK Platform packages are jars and resources, they are processed by the JDK 21 from Android Studio, the OS version has nothing to do with it. The macOS 14+ restriction concerns only the Flutter SDK and Xcode, where there are native binaries.
+  Verified on a physical device with Android 16 (API 36) — the very version where the new behavior shows up. Two targetSdk 36 risks: forced edge-to-edge (can no longer be disabled) and predictive back, which the system enables by default — `enableOnBackInvokedCallback` is not declared in the manifest at all, so the system default applies. Neither one went off: the layout did not slide under the system bars on any screen, and the "back" gesture from pushed screens (comments, "New post", "Blocked") returns to the previous screen rather than minimizing the app.
+  A pitfall during verification, for the future: sign-in screens are not suitable for testing the "back" gesture — they navigate via `context.go()`, which replaces the route, the stack is empty, and "back" legitimately minimizes the app on any Android version. It looks like a regression without being one. Only `Navigator.push()` screens should be tested. Cancelling an unfinished gesture via `adb` cannot be reliably verified: the "complete or cancel" decision is made by the system, and the injected events come without velocity and with pauses of hundreds of milliseconds — its verdict on them says nothing about the app, a live finger is needed.
 
-- Ревью кода: правило видимости, закалка и производительность (0.11.0) — двенадцать правок по итогам код-ревью ветки 0.8.1→0.10.3, восемь миграций плюс клиент. Функционала не добавляет; сгруппировано по тому, что чинилось.
+- Code review: visibility rule, hardening and performance (0.11.0) — twelve fixes following a code review of the 0.8.1→0.10.3 branch, eight migrations plus the client. Adds no functionality; grouped by what was being fixed.
 
-  **Главное — правило видимости было размножено.** «Чьё содержимое мне видно» (я сам, либо Connection без mute и без block в любую сторону) существовало в **четырёх** копиях: инлайн в SELECT-политике `posts`, инлайн внутри `reaction_summary()`, отдельной функцией `is_comment_author_visible()` и инлайн в storage-политике на фото постов. Когда 0.9.0 добавляла mute/block, обновились только первая (и позже третья) — а две другие так и остались на «автор или Connection» с 0.4.0. Обе оказались настоящими дырами: заблокированный, у которого сохранились id постов блокирующего (они были в его ленте до блокировки), через `/rpc/reaction_summary` получал живые счётчики реакций скрытых от него постов, а зная путь `posts/<author_id>/<uuid>.jpg` — бесконечно выпускал себе новые signed URL на фото (уже выданные ссылки живут 24 ч и этим не отзываются, закрылась именно возможность выписывать новые). Чинилось не заплатками на отставшие копии, а сведе́нием всех четырёх в одну `security definer`-функцию `is_author_visible(uuid)`; `is_comment_author_visible()` была ровно ею под именем, привязанным к комментариям, и удалена. Миграции `20260726120000_unify_author_visibility_rule.sql`, `20260726130000_scope_post_photo_visibility_to_mute_and_block.sql`. Аватарки намеренно **не** сужены: блок не рвёт Connection, заблокированный остаётся в списке «Знакомства», а блокирующий видит его на экране «Заблокированные» — том самом, где блок снимают, — и оба экрана рисуют аватарку.
+  **The main thing — the visibility rule had been duplicated.** "Whose content is visible to me" (myself, or a Connection with no mute and no block in either direction) existed in **four** copies: inline in the `posts` SELECT policy, inline inside `reaction_summary()`, as the separate function `is_comment_author_visible()`, and inline in the storage policy on post photos. When 0.9.0 added mute/block, only the first (and later the third) were updated — and the other two stayed on "the author or a Connection" since 0.4.0. Both turned out to be real holes: a blocked person who had kept the ids of the blocker's posts (they had been in their feed before the block) received, through `/rpc/reaction_summary`, live reaction counters of posts hidden from them, and, knowing the path `posts/<author_id>/<uuid>.jpg`, could endlessly mint new signed URLs for the photo (links already issued live for 24 h and are not revoked by this; what got closed was precisely the ability to issue new ones). It was fixed not with patches on the lagging copies but by merging all four into a single `security definer` function `is_author_visible(uuid)`; `is_comment_author_visible()` was exactly it under a name tied to comments, and was removed. Migrations `20260726120000_unify_author_visibility_rule.sql`, `20260726130000_scope_post_photo_visibility_to_mute_and_block.sql`. Avatars were deliberately **not** narrowed: a block doesn't break the Connection, the blocked person stays in the Connections list, and the blocker sees them on the "Blocked" screen — the very one where the block is lifted — and both screens draw the avatar.
 
-  **Definer-функции отвечали на чужие вопросы.** Каждая функция в открытой схеме — эндпоинт PostgREST, поэтому грант `authenticated` означает «зови с любыми аргументами». `is_blocked_pair(a, b)` не привязывала ни один аргумент к `auth.uid()`: вызывающий, которому RLS отдаёт ноль строк `blocked_users`, узнавал через RPC, заблокировали ли друг друга двое **посторонних**. Грант снят — после сведе́ния правила у функции не осталось вызовов вне `is_author_visible()`, а `security definer` исполняет тело от имени владельца, так что вложенный вызов проверяется правами `postgres`. У `comment_author(uuid)` (автор любого комментария мимо RLS) снять грант было нельзя — её звали прямо из политик, а политика вычисляется правами запрашивающей роли; поэтому убрана не выдача прав, а выдача личности: поиск автора и проверка видимости свёрнуты в `is_author_of_comment_visible(comment_id) → boolean`, сама `comment_author` удалена. Миграция `20260726140000_lock_down_visibility_helpers.sql`.
+  **Definer functions answered other people's questions.** Every function in the exposed schema is a PostgREST endpoint, so a grant to `authenticated` means "call it with any arguments". `is_blocked_pair(a, b)` did not bind either argument to `auth.uid()`: a caller to whom RLS returns zero `blocked_users` rows found out through the RPC whether two **strangers** had blocked each other. The grant was revoked — after merging the rule the function had no calls left outside `is_author_visible()`, and `security definer` executes the body as the owner, so the nested call is checked with `postgres` rights. For `comment_author(uuid)` (the author of any comment bypassing RLS) the grant couldn't be revoked — it was called directly from policies, and a policy is evaluated with the rights of the requesting role; so what was removed was not the grant but the disclosure of identity: the author lookup and the visibility check were folded into `is_author_of_comment_visible(comment_id) → boolean`, and `comment_author` itself was removed. Migration `20260726140000_lock_down_visibility_helpers.sql`.
 
-  **`delete_own_comment()` ошибалась в опасную сторону.** Проверка `if v_author <> auth.uid()` трёхзначная: при `auth.uid()` = NULL сравнение даёт NULL, `if` не срабатывает, и управление проваливается в удаление — а это единственная проверка прав у функции, DELETE-политику на `comments` в 0.10.0 сняли именно ради этого. Воспроизведено на живой схеме: сессия с ролью `authenticated` и пустыми claims удалила чужой комментарий. Теперь явный guard на неаутентифицированного плюс `is distinct from`. Вторая правка там же — гонка: функция спрашивала «есть ли ответы?» и **отдельным** оператором делала hard delete, поэтому ответ, закоммиченный между ними, для проверки невидим, но каскад по FK его уносит (клиент автора при этом рапортует об успехе). Строка берётся `for update` до проверки: вставка с FK берёт на родителе `for key share`, который с `for update` конфликтует. Проверено двумя параллельными соединениями на выбрасываемой схеме той же формы — без блокировки вставка «успевала» и исчезала каскадом, с блокировкой получает честный `23503`. Миграция `20260726150000_harden_delete_own_comment.sql`.
+  **`delete_own_comment()` failed in the dangerous direction.** The check `if v_author <> auth.uid()` is three-valued: with `auth.uid()` = NULL the comparison yields NULL, the `if` doesn't fire, and control falls through into the deletion — and this is the function's only permission check, the DELETE policy on `comments` was dropped in 0.10.0 precisely for this. Reproduced on the live schema: a session with the `authenticated` role and empty claims deleted someone else's comment. Now there is an explicit guard for the unauthenticated plus `is distinct from`. The second fix in the same place is a race: the function asked "are there replies?" and did the hard delete with a **separate** statement, so a reply committed in between is invisible to the check, yet the FK cascade takes it away (while the author's client reports success). The row is now taken `for update` before the check: an insert with an FK takes `for key share` on the parent, which conflicts with `for update`. Verified with two parallel connections on a throwaway schema of the same shape — without the lock the insert "succeeded" and vanished by cascade, with the lock it gets an honest `23503`. Migration `20260726150000_harden_delete_own_comment.sql`.
 
-  **Клиент мог подделать серверное состояние.** `deleted_at` в INSERT-политике не упоминался, так что комментарий вставлялся сразу заглушкой (не считается счётчиком, рисуется как «удалённый», отвечать нельзя, вычистить может только автор) — `20260726160000_pin_comment_tombstone_state_to_server.sql`. Тем же способом подделывался `created_at`, и это хуже: лента упорядочена `created_at desc`, поэтому пост с датой 2099 навсегда встаёт первым у всех знакомых автора и его нельзя пролистать; у комментария backdating прибивает его в начало ветки. Прибито к серверным часам через `created_at = now()` в обеих INSERT-политиках, а не отзывом прав на колонку: колоночный `revoke` требует снять табличный INSERT и перечислить все остальные колонки поимённо, руками поддерживая список при каждой новой. `now()` — это `transaction_timestamp()`, ровно то, что вычисляет DEFAULT в той же транзакции, поэтому легитимные вставки проходят по построению (оба репозитория колонку вообще не шлют). Побочно DEFAULT становится несущим: смена его на `clock_timestamp()` уронит вставки — зато громко и на первом же тесте. Миграция `20260726190000_pin_created_at_to_server_clock.sql`.
+  **The client could forge server state.** `deleted_at` wasn't mentioned in the INSERT policy, so a comment could be inserted already as a tombstone (not counted by the counter, drawn as "deleted", can't be replied to, only the author can clean it up) — `20260726160000_pin_comment_tombstone_state_to_server.sql`. `created_at` could be forged the same way, and that is worse: the feed is ordered by `created_at desc`, so a post dated 2099 permanently stands first for all of the author's connections and can't be scrolled past; for a comment, backdating pins it to the start of the thread. It was pinned to the server clock via `created_at = now()` in both INSERT policies, rather than by revoking column rights: a column-level `revoke` requires removing the table-level INSERT and listing all the other columns by name, maintaining the list by hand with every new one. `now()` is `transaction_timestamp()`, exactly what the DEFAULT evaluates in the same transaction, so legitimate inserts pass by construction (neither repository sends the column at all). Incidentally the DEFAULT becomes load-bearing: changing it to `clock_timestamp()` will break inserts — but loudly and on the very first test. Migration `20260726190000_pin_created_at_to_server_clock.sql`.
 
-  **Ошибки инвайта получили коды.** `_activate()` оставалась последним местом, где на экран шёл сырой `e.message` (0.9.1 убрала это везде, кроме неё — там сообщение полезное). Но через тот же канал приходит всё, что скажет база: таймаут, нарушение констрейнта, ошибка пула, с именами таблиц в тексте; плюс три полезных сообщения были захардкоженным английским внутри миграции и в русской локали показывались по-английски. Разведено: `raise` получили стабильные SQLSTATE по конвенции PostgREST `PTxyz` (`PT404` не найден, `PT409` уже использован, `PT422` свой собственный), клиент делает `switch (e.code)` и берёт текст из ARB, всё неизвестное — общее сообщение. `'Not authenticated'` намеренно оставлен на `P0001`: с экрана за сессией недостижим. Миграция `20260726170000_give_invite_errors_stable_codes.sql`, три новых ключа в обоих ARB.
+  **Invite errors got codes.** `_activate()` was the last place where a raw `e.message` went to the screen (0.9.1 removed this everywhere except there — the message is useful there). But everything the database says comes through the same channel: a timeout, a constraint violation, a pool error, with table names in the text; plus three useful messages were hardcoded English inside the migration and were shown in English in the Russian locale. Separated: the `raise`s got stable SQLSTATEs following the PostgREST convention `PTxyz` (`PT404` not found, `PT409` already used, `PT422` your own), the client does a `switch (e.code)` and takes the text from the ARB, everything unknown gets the generic message. `'Not authenticated'` was deliberately left at `P0001`: it is unreachable from the screen behind a session. Migration `20260726170000_give_invite_errors_stable_codes.sql`, three new keys in both ARBs.
 
-  **Производительность RLS — самая крупная находка по цифрам.** `security definer`-функцию планировщик заинлайнить не может (она обязана выполняться от владельца), поэтому `using (is_author_visible(author_id))` — непрозрачный вызов на **каждую строку скана**, и каждый вызов сам сканирует `connections`, `muted_users`, `blocked_users`. Для ленты это не «20 строк страницы»: видимость надо решить до `LIMIT`, то есть фильтр идёт по всей таблице постов, и цена первой страницы росла со всем, что когда-либо опубликовано. Замерено `EXPLAIN ANALYZE` на синтетическом объёме в транзакции с `rollback`: лента на 2000 постов — **217 мс / 10 216 буферов**, счётчики комментариев на страницу при 1000 комментариев — **115 мс / 5 135 буферов**. Правило зависит только от вызывающего и никогда от строки, поэтому спрашивается один раз на запрос: `visible_author_ids()` перечисляет собственные знакомства (ограничено числом знакомых, а не объёмом постов), а неkоррелированный `IN (SELECT ...)` планировщик хэширует один раз. Стало **3.5 мс / 254** и **5 мс / 314** — 62× и 23×. Переведены политики `posts`, `comments` (SELECT) и storage на фото. Это не пятая копия правила: перечисление всё равно спрашивает про каждое знакомство ту же `is_author_visible()`. Клаузы `parent_comment_id`/`reply_to_id` оставлены построчными намеренно — они срабатывают только для ответов и коротко замыкаются на NULL у корневых, а поднять их значило бы материализовать id всех комментариев с видимым автором, обменяв ограниченную построчную цену на неограниченную позапросную; `reaction_summary()` не тронута — там `p.id = any(...)` сужает по первичному ключу раньше фильтра. Миграция `20260726180000_hoist_author_visibility_out_of_row_filters.sql`.
+  **RLS performance — the biggest finding by the numbers.** The planner can't inline a `security definer` function (it must execute as the owner), so `using (is_author_visible(author_id))` is an opaque call on **every scanned row**, and each call itself scans `connections`, `muted_users`, `blocked_users`. For the feed this is not "the 20 rows of the page": visibility has to be decided before the `LIMIT`, that is, the filter goes over the whole posts table, and the cost of the first page grew with everything ever published. Measured with `EXPLAIN ANALYZE` on a synthetic volume in a transaction with `rollback`: the feed over 2000 posts — **217 ms / 10,216 buffers**, comment counters per page at 1000 comments — **115 ms / 5,135 buffers**. The rule depends only on the caller and never on the row, so it is asked once per query: `visible_author_ids()` enumerates your own connections (bounded by the number of connections, not by the volume of posts), and the planner hashes an uncorrelated `IN (SELECT ...)` once. It became **3.5 ms / 254** and **5 ms / 314** — 62× and 23×. The `posts`, `comments` (SELECT) policies and the storage policy on photos were switched over. This is not a fifth copy of the rule: the enumeration still asks the same `is_author_visible()` about each connection. The `parent_comment_id`/`reply_to_id` clauses were deliberately left per-row — they fire only for replies and short-circuit on NULL for roots, and hoisting them would mean materializing the ids of all comments with a visible author, trading a bounded per-row cost for an unbounded per-query one; `reaction_summary()` was not touched — there `p.id = any(...)` narrows by primary key before the filter. Migration `20260726180000_hoist_author_visibility_out_of_row_filters.sql`.
 
-  **Клиентские правки.** (1) Mute/block не доходили до ленты: вкладка живёт в `StatefulShellRoute.indexedStack` и держит загруженную страницу, поэтому после блокировки её посты оставались на экране с рабочими кнопками, а тап по реакции улетал в insert, который RLS уже отбивает, — оптимистичное обновление молча откатывалось. Теперь `_run()` в `connections_screen.dart` и `_unblock()` в `blocked_users_screen.dart` дёргают `feedRefreshTickProvider` (механизм из 0.6.0, добавленный ровно для этого), причём только после успешного запроса. (2) Разблокировка на экране «Заблокированные» не обновляла список знакомых под ним: экран открыт через `Navigator.push` **поверх** «Знакомств», тот остаётся смонтированным и держит свой `autoDispose`-провайдер живым — вернувшись, пользователь видел красную иконку с тултипом «Unblock» и, нажав её, звал `unblockUser` второй раз вхолостую. Провайдер списка переехал из приватной области экрана в `connections_repository.dart` как `friendsProvider`, экран «Заблокированные» его инвалидирует. (3) Провал отправки комментария не показывался вообще: `_errorMessage` рисуется **вместо** списка, а отправляют, когда список уже загружен, — присваивание уходило в никуда, и пользователь видел только мигнувший спиннер. Ушло в `SnackBar` (тем же приёмом, что уже использовало удаление в том же файле), `_errorMessage` теперь честно значит «сам список не загрузился» и сбрасывается при успешной загрузке. Ветка стала достижимой в обычной работе именно из-за вложенных комментариев: пока печатаешь ответ, адресата успевают удалить или заблокировать. Побочно `comments_screen.dart` перешёл с `supabaseClientProvider...currentUser!.id` на `currentUserIdProvider` — тот же источник, но подменяемый в тестах, как уже сделано на «Знакомствах» и в профиле.
+  **Client fixes.** (1) Mute/block did not reach the feed: the tab lives in a `StatefulShellRoute.indexedStack` and holds the loaded page, so after a block its posts stayed on screen with working buttons, and a tap on a reaction went off into an insert that RLS already rejects — the optimistic update silently rolled back. Now `_run()` in `connections_screen.dart` and `_unblock()` in `blocked_users_screen.dart` poke `feedRefreshTickProvider` (the mechanism from 0.6.0, added exactly for this), and only after a successful request. (2) Unblocking on the "Blocked" screen did not update the connections list beneath it: the screen is opened via `Navigator.push` **on top of** Connections, which stays mounted and keeps its `autoDispose` provider alive — on returning, the user saw a red icon with the tooltip "Unblock" and, pressing it, called `unblockUser` a second time to no effect. The list provider moved from the screen's private scope to `connections_repository.dart` as `friendsProvider`, and the "Blocked" screen invalidates it. (3) A failure to send a comment wasn't shown at all: `_errorMessage` is drawn **instead of** the list, and sending happens when the list is already loaded — the assignment went nowhere, and the user saw only a flickering spinner. It moved to a `SnackBar` (by the same means the deletion in the same file already used), `_errorMessage` now honestly means "the list itself failed to load" and is reset on a successful load. The branch became reachable in normal operation precisely because of nested comments: while you type a reply, the addressee may get deleted or blocked. Incidentally `comments_screen.dart` switched from `supabaseClientProvider...currentUser!.id` to `currentUserIdProvider` — the same source, but overridable in tests, as already done on Connections and in the profile.
 
-  Проверено: все восемь миграций применены к живой БД через Management API и проверены симуляцией RLS (`set local role authenticated` + `request.jwt.claims`, в транзакциях с `rollback`) — каждая дыра сперва воспроизведена на живой схеме, потом закрыта. Эквивалентность переписанных политик доказана прогоном матрицы: восемь счётчиков (посты, посты автора, комментарии, комментарии автора, фото, фото автора, аватарки, `reaction_summary`) в трёх сценариях (без ограничений / блок / мьют) до и после — 24 сравнения, все совпали, плюс матрица веток и пути записи. Клиентские правки покрыты тестами (58 зелёных, `analyze` чист); для каждого из трёх багов тест сперва проверен на падение со старым кодом. Затем всё проверено вручную на физическом устройстве с Android 16 (API 36), debug-сборка: три сообщения активации инвайта (несуществующий код, уже использованный, свой собственный) — в обеих локалях, английская включалась пер-приложенческим языком Android 13+ (`cmd locale set-app-locales`), а не системной настройкой; снекбар при провале отправки комментария — в режиме полёта; блокировка знакомого на вкладке «Знакомства» → лента при переключении **сама** оказалась без его постов, без pull-to-refresh; разблокировка на экране «Заблокированные» → возврат назад показал строку уже с серой иконкой, и лента тем же тиком вернула его пост. Живых данных проверка не оставила: 0 строк в `blocked_users`/`muted_users`, счётчики постов/комментариев/знакомств не изменились.
+  Verified: all eight migrations were applied to the live DB through the Management API and checked by simulating RLS (`set local role authenticated` + `request.jwt.claims`, in transactions with `rollback`) — each hole was first reproduced on the live schema, then closed. The equivalence of the rewritten policies was proven by running a matrix: eight counters (posts, the author's posts, comments, the author's comments, photos, the author's photos, avatars, `reaction_summary`) in three scenarios (no restrictions / block / mute) before and after — 24 comparisons, all matched, plus a matrix of branches and the write paths. The client fixes are covered by tests (58 green, `analyze` clean); for each of the three bugs the test was first verified to fail against the old code. Then everything was verified manually on a physical device with Android 16 (API 36), debug build: the three invite-activation messages (a nonexistent code, an already used one, your own) — in both locales, the English one switched on with the per-app language of Android 13+ (`cmd locale set-app-locales`), not the system setting; the snackbar on a failed comment send — in airplane mode; blocking a connection on the Connections tab → the feed, on switching, **itself** turned out without their posts, with no pull-to-refresh; unblocking on the "Blocked" screen → going back showed the row already with a gray icon, and the feed brought their post back on the same tick. The check left no live data behind: 0 rows in `blocked_users`/`muted_users`, the post/comment/connection counts did not change.
 
-  Замечено при этом и **не исправлено**: у запроса нет клиентского таймаута — в режиме полёта отправка комментария висела со спиннером ~3.5 минуты, прежде чем упасть в снекбар. Ветка ошибки отрабатывает правильно, но пользователь всё это время не знает, что происходит. Серверных отказов (ответ на удалённый комментарий, блокировка) это не касается — они приходят сразу.
+  Noticed along the way and **not fixed**: the request has no client-side timeout — in airplane mode sending a comment hung with a spinner for ~3.5 minutes before falling into the snackbar. The error branch works correctly, but the user doesn't know what is happening all that time. Server-side rejections (a reply to a deleted comment, a block) are not affected — they arrive immediately.
 
-  Отложено осознанно: серверный агрегат вместо клиентского подсчёта комментариев (`comment_summary(uuid[])`, `security invoker` — RLS считает сама, дублирования правила нет) — замерен, серверное время не меняется, выигрыш только на проводе (10 строк вместо 849, ~40 КБ на страницу ленты), но это правка клиентского пути данных без покрытия тестами.
+  Deferred deliberately: a server-side aggregate instead of the client-side comment count (`comment_summary(uuid[])`, `security invoker` — RLS does the counting itself, no duplication of the rule) — measured, the server time doesn't change, the gain is only on the wire (10 rows instead of 849, ~40 KB per feed page), but it is a change to the client data path without test coverage.
 
-- Долг второго аудита кода (0.11.1) — три находки, которые 0.11.0 выше явно назвала («замечено и не исправлено» / «отложено осознанно») и оставила висеть, теперь закрыты.
+- Debt from the second code audit (0.11.1): three findings that 0.11.0 above explicitly named ("noticed and not fixed" / "deliberately deferred") and left hanging are now closed.
 
-  **Клиентский таймаут.** Каждый вызов Supabase (`postgrest`, `rpc`, `storage`, `auth`) теперь обёрнут в `.timeout(networkTimeout)` (12 сек, `lib/shared/network_timeout.dart`) — офлайн-отправка комментария больше не висит спиннером минутами, а падает в уже существующий локализованный снекбар той же ветки ошибок (`TimeoutException` ловится тем же generic `catch`, что и любую другую сетевую проблему, — отдельного ARB-ключа не потребовалось). Серверных отказов (RLS, констрейнты) не касается — они и раньше приходили мгновенно.
+  **Client-side timeout.** Every Supabase call (`postgrest`, `rpc`, `storage`, `auth`) is now wrapped in `.timeout(networkTimeout)` (12 s, `lib/shared/network_timeout.dart`). Sending a comment while offline no longer hangs on a spinner for minutes; it falls into the already existing localized snackbar of the same error branch (`TimeoutException` is caught by the same generic `catch` as any other network problem, so no separate ARB key was needed). Server-side rejections (RLS, constraints) are unaffected; they always came back instantly.
 
-  **`comment_summary(uuid[])`.** Ленте больше не нужно тащить по строке на каждый видимый комментарий ради подсчёта — `security invoker`-функция группирует `count(*) ... group by post_id` прямо на сервере, а RLS применяется к её собственному сканy автоматически (комментарийная SELECT-политика уже задаёт ровно нужную видимость, в отличие от `reaction_summary()` дублировать правило не пришлось). `feed_repository.dart` вызывает её вторым RPC рядом с `reaction_summary`, замена — минус один клиентский цикл подсчёта. Миграция `20260817120000_add_comment_summary_function.sql`, `grant execute ... to authenticated` / `revoke ... from anon`.
+  **`comment_summary(uuid[])`.** The feed no longer has to pull a row per visible comment just to count them: a `security invoker` function does `count(*) ... group by post_id` right on the server, and RLS is applied to its own scan automatically (the comment SELECT policy already defines exactly the visibility needed, so unlike `reaction_summary()` the rule did not have to be duplicated). `feed_repository.dart` calls it as a second RPC alongside `reaction_summary`; the swap removes one client-side counting loop. Migration `20260817120000_add_comment_summary_function.sql`, `grant execute ... to authenticated` / `revoke ... from anon`.
 
-  **Проверка бакета.** `media` подтверждён `public = false` прямым запросом к `storage.buckets` через Management API (не UI-дашборд — вход в веб-консоль потребовал бы вводить учётные данные).
+  **Bucket check.** `media` confirmed as `public = false` by querying `storage.buckets` directly through the Management API (not the UI dashboard: logging into the web console would have required entering credentials).
 
-  Проверено: миграция применена к живой БД и записана в `supabase_migrations.schema_migrations`; RLS `comment_summary` проверена симуляцией (`set local role authenticated` + `request.jwt.claims`, транзакции с `rollback`) в двух сценариях — без ограничений (счётчик функции совпал с ручным подсчётом по той же RLS-политике) и с mute автора комментария (оба обнулились одинаково) — плюс `anon` получает `permission denied` на вызов. Живых данных не изменено. `flutter analyze`/`dart format`/`flutter test` чисты (68 тестов).
+  Verified: the migration is applied to the live DB and recorded in `supabase_migrations.schema_migrations`; RLS on `comment_summary` was checked by simulation (`set local role authenticated` + `request.jwt.claims`, transactions with `rollback`) in two scenarios: no restrictions (the function's count matched a manual count under the same RLS policy) and with the comment author muted (both dropped to zero identically). On top of that, `anon` gets `permission denied` when calling it. No live data changed. `flutter analyze`/`dart format`/`flutter test` are clean (68 tests).
 
-- Два замечания code-review по 0.11.1 (0.11.2), оба чисто клиентские — без миграции.
+- Two code-review remarks on 0.11.1 (0.11.2), both purely client-side, no migration.
 
-  **`reaction_summary`/`comment_summary` шли последовательно.** Оба RPC в `fetchPage()` принимают один и тот же `postIds` и ничего друг у друга не читают, но вызывались `await` за `await` — лишний круг сети на каждую подгрузку страницы ленты. Заведены в один `Future.wait([...])`.
+  **`reaction_summary`/`comment_summary` ran sequentially.** Both RPCs in `fetchPage()` take the same `postIds` and read nothing from each other, yet were called `await` after `await`: an extra network round trip on every feed page load. They now go into a single `Future.wait([...])`.
 
-  **`.timeout()` не отменяет запрос — ретрай после таймаута мог задвоить пост/комментарий.** `.timeout(networkTimeout)` (0.11.1) просто перестаёт ждать: если сеть медленная, но не мертва, вставка может закоммититься на сервере уже после того, как клиент показал ошибку. `_submit()`/`_send()` при ошибке не чистят поле ввода, так что естественное действие пользователя — нажать «Опубликовать»/«Отправить» ещё раз — уходило вторым `insert()` с тем же содержимым; ни у `posts`, ни у `comments` нет constraint на уникальность. Исправлено идемпотентным ключом: `createPost`/`addComment` теперь принимают `id`, выбранный клиентом (`generateUuidV4()`, `lib/shared/uuid.dart`), и делают `upsert(..., onConflict: 'id', ignoreDuplicates: true)` вместо `insert()` — `ON CONFLICT DO NOTHING` разрешён существующей INSERT-политикой, UPDATE-политика не нужна (её в проекте намеренно нет — редактирование постов/комментариев не фича). Экраны хранят id в состоянии виджета и переиспользуют его, пока попытка не завершится успехом, так что повторная отправка того же контента — no-op, а не второй ряд.
+  **`.timeout()` does not cancel the request, so a retry after a timeout could duplicate a post/comment.** `.timeout(networkTimeout)` (0.11.1) merely stops waiting: if the network is slow but not dead, the insert can commit on the server after the client has already shown an error. `_submit()`/`_send()` don't clear the input field on error, so the user's natural move, tapping "Publish"/"Send" again, went out as a second `insert()` with the same content; neither `posts` nor `comments` has a uniqueness constraint. Fixed with an idempotency key: `createPost`/`addComment` now take an `id` chosen by the client (`generateUuidV4()`, `lib/shared/uuid.dart`) and do `upsert(..., onConflict: 'id', ignoreDuplicates: true)` instead of `insert()`. `ON CONFLICT DO NOTHING` is allowed by the existing INSERT policy; no UPDATE policy is needed (the project deliberately has none, since editing posts/comments is not a feature). The screens keep the id in widget state and reuse it until an attempt succeeds, so resending the same content is a no-op rather than a second row.
 
-  Осознанный остаточный риск: id привязан к попытке, а не к содержимому, поэтому если пользователь успевает отредактировать текст (или снять цель ответа) между таймаутом и ретраем, а первая попытка на самом деле уже прошла на сервере — правка молча потеряется (`ON CONFLICT DO NOTHING` её не применит), хотя дубля не будет. Условие составное и маловероятное (нужны все три: таймаут, фактический успех на сервере, правка именно в этом окне), решили не усложнять дальше.
+  Accepted residual risk: the id is tied to the attempt, not the content, so if the user manages to edit the text (or drop the reply target) between the timeout and the retry, and the first attempt actually did land on the server, the edit is silently lost (`ON CONFLICT DO NOTHING` won't apply it), though there's no duplicate. The condition is compound and unlikely (all three are required: a timeout, actual success on the server, and an edit in exactly that window), so we decided not to complicate things further.
 
-  Проверено: `flutter analyze`/`dart format`/`flutter test` чисты (68 тестов, фейки в `comments_screen_test.dart` обновлены под новую сигнатуру). Ручной RLS-симуляции не проводилось — правка не трогает политики: `upsert` с `ignoreDuplicates` — это `INSERT ... ON CONFLICT DO NOTHING`, разрешённый той же INSERT-политикой, что уже проверялась для `insert()`.
+  Verified: `flutter analyze`/`dart format`/`flutter test` are clean (68 tests; the fakes in `comments_screen_test.dart` were updated to the new signature). No manual RLS simulation was run, since the change doesn't touch policies: `upsert` with `ignoreDuplicates` is `INSERT ... ON CONFLICT DO NOTHING`, allowed by the same INSERT policy that was already verified for `insert()`.
 
-- Повторный аудит 0.11.2 (0.11.3) — самостоятельное ревью предыдущей правки нашло в ней три дефекта (два из которых она сама и внесла), плюс три пункта долга. Все шесть закрыты.
+- Re-audit of 0.11.2 (0.11.3): a self-review of the previous change found three defects in it (two of which it introduced itself), plus three items of debt. All six are closed.
 
-  **Оракул существования строки — оказался глубже, чем выглядел, и лечится грантом.** 0.11.2 отдала клиенту первичный ключ и делала `upsert(onConflict: 'id')`. `ON CONFLICT DO NOTHING` не различает «вставил» и «уже было» — оба раза 2xx, — а `id` глобален, поэтому конфликт мог случиться с ЧУЖОЙ строкой. Зная id поста, который RLS от него прячет (сценарий из `20260726130000`: заблокированный сохраняет id-шники постов, виденных до блокировки), вызывающий по факту появления собственного поста узнавал, жива ли ещё чужая строка, — то есть ровно то, что скрывает SELECT-политика.
+  **A row-existence oracle: it turned out to go deeper than it looked, and the cure is a grant.** 0.11.2 handed the primary key to the client and did `upsert(onConflict: 'id')`. `ON CONFLICT DO NOTHING` doesn't distinguish "inserted" from "already there" (2xx both times), and `id` is global, so the conflict could happen with SOMEONE ELSE's row. Knowing the id of a post that RLS hides from them (the scenario from `20260726130000`: a blocked user keeps the ids of posts seen before the block), the caller could tell from whether their own post appeared if the other row was still alive, which is exactly what the SELECT policy conceals.
 
-  Первая правка увела клиент на `client_token`: `id` снова серверный, уникальность составная `(author_id, client_token)`, а `author_id = auth.uid()` прибит INSERT-политикой, значит конфликт возможен только с собственной строкой. Индекс намеренно не частичный — частичный PostgreSQL выводит в `ON CONFLICT` только вместе с предикатом `WHERE`, а PostgREST через `on_conflict=` передаёт лишь список колонок. Миграция `20260818120000_add_client_token_idempotency.sql`.
+  The first fix moved the client to a `client_token`: `id` is server-side again, uniqueness is composite `(author_id, client_token)`, and `author_id = auth.uid()` is pinned by the INSERT policy, so a conflict is only possible with one's own row. The index is deliberately not partial: PostgreSQL infers a partial index for `ON CONFLICT` only together with the `WHERE` predicate, while PostgREST passes only a column list via `on_conflict=`. Migration `20260818120000_add_client_token_idempotency.sql`.
 
-  **Но симуляция на живой схеме показала, что этого мало.** Атакующий не пользуется нашим приложением — он шлёт запрос curl-ом, а право писать `id` даёт дефолтный табличный грант Supabase (та самая грабля из CLAUDE.md). Дыра воспроизведена под ролью `authenticated` с чужими claims: пользователь, не знакомый с автором, не видит его пост (`can_select_hidden = 0`), но insert с id этого поста тихо не делает ничего и **не даёт ошибки** (`probe_known_landed = 0`), а insert со свободным id создаёт строку (`probe_free_landed = 1`) — разница и есть утечка. `ON CONFLICT` для этого даже не нужен: без него дубликат поднимает `23505`, и ошибка против успеха — тот же оракул. Значит правка клиента форму исправила, а дыру не закрыла — я ошибся, когда в ревью назвал её «впервые достижимой»: она существовала и до 0.11.2.
+  **But a simulation on the live schema showed this wasn't enough.** An attacker doesn't use our app; they send the request with curl, and the right to write `id` comes from Supabase's default table grant (the very pitfall from CLAUDE.md). The hole was reproduced under the `authenticated` role with someone else's claims: a user who isn't connected to the author can't see their post (`can_select_hidden = 0`), but an insert with that post's id silently does nothing and **returns no error** (`probe_known_landed = 0`), while an insert with a free id creates a row (`probe_free_landed = 1`); the difference is the leak. `ON CONFLICT` isn't even needed for this: without it, the duplicate raises `23505`, and error versus success is the same oracle. So the client fix corrected the form but didn't close the hole. I was wrong when I called it "reachable for the first time" in the review: it existed before 0.11.2 too.
 
-  Закрыто там, где и надо, — в гранте: `revoke insert on posts/comments from authenticated` плюс поимённый `grant insert (...)` на все колонки, кроме `id`. Пина по значению, как у `created_at = now()` в 20260726190000, для `id` не существует — он случаен по замыслу, сравнивать не с чем, — поэтому здесь остался ровно тот «дорогой» вариант, который та миграция для `created_at` отвергла. Цена реальна (список колонок надо вести руками), но дефолт переворачивается в безопасную сторону: забытая колонка становится недоступной на запись, а не открытой всем. `created_at`/`deleted_at` в списке оставлены намеренно — их уже прибивают по значению политики, и молча ломать описанное там поведение не стоит. Миграция `20260818130000_revoke_client_write_on_row_id.sql`. После неё проба отвечает `42501` в обеих формах — ответ больше не зависит от того, существует строка или нет.
+  Closed where it belongs, in the grant: `revoke insert on posts/comments from authenticated` plus a per-column `grant insert (...)` on every column except `id`. There is no value pin for `id` like `created_at = now()` in 20260726190000 (it's random by design, there's nothing to compare against), so what remains here is exactly the "expensive" option that migration rejected for `created_at`. The cost is real (the column list has to be maintained by hand), but the default flips to the safe side: a forgotten column becomes unwritable rather than open to everyone. `created_at`/`deleted_at` are deliberately left in the list: policies already pin them by value, and silently breaking the behavior described there isn't worth it. Migration `20260818130000_revoke_client_write_on_row_id.sql`. After it the probe gets `42501` in both forms: the response no longer depends on whether the row exists.
 
-  **Ретрай с фото плодил файлы-сироты.** Путь картинки строился от `DateTime.now().microsecondsSinceEpoch`, поэтому каждый повтор заливал НОВЫЙ объект, а строка поста (по `DO NOTHING`) продолжала указывать на первый. `deletePost` удаляет только путь из строки — значит каждый лишний аплоад оставался в приватном бакете навсегда. Путь теперь строится от `client_token` и потому стабилен в пределах одной отправки; повторная заливка того же пути отвечает 409, который трактуется как «уже сделано» (перезапись через `upsert: true` не годится — UPDATE-политики на `storage.objects` для фото постов нет, только SELECT/INSERT/DELETE).
+  **Retrying with a photo spawned orphan files.** The image path was built from `DateTime.now().microsecondsSinceEpoch`, so every retry uploaded a NEW object while the post row (thanks to `DO NOTHING`) kept pointing at the first one. `deletePost` deletes only the path stored in the row, so every extra upload stayed in the private bucket forever. The path is now built from `client_token` and is therefore stable within a single submission; re-uploading to the same path returns 409, which is treated as "already done" (overwriting via `upsert: true` won't work: there's no UPDATE policy on `storage.objects` for post photos, only SELECT/INSERT/DELETE).
 
-  **Ключ идемпотентности привязан к содержимому, а не к попытке.** Иначе правка, сделанная между таймаутом и повтором, молча терялась: сервер отвечал на знакомый токен бездействием, а экран рапортовал успехом. Теперь смена текста, смена адресата ответа или смена фото порождает новый токен — это тот самый «осознанный остаточный риск» из 0.11.2, и он оказался дешевле в закрытии, чем в описании.
+  **The idempotency key is tied to the content, not the attempt.** Otherwise an edit made between the timeout and the retry was silently lost: the server answered a familiar token by doing nothing, and the screen reported success. Now changing the text, the reply target or the photo produces a new token. This is the very "accepted residual risk" from 0.11.2, and it turned out cheaper to close than to describe.
 
-  **Тесты на саму идемпотентность.** В 0.11.2 фейк принимал `commentId` и выбрасывал его, так что механизм не был покрыт вовсе — рефакторинг, возвращающий дубли, оставил бы все тесты зелёными. Добавлена группа из четырёх тестов (`comments_screen_test.dart`), фейк пишет каждый присланный токен, включая проваленные попытки. По конвенции проекта каждый сперва проверен на падение со старым кодом: вариант «токен на попытку» роняет тест на повтор, вариант из 0.11.2 («токен живёт всю попытку») роняет оба теста на смену содержимого.
+  **Tests for idempotency itself.** In 0.11.2 the fake accepted `commentId` and threw it away, so the mechanism wasn't covered at all: a refactoring that brought duplicates back would have left every test green. Added a group of four tests (`comments_screen_test.dart`); the fake records every token it receives, including failed attempts. Per the project convention, each was first checked to fail against the old code: the "token per attempt" variant breaks the retry test, and the 0.11.2 variant ("the token lives for the whole attempt") breaks both content-change tests.
 
-  **Самописный UUID заменён пакетом.** `uuid` уже лежал в `pubspec.lock` транзитивно, так что повышение до прямой зависимости не тянет ничего нового; `lib/shared/uuid.dart` удалён.
+  **The hand-rolled UUID was replaced with a package.** `uuid` was already in `pubspec.lock` transitively, so promoting it to a direct dependency pulls in nothing new; `lib/shared/uuid.dart` was deleted.
 
-  Проверено: обе миграции применены к живой БД через Management API и записаны в `supabase_migrations.schema_migrations`. RLS проверена симуляцией (`set local role authenticated` + `request.jwt.claims`, транзакции с `rollback`), дыра сперва воспроизведена, потом закрыта:
+  Verified: both migrations are applied to the live DB through the Management API and recorded in `supabase_migrations.schema_migrations`. RLS was checked by simulation (`set local role authenticated` + `request.jwt.claims`, transactions with `rollback`); the hole was first reproduced, then closed:
 
-  - новый путь записи проходит политику — `created_at` берёт DEFAULT и удовлетворяет `created_at = now()` (`created_at_is_txn_now = 2` из 2 строк), то есть опасение «PostgREST пришлёт колонку и всё сломается» снято замером, а не рассуждением;
-  - идемпотентность работает: повтор с тем же токеном не создаёт вторую строку (2 токена → 2 строки, третья вставка — no-op), причём отредактированный текст при повторе **не** применяется (`edit_applied = 0`) — это и есть причина, по которой ключ пришлось привязать к содержимому;
-  - то же для комментариев, включая ответ с `parent_comment_id` (ветвление цело);
-  - после `20260818130000` проба чужим id отвечает `42501` и с `on conflict`, и без него;
-  - легитимная запись не сломалась: пост с фото, пост без фото, корневой комментарий и ответ — все вставляются под поимённым грантом.
+  - the new write path passes the policy: `created_at` takes its DEFAULT and satisfies `created_at = now()` (`created_at_is_txn_now = 2` out of 2 rows), so the worry "PostgREST will send the column and everything will break" was settled by measurement, not by reasoning;
+  - idempotency works: a retry with the same token doesn't create a second row (2 tokens → 2 rows, the third insert is a no-op), and the edited text is **not** applied on retry (`edit_applied = 0`), which is precisely why the key had to be tied to the content;
+  - the same for comments, including a reply with `parent_comment_id` (threading is intact);
+  - after `20260818130000` a probe with someone else's id gets `42501` both with `on conflict` and without it;
+  - legitimate writes didn't break: a post with a photo, a post without one, a root comment and a reply all insert under the per-column grant.
 
-  Живых данных не изменено: контрольные числа до и после совпали (posts=10, comments=9, users=10), все симуляции откачены.
+  No live data changed: the control counts before and after matched (posts=10, comments=9, users=10), all simulations rolled back.
 
-  **Гранты `anon` сняты целиком.** Начиналось как мелкая уборка — «лишний INSERT на `posts`/`comments`», — но обзор прав показал, что дефолт Supabase выдал `anon` на шести таблицах (`users`, `posts`, `comments`, `connections`, `invite_links`, `reactions`) весь набор: SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER. Политик, относящихся к `anon`, в схеме нет ни одной, поэтому RLS и так отклоняла для него всё построчное — дырой это не было.
+  **`anon` grants removed entirely.** It started as minor cleanup ("a stray INSERT on `posts`/`comments`"), but a review of privileges showed that Supabase's default had given `anon` the full set on six tables (`users`, `posts`, `comments`, `connections`, `invite_links`, `reactions`): SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER. There isn't a single policy that applies to `anon` in the schema, so RLS was already rejecting everything row-level for it; this wasn't a hole.
 
-  Кроме одного пункта: **на TRUNCATE row-level security не распространяется в принципе**, это не строчная операция, фильтровать политике нечего. У единственного права из списка второго рубежа обороны не было вовсе, и удерживало его ровно то, что PostgREST не отображает TRUNCATE ни на один HTTP-глагол. Защищаться поверхностью API вместо привилегии не стоит, когда право попросту не нужно.
+  Except for one item: **row-level security doesn't apply to TRUNCATE at all**. It isn't a row operation, and there's nothing for a policy to filter. This was the one privilege on the list with no second line of defense whatsoever, and the only thing holding it back was that PostgREST doesn't map TRUNCATE to any HTTP verb. Relying on the API surface instead of the privilege isn't worth it when the privilege simply isn't needed.
 
-  Что гранты — легаси, доказали сами таблицы: `muted_users` и `blocked_users` появились позже обычными миграциями, прав `anon` у них нет ни одного, и всё работает. Остальные шесть приведены к тому же виду (`revoke all ... from anon`). Регистрация не задета — `public.users` наполняет триггерная `handle_new_user()`, она `security definer` с владельцем `postgres`, что проверено до правки. Миграция `20260818140000_revoke_anon_grants_on_public_tables.sql`.
+  The tables themselves proved the grants were legacy: `muted_users` and `blocked_users` were added later through ordinary migrations, `anon` has no privileges on them at all, and everything works. The other six were brought to the same state (`revoke all ... from anon`). Sign-up is unaffected: `public.users` is populated by the trigger function `handle_new_user()`, which is `security definer` owned by `postgres`; this was checked before the change. Migration `20260818140000_revoke_anon_grants_on_public_tables.sql`.
 
-  Проверено после: у всех восьми таблиц права `anon` — пусто; `anon` теперь получает `42501` уже на уровне привилегии, а не на уровне RLS (то есть отказ переехал на рубеж раньше); поимённые INSERT-гранты `authenticated` целы и `id` в них по-прежнему нет; вставка поста и комментария под `authenticated` проходит. Контрольные числа снова совпали (posts=10, comments=9, users=10, connections=9), лишних строк от симуляций не осталось.
+  Verified afterwards: `anon` privileges are empty on all eight tables; `anon` now gets `42501` at the privilege level rather than at the RLS level (i.e. the rejection moved one line of defense earlier); the per-column INSERT grants for `authenticated` are intact and still don't include `id`; inserting a post and a comment as `authenticated` works. The control counts matched again (posts=10, comments=9, users=10, connections=9), and no stray rows from the simulations remained.
 
-  **Тесты доведены до симметрии.** Первый заход покрыл идемпотентность только у комментариев, а у постов логика та же и чуть сложнее (сравнивается ещё и фото) — и не была покрыта вовсе: файла `create_post_screen_test.dart` в проекте не существовало. Мешал ровно один барьер: экран брал пользователя из `supabaseClientProvider...currentUser!.id`, что в тесте требует настоящий `SupabaseClient`. Это последний экран, оставшийся на старом способе; переведён на `currentUserIdProvider` — та же правка, что 0.11.0 уже сделала для «Знакомств», профиля и комментариев.
+  **Tests brought to symmetry.** The first pass covered idempotency only for comments, while posts have the same logic, slightly more complex (the photo is compared too), and weren't covered at all: `create_post_screen_test.dart` didn't exist in the project. Exactly one barrier stood in the way: the screen took the user from `supabaseClientProvider...currentUser!.id`, which in a test requires a real `SupabaseClient`. This was the last screen still using the old approach; it was switched to `currentUserIdProvider`, the same change 0.11.0 already made for "Connections", the profile and comments.
 
-  Появилось: `create_post_screen_test.dart` (валидация пустого поста, сообщение об ошибке с сохранением текста, повтор переиспользует токен, правка текста порождает новый) и группа на `postImagePath()` — построение пути к фото вынесено из `createPost` в чистую функцию рядом с `keysetFilter()`, по тому же приёму и ради того же: в строке пути значимы обе половины, а сломать их можно незаметно. Первые два сегмента (`posts/<author uuid>/`) — то, на что смотрят storage-политики, третий — токен, от которого зависит, перезапишет повтор свой файл или оставит сироту.
+  New: `create_post_screen_test.dart` (validation of an empty post, an error message that keeps the text, a retry reuses the token, editing the text produces a new one) and a group for `postImagePath()`: building the photo path was pulled out of `createPost` into a pure function next to `keysetFilter()`, using the same technique and for the same reason: both halves of the path string matter, and either can be broken unnoticed. The first two segments (`posts/<author uuid>/`) are what the storage policies look at; the third is the token, which decides whether a retry overwrites its own file or leaves an orphan.
 
-  Каждый новый тест проверен на падение со сломанным кодом: вариант «токен на попытку» роняет тест на повтор, вариант «токен на всю попытку» (баг предыдущего захода) роняет тест на правку текста, перестановка сегментов пути роняет тест на storage-политику.
+  Every new test was checked to fail against broken code: the "token per attempt" variant breaks the retry test, the "token for the whole attempt" variant (the previous pass's bug) breaks the text-edit test, and swapping the path segments breaks the storage-policy test.
 
-  Осталось непокрытым сознательно: ветка «пользователь сменил фото между попытками» — `_pickImage()` дёргает `ImagePicker()` напрямую, подменить его в widget-тесте нечем без отдельного рефакторинга, а он в эту правку не входит. Логика ветки — одно `identical()` рядом с покрытым сравнением текста.
+  Deliberately left uncovered: the "user changed the photo between attempts" branch. `_pickImage()` calls `ImagePicker()` directly, and there's nothing to substitute it with in a widget test without a separate refactoring, which is out of scope for this change. The branch's logic is a single `identical()` next to the covered text comparison.
 
-  `flutter analyze`/`dart format`/`flutter test` чисты (80 тестов).
+  `flutter analyze`/`dart format`/`flutter test` are clean (80 tests).
 
-- Новостной аккаунт Amicus, избранное и push-уведомления о постах (0.12.0) — закрывает пункт 8 из «Ближайшего плана» future-development.md (новостной аккаунт), новый пункт «избранное» (запрошен отдельно, не был в списке) и частично пункт 7 «Push-уведомления» (посты; комментарии/реакции остаются, см. future-development.md).
+- The Amicus news account, favorites and push notifications about posts (0.12.0). Closes item 8 of the "Near-term plan" in future-development.md (the news account), a new "favorites" item (requested separately, it wasn't on the list), and partly item 7 "Push notifications" (posts; comments/reactions remain, see future-development.md).
 
-  **Новостной аккаунт.** Реальный логинящийся аккаунт (`projectamicushelper@gmail.com`, изначально заведён на `amicus@amicus.app` и переименован уже после первого поста), а не запись, автоматически связанная Connection с каждым пользователем: строка в `auth.users`/`auth.identities` создана напрямую через Management API (bcrypt-хэш пароля считает сам Postgres через `pgcrypto`, пароль нигде не сохранён — ни в репозитории, ни в памяти), `handle_new_user()` из 0.1 создала профиль в `public.users` тем же путём, что и обычная регистрация. Видимость — не новая Connection всем, а один жёстко зашитый id в `is_author_visible()`/`visible_author_ids()`: `is_system_account(uuid)`, единственное место, где id вообще упомянут. Миграция `20260818150000_add_system_news_account.sql`.
+  **The news account.** A real account that logs in (`projectamicushelper@gmail.com`, originally created as `amicus@amicus.app` and renamed after the first post), not a record automatically linked by a Connection to every user. The row in `auth.users`/`auth.identities` was created directly through the Management API (Postgres itself computes the bcrypt password hash via `pgcrypto`; the password isn't stored anywhere, neither in the repository nor in memory), and `handle_new_user()` from 0.1 created the profile in `public.users` the same way as a normal sign-up. Visibility isn't a new Connection to everyone but a single hardcoded id in `is_author_visible()`/`visible_author_ids()`: `is_system_account(uuid)`, the only place the id is mentioned at all. Migration `20260818150000_add_system_news_account.sql`.
 
-  Это, а не Connection-для-всех, было сознательным выбором: авто-Connection пришлось бы прятать от списка знакомых отдельным фильтром в каждом месте, что читает `connections` (тот самый паттерн дублирования правила, который уже один раз стоил дыры во втором аудите), да ещё и оставлял бы аккаунт замьючиваемым/блокируемым через обычный UI. Вместо этого — ничего прятать не пришлось: `friends`-список и так строится из `connections`, а строки там нет, поэтому кнопок мьюта/блока для этого аккаунта в UI просто неоткуда взяться; правки клиента не понадобилось вообще. Если строку в `muted_users`/`blocked_users` всё же вставить в обход UI, она ни на что не повлияет — `is_author_visible()` возвращает `true` для системного id раньше, чем доходит до проверки mute/block.
+  This, rather than a Connection-for-everyone, was a deliberate choice: an auto-Connection would have had to be hidden from the connections list by a separate filter in every place that reads `connections` (the very rule-duplication pattern that already cost us a hole once, in the second audit), and on top of that it would have left the account mutable/blockable through the normal UI. Instead, nothing had to be hidden: the `friends` list is built from `connections` anyway, and there's no row there, so mute/block buttons for this account simply have nowhere to come from in the UI; no client change was needed at all. If a row in `muted_users`/`blocked_users` is inserted bypassing the UI anyway, it has no effect: `is_author_visible()` returns `true` for the system id before it gets to the mute/block check.
 
-  **Первая версия сломала ленту всем, кто её открывал, и нашлась только на живом устройстве.** RLS-симуляция (`set local role authenticated` + `request.jwt.claims` постороннего пользователя) после миграции `20260818150000` показала ровно то, что должна была: пост системного аккаунта виден, мьют/блок не действуют, строк в `connections` — ноль. Но это проверяло только политику `posts` — а `flutter run` на физическом телефоне (`--dart-define-from-file=.env`, реальные ключи, не CI-плейсхолдер) на первом же открытии ленты показал «Не удалось загрузить ленту» под живым аккаунтом. Временный `print` в перехватчике `feed_screen.dart` и построчный дамп сырых ответов в `fetchPage()` (`feed_repository.dart`, снят сразу после диагностики) указали на точное место: `Post.fromRow` делает `row['author'] as Map<String, dynamic>`, и `author` был `null` — но только у поста Amicus, у всех остальных авторов доехал нормально.
+  **The first version broke the feed for everyone who opened it, and was only caught on a real device.** The RLS simulation (`set local role authenticated` + `request.jwt.claims` of an unrelated user) after migration `20260818150000` showed exactly what it should have: the system account's post is visible, mute/block have no effect, zero rows in `connections`. But that only checked the `posts` policy, whereas `flutter run` on a physical phone (`--dart-define-from-file=.env`, real keys, not the CI placeholder) showed "Failed to load feed" on the very first feed open under a live account. A temporary `print` in the `feed_screen.dart` catch handler and a row-by-row dump of the raw responses in `fetchPage()` (`feed_repository.dart`, removed right after diagnosis) pinpointed the exact spot: `Post.fromRow` does `row['author'] as Map<String, dynamic>`, and `author` was `null`, but only for the Amicus post; for every other author it arrived fine.
 
-  Причина — политика `users` для SELECT никогда не была частью `is_author_visible()`. Миграция `20260726120000`, объединившая правило видимости, свела в одну функцию `posts`/`reaction_summary()`/`comments`; `users` в тот список не попала — сознательно (её правило проще: «я сам или Connection», без мьюта/блока, потому что блок не должен прятать имя/аватар в «Знакомствах» и на экране «Заблокированные», см. правило видимости в CLAUDE.md). У системного аккаунта нет ни одной строки в `connections`, поэтому его профиль был читаем только ему самому — пост показывался всем через `posts`, а встроенный в `.select('*, author:users(name, dislikes_disabled)')` PostgREST-джойн на `users` отдавал `null` для каждого зрителя. Четвёртое место, где живёт вопрос «чей профиль видно», а не три, как считалось.
+  The cause: the SELECT policy on `users` was never part of `is_author_visible()`. Migration `20260726120000`, which unified the visibility rule, merged `posts`/`reaction_summary()`/`comments` into one function; `users` didn't make that list, deliberately (its rule is simpler: "me or a Connection", no mute/block, because a block must not hide the name/avatar in "Connections" and on the "Blocked" screen; see the visibility rule in CLAUDE.md). The system account has no rows in `connections`, so its profile was readable only by itself: the post was shown to everyone via `posts`, but the PostgREST join on `users` embedded in `.select('*, author:users(name, dislikes_disabled)')` returned `null` for every viewer. A fourth place where the question "whose profile is visible" lives, not three as was believed.
 
-  Фикс — точечный, не слияние с `is_author_visible()`: `users`-политика получила `or is_system_account(id)` тем же порядком, что и раньше, мьют/блок по-прежнему её не касаются. Миграция `20260818160000_expose_system_account_profile.sql`. Отдельно всплыло, что `is_system_account()` вызывается уже не только изнутри `security definer`-функций (как `is_blocked_pair()`), а прямо из тела RLS-политики `users` — а `using`-выражение политики выполняется от лица вызывающей роли, не владельца функции, так что понадобился явный `grant execute … to authenticated`. Формально это грант на функцию, чей аргумент не привязан к `auth.uid()` (та самая грабля CLAUDE.md про definer-хелперы), но не дыра: id системного аккаунта и так виден всем как `author_id` на каждом его посте, функция не сообщает ничего нового.
+  The fix is targeted, not a merge into `is_author_visible()`: the `users` policy got `or is_system_account(id)` in the same order as before, and mute/block still don't affect it. Migration `20260818160000_expose_system_account_profile.sql`. Separately, it surfaced that `is_system_account()` is no longer called only from inside `security definer` functions (like `is_blocked_pair()`) but directly from the body of the `users` RLS policy, and a policy's `using` expression runs as the calling role, not the function owner, so an explicit `grant execute … to authenticated` was needed. Formally this is a grant on a function whose argument isn't bound to `auth.uid()` (the very CLAUDE.md pitfall about definer helpers), but it's not a hole: the system account's id is already visible to everyone as `author_id` on each of its posts, so the function reveals nothing new.
 
-  Проверено RLS-симуляцией на живой БД (постов, `users`, обеих RPC) и вручную на физическом Android-устройстве через `flutter run` с реальными ключами: чистая сборка без временных `print`, вход под настоящим аккаунтом, лента открывается, пост Amicus виден первым.
+  Verified by RLS simulation on the live DB (posts, `users`, both RPCs) and manually on a physical Android device via `flutter run` with real keys: a clean build without the temporary `print`s, logged in as a real account, the feed opens, the Amicus post is shown first.
 
-  **Тот же провал, зеркально: с аккаунта Amicus не читались комментарии под собственными постами.** Симметрия с находкой выше не случайна — `20260818160000` закрыла «меня не видно другим», но не «мне не видно других»: политика `comments` требует `comments.author_id in (select visible_author_ids())` **от лица зрителя**, а у Amicus нет ни одной строки в `connections`, значит `visible_author_ids()` для него — только он сам. Комментатор, оставивший что-то под постом Amicus, не будучи его Connection (а посты Amicus видны и комментируемы всем, не только Connections — в этом весь смысл фичи), был для Amicus невидим — и по той же причине, что и с постами, `.select('*, author:users(name)')` в `comments_screen.dart`/`feed_repository.dart` отдал бы `null` и уронил бы экран комментариев тем же паттерном `Comment.fromRow`.
+  **The same failure, mirrored: the Amicus account couldn't read comments under its own posts.** The symmetry with the finding above isn't accidental: `20260818160000` closed "others can't see me" but not "I can't see others". The `comments` policy requires `comments.author_id in (select visible_author_ids())` **from the viewer's perspective**, and Amicus has no rows in `connections`, so `visible_author_ids()` for it is just itself. A commenter who left something under an Amicus post without being its Connection (and Amicus posts are visible and commentable by everyone, not just Connections; that's the whole point of the feature) was invisible to Amicus, and for the same reason as with posts, `.select('*, author:users(name)')` in `comments_screen.dart`/`feed_repository.dart` would have returned `null` and crashed the comments screen via the same `Comment.fromRow` pattern.
 
-  Смотреть на это как на баг только системного аккаунта было бы неверно: INSERT-политика `comments` никогда не требовала, чтобы комментатор был Connection'ом автора поста (только что пост существует и, если это ответ, что родитель виден) — посторонний уже мог оставить комментарий под чужим постом, зная его id, и автор поста не мог его увидеть. Amicus просто сделал этот сценарий достижимым через обычный UI вместо сконструированного запроса. Поэтому фикс — общее правило, а не обход для одного аккаунта: автор поста видит любой комментарий под своим постом и профиль любого комментатора, невзирая на Connection, но не невзирая на собственные мьют/блок — они по-прежнему режут видимость, как и для всех остальных случаев. Два новых `security definer`-хелпера, `is_comment_visible_to_post_owner(uuid)` и `is_commenter_visible_to_post_owner(uuid)` (оба зеркалят mute/block-проверку `is_author_visible()`, только без требования Connection), добавлены к `comments`-политике (все три предиката — сам комментарий, `parent_comment_id`, `reply_to_id`) и `users`-политике. Миграция `20260818170000_expose_commenters_to_post_owner.sql`.
+  Treating this as a bug of the system account alone would be wrong: the `comments` INSERT policy never required the commenter to be a Connection of the post author (only that the post exists and, for a reply, that the parent is visible). An outsider could already leave a comment under someone else's post by knowing its id, and the post author couldn't see it. Amicus merely made this scenario reachable through the normal UI instead of a crafted request. So the fix is a general rule, not a workaround for one account: a post author sees any comment under their own post and the profile of any commenter regardless of Connection, but not regardless of their own mute/block; those still cut visibility, as in every other case. Two new `security definer` helpers, `is_comment_visible_to_post_owner(uuid)` and `is_commenter_visible_to_post_owner(uuid)` (both mirror the mute/block check of `is_author_visible()`, just without the Connection requirement), were added to the `comments` policy (all three predicates: the comment itself, `parent_comment_id`, `reply_to_id`) and to the `users` policy. Migration `20260818170000_expose_commenters_to_post_owner.sql`.
 
-  Проверено RLS-симуляцией на живой БД: тестовый комментарий от постороннего пользователя под постом Amicus стал виден Amicus вместе с профилем автора; блокировка этого комментатора со стороны Amicus снова прячет и комментарий, и профиль (откачено, не осталось); третья сторона, не владелец поста и не Connection комментатора, по-прежнему его профиль не видит — регрессии нет. `flutter test` — 80/80 (правка чисто серверная, клиент не тронут).
+  Verified by RLS simulation on the live DB: a test comment from an unrelated user under an Amicus post became visible to Amicus along with the author's profile; Amicus blocking that commenter hides both the comment and the profile again (rolled back, nothing left over); a third party, neither the post owner nor a Connection of the commenter, still can't see their profile, so there's no regression. `flutter test`: 80/80 (the change is purely server-side, the client is untouched).
 
-  Публикация — через обычный вход в приложение под этим аккаунтом (пароль сгенерирован отдельно, передан только в чат), а не через сервисный ключ и не полностью автоматически при деплое: `deploy-closed-testing.yml` после успешной выгрузки в Google Play только оставляет комментарий на смёрженном PR с номером новой версии — что запостить и когда, решает автор. Автоматический текст из `CHANGELOG.md` намеренно не рассматривался — файл пишется для разработчика и содержит внутренние детали (имена миграций, RLS-фиксы), которым не место в публичной ленте.
+  Publishing is done by logging into the app normally under this account (the password was generated separately and shared only in the chat), not via the service key and not fully automatically on deploy: after a successful upload to Google Play, `deploy-closed-testing.yml` only leaves a comment on the merged PR with the new version number; what to post and when is up to the author. Auto-generated text from `CHANGELOG.md` was deliberately not considered: the file is written for developers and contains internal details (migration names, RLS fixes) that have no place in a public feed.
 
-  **Избранное.** — `favorite_users (user_id, favorite_id)`, той же формы, что `muted_users`/`blocked_users` (0.9.0): своя таблица вместо общего «типа отношения», RLS на свои строки, никакого требования быть Connection на уровне БД (как и у mute/block — ограничение только в том, что кнопка есть только в списке «Знакомства»). Звезда рядом с мьютом/блоком в `connections_screen.dart`, без диалога подтверждения — в отличие от мьюта/блока это не действие, которое как-то задевает другую сторону, отменяется одним тапом. Миграция `20260818180000_add_favorite_users.sql`.
+  **Favorites.** `favorite_users (user_id, favorite_id)`, the same shape as `muted_users`/`blocked_users` (0.9.0): its own table instead of a shared "relationship type", RLS on one's own rows, no requirement at the DB level to be a Connection (as with mute/block, the only restriction is that the button exists only in the "Connections" list). A star next to mute/block in `connections_screen.dart`, with no confirmation dialog: unlike mute/block, this isn't an action that affects the other party in any way, and it's undone with one tap. Migration `20260818180000_add_favorite_users.sql`.
 
-  **Почему пуши, а не просто polling.** Amicus и избранные должны уведомлять всегда, обычные знакомые — дайджестом после 6 постов, тишина от самого пользователя — раз в неделю. Три события, разный ритм, и первое из них должно быть скорее «сразу», а не только пока открыто приложение — то есть без сервера, посылающего пуши, идея не работает вообще.
+  **Why push and not just polling.** Amicus and favorites should always notify, ordinary connections as a digest after 6 posts, and the user's own silence once a week. Three events, different rhythms, and the first of them should be "right away" rather than only while the app is open, so without a server sending pushes the idea doesn't work at all.
 
-  **Архитектура: одна очередь, три производителя, один потребитель.** `notification_outbox (user_id, kind, payload, sent_at)` — RLS включён, но политик `authenticated`/`anon` нет ни одной (`revoke all`, не просто пустой фильтр: прямой SELECT клиентом падает `42501`, а не отдаёт 0 строк — то же решение, что и раньше для чисто внутренних таблиц). Три источника строк:
-  - Триггер `enqueue_post_notifications()` на `posts` (`after insert`): для системного аккаунта — сразу всем, кроме него самого; для избранного — сразу всем, кто его добавил в избранное и не замьютил/не заблокировал; для обычного видимого автора — не пишет в очередь напрямую, а копит `pending_post_counts.pending_count` на каждого зрителя-не-избранного (Connection, не замьютившего, не заблокировавшего), и на седьмом посте пишет `digest`-строку со счётчиком и сбрасывает счётчик в ноль.
-  - `enqueue_inactive_week_notifications()` — ежедневный `pg_cron` (`0 12 * * *`), у кого нет поста за 7 дней (и сам аккаунт старше недели, и его уже не толкали за последние 7 дней — не спамить).
-  - Ничего из этого не знает про FCM. Отправка — отдельный `pg_cron` раз в минуту (`* * * * *`), дёргающий Edge Function `send-push` через `pg_net.http_post`; URL функции и `service_role` ключ — в `supabase_vault` (уже был установлен), а не инлайном в миграции: тот же принцип, что и с токенами в этой сессии — секрет не попадает в файл, который коммитится. Миграция `20260818190000_add_push_notification_backend.sql` (очередь и триггеры) + `20260818200000_drain_notification_outbox_via_cron.sql` (cron на дрейн).
+  **Architecture: one queue, three producers, one consumer.** `notification_outbox (user_id, kind, payload, sent_at)`: RLS is enabled, but there isn't a single policy for `authenticated`/`anon` (`revoke all`, not just an empty filter: a direct client SELECT fails with `42501` instead of returning 0 rows, the same decision as before for purely internal tables). Three sources of rows:
+  - The trigger `enqueue_post_notifications()` on `posts` (`after insert`): for the system account, immediately to everyone except itself; for a favorite, immediately to everyone who favorited them and hasn't muted/blocked them; for an ordinary visible author, it doesn't write to the queue directly but accumulates `pending_post_counts.pending_count` per non-favorite viewer (a Connection who hasn't muted or blocked them), and on the seventh post writes a `digest` row with the count and resets the counter to zero.
+  - `enqueue_inactive_week_notifications()`: a daily `pg_cron` (`0 12 * * *`) for anyone without a post in 7 days (provided the account itself is older than a week and hasn't already been nudged in the last 7 days, to avoid spamming).
+  - None of this knows about FCM. Sending is a separate `pg_cron` once a minute (`* * * * *`) that pokes the `send-push` Edge Function via `pg_net.http_post`; the function URL and the `service_role` key live in `supabase_vault` (already installed) rather than inline in the migration: the same principle as with the tokens in this session, the secret doesn't end up in a committed file. Migration `20260818190000_add_push_notification_backend.sql` (queue and triggers) + `20260818200000_drain_notification_outbox_via_cron.sql` (the drain cron).
 
-  **Баг в первой версии дайджеста, пойманный симуляцией, а не глазами.** Черновик считал бампа-и-проверку одним `with`-запросом: CTE `bumped` (`insert … on conflict … returning`) и CTE `notified` (условный `insert` в outbox), а сброс счётчика — финальным `update` того же `pending_post_counts`, читающим `notified`. Работало для *обнаружения* превышения (`digest`-строка появлялась с правильным числом), но не для *сброса* — счётчик после седьмого поста оставался 7, а не 0. Причина в самой семантике Postgres: несколько модификаций одной и той же строки в пределах одного оператора (тут — INSERT…ON CONFLICT в одной CTE и UPDATE в финальной части того же WITH) не гарантированы к применению по порядку; вторая просто не долетела. Пойман построчной трассировкой через временную таблицу-лог (`insert into debug_log select …` после каждого из семи постов, в откатываемой транзакции) — без неё был бы виден только конечный результат «7 vs ожидали 0», а не момент, где именно разошлось. Переписано explicit-циклом на PL/pgSQL (`for … loop`, бамп и сброс — два отдельных `insert`/`update`, а не одна CTE-цепочка) — тот же случай, что уже был с `pending_post_counts` в этой миграции, только для чтения-после-записи в одном операторе, а не для RLS-подзапросов.
+  **A bug in the first version of the digest, caught by simulation, not by eye.** The draft did the bump-and-check as a single `with` query: a CTE `bumped` (`insert … on conflict … returning`) and a CTE `notified` (a conditional `insert` into the outbox), with the counter reset as a final `update` of the same `pending_post_counts` that read `notified`. It worked for *detecting* the threshold (the `digest` row appeared with the right number) but not for the *reset*: after the seventh post the counter stayed at 7 instead of 0. The cause lies in Postgres semantics itself: multiple modifications of the same row within a single statement (here, INSERT…ON CONFLICT in one CTE and UPDATE in the final part of the same WITH) are not guaranteed to be applied in order; the second one simply didn't land. Caught by row-by-row tracing through a temporary log table (`insert into debug_log select …` after each of the seven posts, in a rolled-back transaction); without it only the final result "7 vs the expected 0" would have been visible, not the point where things diverged. Rewritten as an explicit PL/pgSQL loop (`for … loop`, with the bump and reset as two separate `insert`/`update` statements rather than one CTE chain): the same case as already happened with `pending_post_counts` in this migration, only for read-after-write within one statement rather than for RLS subqueries.
 
-  **Edge Function `send-push`** (Deno, `supabase/functions/send-push/index.ts`) — раз в минуту вычитывает неотправленные строки очереди (`limit 200`), для каждой берёт случайный из четырёх заготовленных текстов под её `kind` (плейсхолдеры `{author_name}`/`{count}` из `payload`) и шлёт через FCM HTTP v1 API. V1 не имеет legacy server-key авторизации — нужен OAuth2 access token, получаемый подписью JWT приватным ключом сервис-аккаунта (RS256) и обменом на `oauth2.googleapis.com/token`; сделано вручную через `crypto.subtle` (WebCrypto), а не `firebase-admin`, который рассчитан на Node, а не на Deno-рантайм edge-функций. Токен кэшируется в памяти функции до истечения. Ответ FCM на конкретный токен различается: 404/400 — токен мёртв (не зарегистрирован/невалиден), тогда он удаляется из `device_tokens`; всё остальное (5xx, сеть) — просто не в этот раз, без ретраев (push здесь best-effort, не at-least-once — потерянное уведомление не стоит отдельной очереди повторов). Секреты (`FCM_PROJECT_ID`, `FCM_SERVICE_ACCOUNT_JSON`) — через `supabase secrets set`, не в коде; `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` подставляет сама платформа в каждую edge-функцию.
+  **The `send-push` Edge Function** (Deno, `supabase/functions/send-push/index.ts`): once a minute it reads unsent queue rows (`limit 200`), picks for each a random one of four prepared texts for its `kind` (placeholders `{author_name}`/`{count}` from `payload`) and sends it through the FCM HTTP v1 API. V1 has no legacy server-key authorization: it needs an OAuth2 access token, obtained by signing a JWT with the service account's private key (RS256) and exchanging it at `oauth2.googleapis.com/token`. This is done by hand via `crypto.subtle` (WebCrypto) rather than `firebase-admin`, which targets Node, not the Deno runtime of edge functions. The token is cached in the function's memory until it expires. FCM's response for a given token is handled differently: 404/400 means the token is dead (unregistered/invalid), and it's then deleted from `device_tokens`; anything else (5xx, network) is just "not this time", with no retries (push here is best-effort, not at-least-once; a lost notification isn't worth a separate retry queue). Secrets (`FCM_PROJECT_ID`, `FCM_SERVICE_ACCOUNT_JSON`) go through `supabase secrets set`, not in code; `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are injected by the platform itself into every edge function.
 
-  **Firebase-проект и сервис-аккаунт — не то, что можно завести из этой сессии**: нужен Google-аккаунт автора. Инструкция дана в чате (Firebase Console → Add app → package `com.github.tiltozavr2545.amicus` → `google-services.json`; Project settings → Service accounts → приватный ключ), файл и ключ получены от автора, ключ передан только через `supabase secrets set` и нигде не сохранён (ни в репозитории, ни в памяти этой сессии) — тот же принцип, что и с Management API токеном. `google-services.json` — в `android/.gitignore` рядом с `key.properties`: конфиг конкретного билда, источник истины — консоль Firebase, коммитить незачем. Один шаг (создание двух `vault`-секретов с `service_role` ключом) уронил классификатор безопасности харнесса — не обойдено, автор выполнил SQL сам через Supabase SQL Editor.
+  **The Firebase project and service account aren't something that can be set up from this session**: they require the author's Google account. Instructions were given in the chat (Firebase Console → Add app → package `com.github.tiltozavr2545.amicus` → `google-services.json`; Project settings → Service accounts → private key); the file and key were obtained from the author, and the key was passed only through `supabase secrets set` and isn't stored anywhere (neither in the repository nor in this session's memory), the same principle as with the Management API token. `google-services.json` goes into `android/.gitignore` next to `key.properties`: it's the config of a specific build, the source of truth is the Firebase console, and there's no reason to commit it. One step (creating two `vault` secrets with the `service_role` key) tripped the harness's safety classifier; it wasn't bypassed, and the author ran the SQL himself through the Supabase SQL Editor.
 
-  **Клиент**: `firebase_core`/`firebase_messaging` добавлены, `com.google.gms.google-services` подключён в Gradle (читает `google-services.json`, поэтому подключён только после того, как файл лёг на место — иначе сборка падает). `firebase_messaging` требует `minSdk 23` — поднят с `flutter.minSdkVersion` (21), релизная сборка проверена (`flutter build appbundle`) до и после правки. `PushNotificationsRepository.registerDevice()` — запрашивает разрешение (`requestPermission()`, на Android до 13 no-op — уже разрешено), берёт FCM-токен, апсертит в `device_tokens`, подписывается на `onTokenRefresh`. Вызывается через `pushRegistrationProvider` (`FutureProvider`, не `autoDispose` — держится всю жизнь сессии, перезапускается только при смене `currentUserIdProvider`), `watch()`-нут в `MainShellScreen` — единственном месте, достижимом только уже залогиненным. `POST_NOTIFICATIONS` добавлен в `AndroidManifest.xml` (обязателен с Android 13/API 33 для показа уведомлений).
+  **Client**: `firebase_core`/`firebase_messaging` were added, and `com.google.gms.google-services` is applied in Gradle (it reads `google-services.json`, so it was applied only after the file was in place; otherwise the build fails). `firebase_messaging` requires `minSdk 23`, raised from `flutter.minSdkVersion` (21); the release build was verified (`flutter build appbundle`) before and after the change. `PushNotificationsRepository.registerDevice()` requests permission (`requestPermission()`, a no-op on Android below 13, where it's already granted), takes the FCM token, upserts it into `device_tokens`, and subscribes to `onTokenRefresh`. It's invoked through `pushRegistrationProvider` (a `FutureProvider`, not `autoDispose`: it lives for the whole session and restarts only when `currentUserIdProvider` changes), `watch()`ed in `MainShellScreen`, the only place reachable only once logged in. `POST_NOTIFICATIONS` was added to `AndroidManifest.xml` (required from Android 13/API 33 to show notifications).
 
-  Осознанно не сделано: foreground-сообщения (`FirebaseMessaging.onMessage`) не обрабатываются — Android не показывает системное уведомление сама, пока приложение открыто, а баннер/локальное уведомление для этого случая не добавлены (нужен `flutter_local_notifications`, отдельная зависимость). Основной сценарий — уведомление, когда приложение закрыто/в фоне, — работает; уведомление, пока пользователь и так смотрит в ленту, ценности почти не добавляет.
+  Deliberately not done: foreground messages (`FirebaseMessaging.onMessage`) aren't handled. Android doesn't show a system notification on its own while the app is open, and no banner/local notification was added for this case (that needs `flutter_local_notifications`, a separate dependency). The main scenario, a notification while the app is closed/in the background, works; a notification while the user is already looking at the feed adds almost no value.
 
-  Проверено: вся очередная логика — RLS/PL-pgSQL симуляцией на живой БД (откатываемые транзакции, включая построчную трассировку счётчика и предельный случай 7-го поста), `send-push` — прямым вызовом с фиктивным токеном (подтверждает, что подпись JWT и обмен на OAuth2 токен реально работают, FCM отвечает, а не падает на нашей стороне), cron — по `cron.job_run_details`. Затем сквозной прогон на физическом Android-устройстве (`flutter run --dart-define-from-file=.env`): токен реально появился в `device_tokens` после входа, `flutter build appbundle --release` с реальным `google-services.json` собрался (то, что проверяет CI), и главное — настоящее уведомление реально показалось на экране устройства («Amicus: В ленте уже 9 новых постов») после того, как `pg_cron` сам, без ручного вызова, продренировал очередь за секунды. `flutter analyze`/`dart format`/`flutter test` чисты (80 тестов, клиентских тестов на сам push-модуль нет — он не поддаётся дешёвому unit-тесту без реального Firebase, проверен вручную на устройстве).
+  Verified: all the queue logic by RLS/PL-pgSQL simulation on the live DB (rolled-back transactions, including row-by-row tracing of the counter and the edge case of the 7th post); `send-push` by calling it directly with a dummy token (confirms that the JWT signing and the OAuth2 token exchange really work: FCM responds rather than us failing on our side); the cron via `cron.job_run_details`. Then an end-to-end run on a physical Android device (`flutter run --dart-define-from-file=.env`): the token actually appeared in `device_tokens` after login, `flutter build appbundle --release` with the real `google-services.json` built (which is what CI checks), and most importantly, a real notification actually showed up on the device screen ("Amicus: В ленте уже 9 новых постов", i.e. "There are already 9 new posts in your feed") after `pg_cron` drained the queue on its own, without a manual call, within seconds. `flutter analyze`/`dart format`/`flutter test` are clean (80 tests; there are no client tests for the push module itself, since it doesn't lend itself to a cheap unit test without real Firebase; it was verified manually on the device).
 
-- Фикс плейсхолдера в тексте push-уведомлений (0.12.1) — реальный первый пост от Amicus после релиза 0.12.0 пришёл на устройство как «Новый пост от — загляните в ленту», без имени автора. Причина — рассинхрон имени поля между БД и функцией: миграция `20260818190000` кладёт в `payload` ключ `author_name` (snake_case, как везде в схеме), а черновик `send-push/index.ts` собирал шаблоны с `{authorName}` (camelCase) — `payload['authorName']` не находилось, интерполяция молча подставляла пустую строку. Ни один из более ранних тестов этого не поймал: RLS-симуляции проверяли только форму строки `notification_outbox`, а сквозной тест на устройстве использовал `payload` с полем `author_name`, заданным вручную в тестовом `insert`, а не тем, что реально кладёт триггер под настоящим именем поля — совпадение маскировало опечатку в шаблоне. Исправлено в `send-push/index.ts` (`{author_name}` вместо `{authorName}`), передеплоено, проверено — сначала прямым вызовом функции на тестовой строке, затем настоящим постом от Amicus, подтверждено на устройстве.
+- Fix for the placeholder in push notification text (0.12.1): the first real post from Amicus after the 0.12.0 release arrived on the device as "Новый пост от — загляните в ленту" ("New post from — check your feed"), with no author name. The cause was a field-name mismatch between the DB and the function: migration `20260818190000` puts the key `author_name` into `payload` (snake_case, as everywhere in the schema), while the draft of `send-push/index.ts` built its templates with `{authorName}` (camelCase), so `payload['authorName']` wasn't found and the interpolation silently substituted an empty string. None of the earlier tests caught this: the RLS simulations checked only the shape of the `notification_outbox` row, and the end-to-end test on the device used a `payload` with an `author_name` field set by hand in the test `insert`, not what the trigger actually writes under the real field name; the coincidence masked the typo in the template. Fixed in `send-push/index.ts` (`{author_name}` instead of `{authorName}`), redeployed, and verified: first by calling the function directly on a test row, then with a real post from Amicus, confirmed on the device.
 
-- Список своих постов на экране «Профиль» (0.13.0) — под карточкой профиля появилась секция «Мои посты» с той же пагинируемой лентой, что и на главной вкладке, но отфильтрованной по автору. Пагинация постов из `feed_screen.dart` (`_PostCard`, реакции, удаление, keyset-скролл, `feedRefreshTickProvider`) вынесена в переиспользуемый `PostListView` (`lib/features/feed/post_list_view.dart`) с опциональным `authorId` — `FeedScreen` теперь тонкая обёртка над ним с `authorId: null`, а `ProfileScreen` передаёт `authorId` текущего пользователя и свой текст для пустого состояния (`noOwnPostsYetMessage`). `FeedRepository.fetchPage()` получил тот же необязательный `authorId`, транслируемый в `.eq('author_id', ...)` поверх уже действующего RLS — видимость постов не расширяется и не сужается, фильтр только сокращает то, что и так разрешено видеть. Чисто клиентская фича: без миграций и RLS. Проверено `flutter analyze`/`dart format`/`flutter test` (80 тестов, фейк в `comments_screen_test.dart` обновлён под новую сигнатуру `fetchPage`).
+- A list of your own posts on the "Profile" screen (0.13.0) — below the profile card there is now a "My posts" section with the same paginated feed as on the main tab, but filtered by author. Post pagination from `feed_screen.dart` (`_PostCard`, reactions, deletion, keyset scrolling, `feedRefreshTickProvider`) was extracted into a reusable `PostListView` (`lib/features/feed/post_list_view.dart`) with an optional `authorId` — `FeedScreen` is now a thin wrapper around it with `authorId: null`, while `ProfileScreen` passes the current user's `authorId` and its own empty-state text (`noOwnPostsYetMessage`). `FeedRepository.fetchPage()` got the same optional `authorId`, translated into `.eq('author_id', ...)` on top of the RLS already in force — post visibility is neither widened nor narrowed; the filter only trims what the user is already allowed to see. A purely client-side feature: no migrations or RLS. Verified with `flutter analyze`/`dart format`/`flutter test` (80 tests; the fake in `comments_screen_test.dart` was updated for the new `fetchPage` signature).
 
-- Профиль знакомого по тапу на аватар + перенос даты знакомства на вторую строку (0.13.1). Аватар в списке «Знакомства» (`_FriendListItem` в `connections_screen.dart`) обёрнут в `GestureDetector`, открывающий новый `FriendProfileScreen` (`lib/features/connections/friend_profile_screen.dart`) — то же тело, что у секции «Мои посты» из 0.13.0 (аватар, имя, `PostListView(authorId: friend.userId)`), но без формы редактирования: имя/аватар берутся из уже загрученного `Friend`, а не повторным запросом к `users`. Видимость постов не расширена — если знакомый замьючен/заблокирован, `is_author_visible()` как и раньше отдаёт пустой список, экран просто покажет «У этого пользователя пока нет постов» (`noAuthorPostsYetMessage`). Отдельный заголовок секции — `postsTitle` («Посты»), чтобы не путать с «Мои посты» на собственном профиле.
+- A connection's profile on tapping their avatar + the connection date moved to a second line (0.13.1). The avatar in the "Connections" list (`_FriendListItem` in `connections_screen.dart`) is wrapped in a `GestureDetector` that opens the new `FriendProfileScreen` (`lib/features/connections/friend_profile_screen.dart`) — the same body as the "My posts" section from 0.13.0 (avatar, name, `PostListView(authorId: friend.userId)`), but without the edit form: the name/avatar come from the already loaded `Friend` rather than from another query to `users`. Post visibility is not widened — if the connection is muted/blocked, `is_author_visible()` returns an empty list as before, and the screen simply shows "This user hasn't posted anything yet" (`noAuthorPostsYetMessage`). The section has its own heading — `postsTitle` ("Posts") — so it isn't confused with "My posts" on your own profile.
 
-  Заодно поправлена подпись даты знакомства под именем в том же списке — автор сообщил, что строка `"Знакомы N дней — с DD MMM YYYY"` съезжала на узких именах. `connectionSummary` в обоих ARB заменил `" — since "`/`" — с "` на `"\n"`: длительность и дата теперь на двух строках без тире между ними, `formatConnectionSummary()` не менялся — перенос строки живёт целиком в шаблоне. `connection_duration_test.dart` обновлён под новый разделитель. Чисто клиентская правка: без миграций и RLS.
+  Along the way, the connection date caption under the name in the same list was fixed — the author reported that the string `"Знакомы N дней — с DD MMM YYYY"` ("Connected for N days — since DD MMM YYYY") overflowed for narrow names. `connectionSummary` in both ARBs replaced `" — since "`/`" — с "` with `"\n"`: duration and date are now on two lines with no dash between them; `formatConnectionSummary()` was not changed — the line break lives entirely in the template. `connection_duration_test.dart` was updated for the new separator. A purely client-side change: no migrations or RLS.
 
-  Проверено: `flutter analyze`/`dart format`/`flutter test` чисты (80 тестов). Вручную на физическом устройстве.
+  Verified: `flutter analyze`/`dart format`/`flutter test` are clean (80 tests). Manually on a physical device.
 
-- Третий аудит кода: пуш-уведомления и избранное (0.13.2) — самостоятельная проверка «с нуля» (не по подозрению, без опоры на прошлые ревью), в два прогона: первый разобрал весь проект, второй — уже диф первого, тоже намеренно не опираясь на его выводы. Нашли и закрыли восемь находок, одна оказалась ложной. Урок ближе ко второму аудиту, чем к первому: почти всё найденное жило в самых новых на тот момент миграциях (системный аккаунт, избранное, push-уведомления — 0.12.0/0.13.0/0.13.1, то есть уже **после** урока 0.11.0 про единое правило видимости) и было тем же классом ошибки в новой одежде — не потому, что урок забыт, а потому что каждая новая фича по отдельности казалась слишком маленькой, чтобы через неё заводить общий хелпер.
+- Third code audit: push notifications and favorites (0.13.2) — an independent check "from scratch" (not prompted by a suspicion, without relying on past reviews), in two passes: the first went through the whole project, the second through the first pass's diff, also deliberately not relying on its conclusions. Eight findings were found and closed; one turned out to be false. The lesson is closer to the second audit than to the first: almost everything found lived in the newest migrations at the time (system account, favorites, push notifications — 0.12.0/0.13.0/0.13.1, i.e. already **after** the 0.11.0 lesson about a single visibility rule) and was the same class of error in new clothes — not because the lesson was forgotten, but because each new feature on its own seemed too small to justify introducing a shared helper for it.
 
-  **Избранное давало пуш о постах не-Connection.** `favorite_users.favorite_id` никогда не проверялся на реальный Connection (сознательно, как у mute/block), но триггер `enqueue_post_notifications()` использовал это как единственное условие для мгновенного пуша, не спрашивая `is_author_visible()`. Добавлена проверка Connection в саму функцию. Той же миграцией зафиксирован порядок построчных блокировок в цикле по подписчикам (`order by viewer_id`) — без него два одновременных поста от авторов с общими знакомыми могли захватывать блокировки `pending_post_counts` в разном порядке, и Postgres убивал одну из транзакций целиком, роняя сам `insert` в `posts`, а не только уведомление. Миграция `20260819100000_fix_favorite_notification_leak_and_lock_order.sql`.
+  **Favorites sent pushes about posts from non-Connections.** `favorite_users.favorite_id` was never checked against an actual Connection (deliberately, as with mute/block), but the `enqueue_post_notifications()` trigger used it as the sole condition for an instant push, without asking `is_author_visible()`. A Connection check was added to the function itself. The same migration fixed the order of row locks in the loop over subscribers (`order by viewer_id`) — without it, two simultaneous posts from authors with shared connections could acquire `pending_post_counts` locks in different orders, and Postgres would kill one of the transactions entirely, failing the `insert` into `posts` itself, not just the notification. Migration `20260819100000_fix_favorite_notification_leak_and_lock_order.sql`.
 
-  **Пуш-токен утекал между аккаунтами на общем устройстве.** `device_tokens` не чистился при выходе — `signOut()` был fire-and-forget, без удаления токена, — а PK `(user_id, fcm_token)` не давал новой записи перезаписать старую. `PushNotificationsRepository.unregisterDevice()` теперь удаляет свою запись до `auth.signOut()`, пока сессия ещё жива. `registerDevice()` возвращает подписку на `onTokenRefresh`, которую `pushRegistrationProvider` отменяет через `ref.onDispose` — а в этом самом месте второй прогон поймал гонку в первом же исправлении: Riverpod бросает `UnmountedRefException`, если `ref` использован после того, как провайдер уже пересоздан, а `registerDevice()` ждёт системный диалог разрешений, который может идти сколько угодно. Выход из аккаунта в этот момент оставлял подписку неотменённой — по гонке возвращалась та же утечка. Добавлена проверка `ref.mounted` перед `ref.onDispose`.
+  **The push token leaked between accounts on a shared device.** `device_tokens` wasn't cleaned up on sign-out — `signOut()` was fire-and-forget, without deleting the token — and the `(user_id, fcm_token)` PK kept a new record from overwriting the old one. `PushNotificationsRepository.unregisterDevice()` now deletes its record before `auth.signOut()`, while the session is still alive. `registerDevice()` returns an `onTokenRefresh` subscription that `pushRegistrationProvider` cancels via `ref.onDispose` — and right at this spot the second pass caught a race in the very first fix: Riverpod throws `UnmountedRefException` if `ref` is used after the provider has already been recreated, and `registerDevice()` waits on the system permission dialog, which can stay open indefinitely. Signing out at that moment left the subscription uncancelled — the race brought back the same leak. A `ref.mounted` check was added before `ref.onDispose`.
 
-  **Владелец поста не мог ответить на видимый ему чужой комментарий.** SELECT-политика `comments` научилась показывать чужие комментарии владельцу поста в 0.13.1, INSERT-политика — нет. Добавлено то же исключение (`is_comment_visible_to_post_owner()`) в `with check`. Миграция `20260819120000_let_post_owner_reply_to_visible_comments.sql`.
+  **A post's owner couldn't reply to someone else's comment visible to them.** The `comments` SELECT policy learned to show other people's comments to the post owner in 0.13.1; the INSERT policy didn't. The same exception (`is_comment_visible_to_post_owner()`) was added to `with check`. Migration `20260819120000_let_post_owner_reply_to_visible_comments.sql`.
 
-  **`reactions` осталась без защиты от подмены `id`/`created_at`/`post_id`, которую `posts`/`comments` получили ещё в 0.11.0.** На INSERT дефолтный грант Supabase сужен до нужных колонок, `id` исключён — существование чужой реакции больше не различить по конфликту 23505 против успеха (миграция `20260819130000_lock_down_reactions_write_columns.sql`). Второй прогон нашёл, что дыра осталась на UPDATE: политика закрепляла только `user_id`, и свою реакцию можно было переставить на любой существующий пост, включая скрытый — по «успех с пустым ответом» против «ошибка внешнего ключа» читалось то же самое «существует ли пост». Решено не грантом (проверено вживую: клиентский upsert без `onConflict` шлёт `post_id`/`user_id` в SET на каждый вызов, не только `type`, и грант сломал бы легитимное переключение реакции), а BEFORE-триггером — `post_id`/`id`/`created_at` тихо возвращаются к старым значениям при любой попытке их поменять. Миграция `20260819150000_pin_reaction_identity_columns.sql`.
+  **`reactions` was left without the protection against spoofing `id`/`created_at`/`post_id` that `posts`/`comments` got back in 0.11.0.** On INSERT, Supabase's default grant was narrowed to the needed columns, with `id` excluded — the existence of someone else's reaction can no longer be distinguished by a 23505 conflict versus success (migration `20260819130000_lock_down_reactions_write_columns.sql`). The second pass found the hole remained on UPDATE: the policy only pinned `user_id`, and you could move your reaction to any existing post, including a hidden one — "success with an empty response" versus "foreign key error" revealed the same "does the post exist". Solved not with a grant (verified live: a client upsert without `onConflict` sends `post_id`/`user_id` in SET on every call, not just `type`, and a grant would have broken legitimate reaction switching), but with a BEFORE trigger — `post_id`/`id`/`created_at` silently revert to their old values on any attempt to change them. Migration `20260819150000_pin_reaction_identity_columns.sql`.
 
-  **Дублирование правила видимости, найденное в тех же новых миграциях.** Проверка mute/block была переписана вручную в пяти местах вместо переиспользования `is_blocked_pair()` — заведена симметричная `has_muted()` (миграция `20260819110000_extract_has_muted_helper.sql`). Второй прогон нашёл третью копию проверки «есть ли Connection» — в favorite-ветке `enqueue_post_notifications()` из этого же батча. Заведена `are_connected(a, b)`, но не выдана наружу (как `is_blocked_pair` после 0.11.0) — для единственного места, где нужен прямой грант (RLS-политика `users`), сделана однонаправленная обёртка `is_connected_to_caller(other)`. Миграция `20260819160000_extract_are_connected_helper.sql`.
+  **Duplication of the visibility rule, found in the same new migrations.** The mute/block check had been rewritten by hand in five places instead of reusing `is_blocked_pair()` — a symmetric `has_muted()` was introduced (migration `20260819110000_extract_has_muted_helper.sql`). The second pass found a third copy of the "is there a Connection" check — in the favorites branch of `enqueue_post_notifications()` from this same batch. `are_connected(a, b)` was introduced but not exposed (like `is_blocked_pair` after 0.11.0) — for the single place that needs a direct grant (the `users` RLS policy), a one-directional wrapper `is_connected_to_caller(other)` was made. Migration `20260819160000_extract_are_connected_helper.sql`.
 
-  **Мелкая закалка.** `profile_screen.dart`: `_saveName`/`_pickAndUploadAvatar` были без `catch` — сетевая ошибка молча съедалась, спиннер просто останавливался без сообщения; заодно вынесен `_showError()` вместо трёх копий одного `ScaffoldMessenger`/`SnackBar`. `connections_screen.dart`: активация инвайта не бампала `feedRefreshTickProvider` — новый знакомый с постами не появлялся в открытой ленте без ручного pull-to-refresh. `AuthException.message` показывался сырым английским текстом на трёх auth-экранах, в обход собственной конвенции проекта — переключаться по коду, не по тексту, уже принятой для `PostgrestException`; заведена `authErrorMessage()` (`lib/shared/auth_error_message.dart`), переключается по `AuthException.code`, 5 новых строк в обоих ARB, 9 новых тестов на саму функцию.
+  **Minor hardening.** `profile_screen.dart`: `_saveName`/`_pickAndUploadAvatar` had no `catch` — a network error was silently swallowed, and the spinner just stopped with no message; along the way `_showError()` was extracted instead of three copies of the same `ScaffoldMessenger`/`SnackBar`. `connections_screen.dart`: activating an invite didn't bump `feedRefreshTickProvider` — a new connection with posts didn't appear in the open feed without a manual pull-to-refresh. `AuthException.message` was shown as raw English text on three auth screens, bypassing the project's own convention — switch on the code, not on the text — already adopted for `PostgrestException`; `authErrorMessage()` was introduced (`lib/shared/auth_error_message.dart`), switching on `AuthException.code`, with 5 new strings in both ARBs and 9 new tests for the function itself.
 
-  **Ложная находка, для протокола.** Второй прогон заподозрил, что `parent_comment_id`/`reply_to_id` в INSERT-политике `comments` не проверяют, что родитель на том же посте, — но это уже отклоняет существующий триггер `comments_enforce_reply_rules`, пропущенный при чтении одних только RLS-политик. Подтверждено эксплойт-симуляцией (отклонена) и контрольным легитимным сценарием (работает). Написанная под эту находку миграция откачена в той же сессии, не выпущена — в репозитории её не осталось.
+  **A false finding, for the record.** The second pass suspected that `parent_comment_id`/`reply_to_id` in the `comments` INSERT policy don't check that the parent is on the same post — but that is already rejected by the existing `comments_enforce_reply_rules` trigger, which was missed when reading only the RLS policies. Confirmed by an exploit simulation (rejected) and a control legitimate scenario (works). The migration written for this finding was rolled back in the same session and never shipped — none of it remains in the repository.
 
-  Тестов на сам push-модуль по-прежнему нет — `FirebaseMessaging.instance` не подменить без инфраструктуры мока Firebase, которой в проекте нет, заводить её ради этой правки посчитали непропорциональным.
+  There are still no tests for the push module itself — `FirebaseMessaging.instance` can't be substituted without Firebase mocking infrastructure, which the project doesn't have, and setting it up for this change was considered disproportionate.
 
-  Проверено: каждая находка — RLS-симуляцией на живой БД (откатываемая транзакция, `set local role authenticated` + `request.jwt.claims`), включая контрольный положительный сценарий, а не на глаз. Миграции применены и записаны в `supabase_migrations.schema_migrations`. `flutter analyze`/`dart format`/`flutter test` чисты (89 тестов).
+  Verified: each finding with an RLS simulation on the live DB (a rolled-back transaction, `set local role authenticated` + `request.jwt.claims`), including a control positive scenario, not by eye. Migrations applied and recorded in `supabase_migrations.schema_migrations`. `flutter analyze`/`dart format`/`flutter test` are clean (89 tests).
 
-- Оффлайн-режим ленты + фото из дискового кэша сразу при открытии (0.14.0) — закрыт пункт «Оффлайн-режим» из «Ближайшего плана» future-development.md, заодно устранена бытовая жалоба автора: при каждом перезапуске сперва рисовался текст поста, а фото подгружалось секундой позже.
+- Offline feed mode + photos from the disk cache immediately on open (0.14.0) — closes the "Offline mode" item from the "Near-term plan" in future-development.md, and along the way fixes an everyday complaint from the author: on every restart the post text was drawn first, and the photo loaded a second later.
 
-  **Оффлайн-режим.** Новый `FeedCache` (`lib/features/feed/feed_cache.dart`, `shared_preferences`) хранит JSON-снимок последней успешно загруженной первой страницы — отдельно для общей ленты и для каждой «своей»/чужой стены (`authorId` из `PostListView` — ровно тот же параметр, что уже отличает `FeedScreen` от `ProfileScreen`/`FriendProfileScreen`, второй кэш заводить не пришлось). Не вся пагинация, а именно одна страница: смысл фичи — «не пустой экран без сети», а не оффлайн-скролл всей ленты. `Post` получил `toCacheJson()`/`fromCacheJson()` — свой формат, а не переиспользование `fromRow()`, потому что кэш хранит уже посчитанные на клиенте вещи (`imageUrl`, счётчики, свою реакцию), которых в сырой строке из PostgREST нет.
+  **Offline mode.** The new `FeedCache` (`lib/features/feed/feed_cache.dart`, `shared_preferences`) stores a JSON snapshot of the last successfully loaded first page — separately for the general feed and for each "own"/someone else's wall (`authorId` from `PostListView` — exactly the same parameter that already distinguishes `FeedScreen` from `ProfileScreen`/`FriendProfileScreen`, so no second cache was needed). Not the whole pagination, just one page: the point of the feature is "not an empty screen without a network", not offline scrolling of the entire feed. `Post` got `toCacheJson()`/`fromCacheJson()` — its own format rather than reusing `fromRow()`, because the cache stores things already computed on the client (`imageUrl`, counters, your own reaction) that aren't in the raw row from PostgREST.
 
-  `PostListView._PostListViewState` в `initState()` запускает чтение кэша (`_primeFromCache()`) и настоящий запрос (`_loadMore()`) параллельно, не дожидаясь друг друга — кэш почти всегда быстрее, поэтому список успевает отрисоваться раньше, чем достучится сеть, а настоящая первая страница, когда бы она ни пришла, всегда **заменяет** список целиком (`_posts..clear()..addAll(page)`), а не дописывается поверх кэша — иначе превью и живые данные задвоились бы. Ради этого курсор пагинации (`_cursor`) отделён от последнего элемента `_posts`: раньше кэш-превью в самом списке было бы неотличимо от уже загруженной страницы и пагинация начала бы отсчёт не с начала.
+  `PostListView._PostListViewState` in `initState()` starts reading the cache (`_primeFromCache()`) and the real request (`_loadMore()`) in parallel, without waiting on each other — the cache is almost always faster, so the list gets drawn before the network responds, and the real first page, whenever it arrives, always **replaces** the list entirely (`_posts..clear()..addAll(page)`) rather than being appended on top of the cache — otherwise the preview and live data would be duplicated. For this, the pagination cursor (`_cursor`) was separated from the last element of `_posts`: previously a cache preview in the list itself would have been indistinguishable from an already loaded page, and pagination would not have started counting from the beginning.
 
-  Если настоящий запрос падает (нет сети), список не очищается и не подменяется экраном ошибки — если на экране уже что-то есть (кэш-превью или более ранняя живая страница), об ошибке сообщает `SnackBar`, без потери контента; полноэкранная ошибка (`_errorMessage`, как раньше) остаётся только когда список пуст **и** нет кэша. Тем же путём закрыт старый мёртвый код: раньше `_errorMessage` при неудаче подгрузки следующей страницы выставлялся, но никогда не показывался (условие рендера завязано на пустой список) — теперь такая неудача тоже уходит в `SnackBar`.
+  If the real request fails (no network), the list isn't cleared or replaced by an error screen — if something is already on screen (a cache preview or an earlier live page), a `SnackBar` reports the error without losing content; the full-screen error (`_errorMessage`, as before) remains only when the list is empty **and** there's no cache. The same path closes old dead code: previously `_errorMessage` was set when loading the next page failed but was never shown (the render condition was tied to an empty list) — now such a failure also goes to a `SnackBar`.
 
-  Гонка, пойманная не глазами, а тестом (`falls back to the last-seen posts…` в `post_list_view_test.dart` изначально дублировал пост): `_primeFromCache()` и ветка отказа в `_loadMore()` независимо читали кэш каждый через свой `await FeedCache.load(...)`, и оба успевали увидеть пустой `_posts` и оба дописывали кэш — на экране пост появлялся дважды. Исправлено единым `late final Future<List<Post>?> _cacheLoadFuture`, запущенным один раз в `initState()`: обе стороны ждут один и тот же `Future`, и вторая, увидев, что список уже не пуст, ничего не делает. Отдельный флаг `_firstFetchSettled` закрывает более редкий случай той же природы: если настоящий запрос успел прийти первым и честно вернул пустую страницу (у автора действительно нет ни одного поста), это не должно означать «список пуст, есть шанс подставить кэш» — подтверждённый пустой результат не переопределяется устаревшим кэшем, который может подъехать позже.
+  A race caught not by eye but by a test (`falls back to the last-seen posts…` in `post_list_view_test.dart` initially duplicated a post): `_primeFromCache()` and the failure branch in `_loadMore()` independently read the cache, each via its own `await FeedCache.load(...)`, and both managed to see an empty `_posts` and both appended the cache — the post appeared twice on screen. Fixed with a single `late final Future<List<Post>?> _cacheLoadFuture`, started once in `initState()`: both sides await the same `Future`, and the second one, seeing that the list is no longer empty, does nothing. A separate `_firstFetchSettled` flag closes a rarer case of the same nature: if the real request arrived first and honestly returned an empty page (the author really has no posts at all), that should not mean "the list is empty, there's a chance to substitute the cache" — a confirmed empty result isn't overridden by a stale cache that may arrive later.
 
-  **Фото из дискового кэша сразу.** `CachedNetworkImage` в `_PostCard` получил `cacheKey: post.imagePath` — раньше кэш-ключом по умолчанию был сам `imageUrl`, а это подписанная Storage-ссылка, перевыпускаемая (новый query-параметр токена) при каждом `createSignedUrl()`, то есть при каждом заходе в приложение. Формально другой URL — для `cached_network_image` формально другой файл, поэтому даже уже скачанное фото перекачивалось заново на следующем запуске, и из-за этого асинхронного `Image`-виджета текст поста (доступен сразу, часть уже загруженной модели) неизменно опережал фото на экране. Путь в Storage (`image_path`) для существующего поста стабилен, поэтому теперь он и есть ключ кэша — второй и все следующие показы одного и того же фото идут с диска без сети, а `imageUrl` по-прежнему передаётся отдельно и используется только при промахе кэша. Комментарий у поля намеренно называет то, что стабильность держится только «пока нет редактирования поста» — пункт 3 «Ближайшего плана» (редактирование поста) рано или поздно даст посту сменить фото по тому же `image_path`, и в этот момент кэш-ключ придётся либо версионировать, либо инвалидировать явно; сейчас это не нужно, потому что смены фото у существующего поста ещё не существует.
+  **Photos from the disk cache immediately.** `CachedNetworkImage` in `_PostCard` got `cacheKey: post.imagePath` — previously the default cache key was `imageUrl` itself, and that's a signed Storage link reissued (a new token query parameter) on every `createSignedUrl()`, i.e. every time the app is opened. A formally different URL is, for `cached_network_image`, formally a different file, so even an already downloaded photo was re-downloaded on the next launch, and because of this asynchronous `Image` widget the post text (available immediately, part of the already loaded model) invariably beat the photo onto the screen. The Storage path (`image_path`) for an existing post is stable, so it's now the cache key — the second and all subsequent displays of the same photo come from disk without a network, while `imageUrl` is still passed separately and used only on a cache miss. The comment on the field deliberately states that the stability holds only "as long as there's no post editing" — item 3 of the "Near-term plan" (post editing) will sooner or later let a post change its photo under the same `image_path`, and at that point the cache key will have to be either versioned or explicitly invalidated; this isn't needed now, because changing the photo of an existing post doesn't exist yet.
 
-  Чисто клиентская фича — без миграций и RLS, видимость постов не расширяется (кэш на устройстве — просто локальная копия того, что RLS уже отдало этому пользователю в прошлый раз).
+  A purely client-side feature — no migrations or RLS, post visibility isn't widened (the on-device cache is just a local copy of what RLS already gave this user last time).
 
-  Заодно `post_list_view.dart` переведён с прямого `ref.read(supabaseClientProvider).auth.currentUser!.id` на `currentUserIdProvider` (уже был в `auth_providers.dart`, используется `comments_screen.dart`/`create_post_screen.dart`) — понадобилось, чтобы виджет-тесты вообще могли подменить текущего пользователя без реального Supabase-клиента; заодно один и тот же способ узнать «кто я» теперь во всех экранах ленты.
+  Along the way, `post_list_view.dart` was switched from a direct `ref.read(supabaseClientProvider).auth.currentUser!.id` to `currentUserIdProvider` (already in `auth_providers.dart`, used by `comments_screen.dart`/`create_post_screen.dart`) — this was needed so that widget tests could substitute the current user at all without a real Supabase client; as a bonus, all feed screens now use one and the same way of finding out "who am I".
 
-  Новые тесты: `feed_cache_test.dart` (round-trip `Post.toCacheJson`/`fromCacheJson`, включая пост без фото/реакции; `FeedCache` — сохранение/чтение, разделение слотов между общей лентой и конкретным автором, перезапись более новым снимком, устойчивость к испорченному JSON) и `post_list_view_test.dart` (блокирующая ошибка без кэша и без сети; кэш-превью не даёт экрану быть пустым офлайн; настоящая страница целиком заменяет кэш-превью; `cacheKey` фото — это `image_path`, а не `imageUrl`). Гонку с двойным постом обнаружил именно второй из этих тестов, руками замечена бы не была — она не воспроизводится стабильно на глаз. Проверено `flutter analyze`/`dart format`/`flutter test` — 100 тестов, все зелёные. Реальной проверки в авиарежиме на физическом устройстве в этой сессии не делали — стоит сделать перед следующим релизом в Google Play.
+  New tests: `feed_cache_test.dart` (round-trip of `Post.toCacheJson`/`fromCacheJson`, including a post without a photo/reaction; `FeedCache` — save/load, separation of slots between the general feed and a specific author, overwrite by a newer snapshot, resilience to corrupted JSON) and `post_list_view_test.dart` (blocking error with no cache and no network; a cache preview keeps the screen from being empty offline; the real page fully replaces the cache preview; the photo's `cacheKey` is `image_path`, not `imageUrl`). The double-post race was discovered precisely by the second of these tests; it wouldn't have been noticed by hand — it doesn't reproduce reliably by eye. Verified with `flutter analyze`/`dart format`/`flutter test` — 100 tests, all green. No real airplane-mode check on a physical device was done in this session — it's worth doing before the next Google Play release.
 
-- Push-уведомления о комментариях и ответах (0.14.1) — закрывает последний непушевый кусок пункта «Push-уведомления» из 0.12.0: посты/дайджест/недельное молчание уже слали пуш, комментарии — нет. Два новых `kind` в `notification_outbox`: `post_comment` (кто-то написал под твоим постом) и `comment_reply` (кто-то ответил на твой комментарий), один триггер `enqueue_comment_notifications()` на `comments` (по образцу `enqueue_post_notifications()` из 20260818190000). Миграция `20260819170000_add_comment_reply_notifications.sql`.
+- Push notifications for comments and replies (0.14.1) — closes the last non-push piece of the "Push notifications" item from 0.12.0: posts/digest/week of silence already sent pushes, comments didn't. Two new `kind`s in `notification_outbox`: `post_comment` (someone commented under your post) and `comment_reply` (someone replied to your comment), with a single `enqueue_comment_notifications()` trigger on `comments` (modeled on `enqueue_post_notifications()` from 20260818190000). Migration `20260819170000_add_comment_reply_notifications.sql`.
 
-  **Дедуп одного события в два уведомления.** Ответ на свой же комментарий под своим же постом — это одновременно «прокомментировали пост» и «ответили на комментарий» для одного и того же получателя. Вместо двух пушей за одно действие: если адресат ответа совпадает с владельцем поста, шлётся только `comment_reply` (более конкретный) — `post_comment` для этого же получателя пропускается, потому что у него ровно тот же предикат mute/block и пропустить его безопасно.
+  **Deduplicating one event into two notifications.** A reply to your own comment under your own post is simultaneously "your post got a comment" and "your comment got a reply" for the same recipient. Instead of two pushes for one action: if the reply's addressee is the post owner, only `comment_reply` is sent (the more specific one) — `post_comment` for that same recipient is skipped, because it has exactly the same mute/block predicate and skipping it is safe.
 
-  **Проверка на видимость — с точки зрения получателя, не автора комментария.** INSERT-политика `comments` уже гарантирует, что комментирующий видит пост/родителя/адресата (`is_author_of_comment_visible()`/`is_comment_visible_to_post_owner()`) — но это взгляд *комментирующего*, а mute не симметричен: то, что я не замьютил тебя, не значит, что ты не замьютил меня. Триггер — `security definer`, поэтому дополнительно спрашивает `has_muted(получатель, автор_комментария)` и `is_blocked_pair(получатель, автор_комментария)` напрямую, тем же способом, что `enqueue_post_notifications()` уже делает для `viewer`/`author`, а не полагается на то, что INSERT вообще прошёл.
+  **The visibility check is from the recipient's point of view, not the commenter's.** The `comments` INSERT policy already guarantees that the commenter sees the post/parent/addressee (`is_author_of_comment_visible()`/`is_comment_visible_to_post_owner()`) — but that's the *commenter's* view, and mute isn't symmetric: the fact that I haven't muted you doesn't mean you haven't muted me. The trigger is `security definer`, so it additionally asks `has_muted(recipient, comment_author)` and `is_blocked_pair(recipient, comment_author)` directly, the same way `enqueue_post_notifications()` already does for `viewer`/`author`, rather than relying on the fact that the INSERT went through at all.
 
-  Системный аккаунт (Amicus) как получатель исключён явно (`is_system_account()`) — комментарий под его постом технически возможен (это открыто в 0.12.0, чтобы Amicus мог собирать комментарии от кого угодно), но у аккаунта нет реального владельца, слать ему пуш некому.
+  The system account (Amicus) as a recipient is excluded explicitly (`is_system_account()`) — a comment under its post is technically possible (this was opened up in 0.12.0 so Amicus could collect comments from anyone), but the account has no real owner, so there's no one to send a push to.
 
-  Дайджеста для комментариев, в отличие от постов, нет — объём на порядок ниже, батчинг сейчас добавил бы только задержку без реальной проблемы спама, которую он бы решал.
+  Unlike posts, there's no digest for comments — the volume is an order of magnitude lower, and batching would now only add delay without a real spam problem for it to solve.
 
-  Клиентских изменений нет — `kind`/`payload` целиком читает только `send-push`, который получил четыре новых шаблона текста на каждый `kind` (`supabase/functions/send-push/index.ts`), по тому же паттерну ротации, что и у `new_post`/`digest`/`inactive_week`.
+  No client changes — `kind`/`payload` are read entirely by `send-push` alone, which got four new text templates for each `kind` (`supabase/functions/send-push/index.ts`), following the same rotation pattern as `new_post`/`digest`/`inactive_week`.
 
-  Проверено на живой БД восемью сценариями разом, в одной откатываемой транзакции (реальные пользователи и реальные Connections, а не выдуманные id): обычный корневой комментарий; ответ адресован не владельцу поста (двум разным получателям по одной строке); комментарий владельца под своим же постом (без уведомления); ответ на свой же комментарий под своим же постом (дедуп — только `comment_reply`, без второй копии `post_comment`); комментарий от замьюченного; от заблокированного; ответ автора самому себе (без `comment_reply`); комментарий под постом системного аккаунта (без уведомления). Все восемь — с ожидаемым результатом с первого раза, ничего дописывать по итогам не пришлось; после `rollback` тестовые посты/комментарии/mute/block в базе не остались. Миграция применена и записана в `supabase_migrations.schema_migrations`, `send-push` передеплоен (`supabase functions deploy`, без Docker — деплой ассета не требует локальной сборки).
+  Verified on the live DB with eight scenarios at once, in a single rolled-back transaction (real users and real Connections, not made-up ids): a regular root comment; a reply addressed to someone other than the post owner (two different recipients from one row); the owner's comment under their own post (no notification); a reply to your own comment under your own post (dedup — only `comment_reply`, with no second copy as `post_comment`); a comment from a muted user; from a blocked user; the author replying to themselves (no `comment_reply`); a comment under a system-account post (no notification). All eight gave the expected result on the first try; nothing had to be added afterwards; after `rollback` no test posts/comments/mute/block remained in the database. The migration was applied and recorded in `supabase_migrations.schema_migrations`, `send-push` was redeployed (`supabase functions deploy`, without Docker — deploying the asset doesn't require a local build).
 
-- Вкладка настроек: переключатели типов уведомлений (0.14.2) — первая половина пункта «Вкладка настроек» из «Ближайшего плана» future-development.md (показ версии приложения на этом же экране остаётся открытым). Иконка-шестерёнка в `AppBar` рядом с тумблером темы — теперь на всех трёх основных вкладках (Лента/Знакомства/Профиль), а не только там, где тумблер стоял раньше по одной — открывает новый `SettingsScreen` (`lib/features/settings/`) с разделом «Уведомления» и пятью независимыми тумблерами, по одному на каждый источник, уже писавший в `notification_outbox`: посты Amicus, посты избранных, комментарии/ответы, дайджест, недельное молчание. Каждый тумблер применяется сразу — тот же паттерн, что уже используют тема/mute/block/реакции (оптимистичный `setState`, откат при ошибке сети + `SnackBar`), без отдельной кнопки «Сохранить».
+- Settings tab: notification type toggles (0.14.2) — the first half of the "Settings tab" item from the "Near-term plan" in future-development.md (showing the app version on this same screen remains open). A gear icon in the `AppBar` next to the theme toggle — now on all three main tabs (Feed/Connections/Profile), not just where the toggle used to sit individually — opens the new `SettingsScreen` (`lib/features/settings/`) with a "Notifications" section and five independent toggles, one for each source that already wrote to `notification_outbox`: Amicus posts, posts from favorites, comments/replies, digest, week of silence. Each toggle applies immediately — the same pattern already used by theme/mute/block/reactions (optimistic `setState`, rollback on a network error + `SnackBar`), with no separate "Save" button.
 
-  **Схема.** Новая таблица `notification_preferences` (`user_id primary key`, пять `boolean not null default true`) — миграция `20260819180000_add_notification_preferences.sql`. RLS та же форма, что у `device_tokens`: `for all using/with check (user_id = auth.uid())`, `revoke all from anon`. Строки нет, пока пользователь ни разу не зашёл в настройки — это читается как «всё включено» через `coalesce(..., true)` в каждом из пяти мест, а не бэкфиллится по всем существующим пользователям; ровно то же самое допущение, что уже делает клиентская модель `NotificationPreferences.fromRow(null)`.
+  **Schema.** A new `notification_preferences` table (`user_id primary key`, five `boolean not null default true`) — migration `20260819180000_add_notification_preferences.sql`. RLS has the same shape as `device_tokens`: `for all using/with check (user_id = auth.uid())`, `revoke all from anon`. There's no row until the user has opened settings at least once — that reads as "everything on" via `coalesce(..., true)` in each of the five places, rather than being backfilled for all existing users; exactly the same assumption the client model `NotificationPreferences.fromRow(null)` already makes.
 
-  **Пять источников — пять точек изменения в двух существующих триггерах**, без общего хелпера: `enqueue_post_notifications()` (посты Amicus, избранные, дайджест) и `enqueue_inactive_week_notifications()` получили `coalesce`-проверку перед своими `insert` в `notification_outbox`; `enqueue_comment_notifications()` (0.14.1) — перед обоими своими. Не выносилось в общую функцию: пять разных колонок одной таблицы, использованных по одному-два раза каждая, — не тот случай дублирования правила, из-за которого в проекте уже был `is_author_visible()` (см. CLAUDE.md, «Грабли»), а обычная лишняя косвенность.
+  **Five sources — five points of change in two existing triggers**, with no shared helper: `enqueue_post_notifications()` (Amicus posts, favorites, digest) and `enqueue_inactive_week_notifications()` got a `coalesce` check before their `insert`s into `notification_outbox`; `enqueue_comment_notifications()` (0.14.1) — before both of its own. Not extracted into a shared function: five different columns of one table, used once or twice each, aren't the kind of rule duplication that already gave the project `is_author_visible()` (see CLAUDE.md, "Pitfalls"), just ordinary extra indirection.
 
-  **Счётчик дайджеста продолжает копиться, даже когда сам дайджест выключен.** `pending_post_counts` при пересечении 7 всегда сбрасывается в 0 — уведомление внутри `if` пропускается отдельной проверкой, а сброс происходит независимо от неё. Иначе включивший дайджест обратно через месяц получил бы один пуш со случайным числом, накопленным, пока он был выключен, вместо того чтобы просто продолжить получать по одному на каждые следующие 7 постов, как будто ничего не выключалось.
+  **The digest counter keeps accumulating even when the digest itself is turned off.** `pending_post_counts` is always reset to 0 when it crosses 7 — the notification inside the `if` is skipped by a separate check, while the reset happens independently of it. Otherwise someone who turned the digest back on a month later would get one push with a random number accumulated while it was off, instead of simply continuing to get one for every next 7 posts, as if nothing had been turned off.
 
-  **Мелкая деталь дедупа из 0.14.1 держится и здесь без изменений**: если получатель одновременно владелец поста и адресат ответа, а `notify_comments` у него выключен, обе ветки не сработают по одному и тому же условию — специально проверять это ещё раз не пришлось.
+  **A small detail of the dedup from 0.14.1 holds here unchanged**: if the recipient is both the post owner and the reply's addressee, and has `notify_comments` turned off, both branches don't fire on one and the same condition — there was no need to check this specifically again.
 
-  Проверено на живой БД шестью сценариями (по одному на каждый из пяти тумблеров плюс RLS) в одной откатываемой транзакции: включённая проверка RLS через `set local role authenticated` — попытка записать чужую строку `notification_preferences` отклонена (`insufficient_privilege`); затем, порознь, отключённый `notify_comments` у владельца поста (нет `post_comment`), у адресата ответа (нет `comment_reply`, при этом `post_comment` другому получателю по тому же событию всё же приходит); отключённый `notify_favorites` у зафейворившего (нет `new_post`); отключённый `notify_system_account` у одного пользователя против контрольного с дефолтом (у второго уведомление есть); отключённый `notify_digest` — уведомления нет, но счётчик всё равно обнулился, против контрольного пользователя с тем же счётчиком и дефолтной настройкой (уведомление есть); отключённый `notify_inactive_week` против контрольного. Все шесть — с первой попытки; контрольного пользователя для дайджеста пришлось подбирать по факту (первый выбор, Тимоха, уже в реальных данных зафейворила автора триггерящего поста, что само по себе исключает её из дайджеста — не имеет отношения к тумблеру, но затуманило бы результат). После `rollback` — ни тестовых постов/комментариев, ни строк `notification_preferences`, ни правки `favorite_users`/`pending_post_counts` в БД не осталось. Миграция применена и записана в `supabase_migrations.schema_migrations`. Новые тесты: `notification_preferences_repository_test.dart` (round-trip модели, дефолт «всё включено» для отсутствующей/неполной строки) и `settings_screen_test.dart` (все тумблеры включены по умолчанию; выключение одного не трогает остальные; неудачное сохранение откатывает тумблер обратно и показывает `SnackBar`) — 8 новых тестов, 108 всего. `flutter analyze`/`dart format`/`flutter test` чисты.
+  Verified on the live DB with six scenarios (one for each of the five toggles plus RLS) in a single rolled-back transaction: an enabled RLS check via `set local role authenticated` — an attempt to write someone else's `notification_preferences` row was rejected (`insufficient_privilege`); then, separately, `notify_comments` turned off for the post owner (no `post_comment`), for the reply's addressee (no `comment_reply`, while `post_comment` to another recipient from the same event still arrives); `notify_favorites` turned off for the user who favorited (no `new_post`); `notify_system_account` turned off for one user versus a control user with the default (the second one gets the notification); `notify_digest` turned off — no notification, but the counter still reset, versus a control user with the same counter and the default setting (gets the notification); `notify_inactive_week` turned off versus a control. All six on the first try; the control user for the digest had to be picked after the fact (the first choice, Тимоха, had already favorited the author of the triggering post in the real data, which by itself excludes her from the digest — unrelated to the toggle, but it would have muddied the result). After `rollback` — no test posts/comments, no `notification_preferences` rows, and no edits to `favorite_users`/`pending_post_counts` remained in the DB. The migration was applied and recorded in `supabase_migrations.schema_migrations`. New tests: `notification_preferences_repository_test.dart` (model round-trip, the "everything on" default for a missing/incomplete row) and `settings_screen_test.dart` (all toggles on by default; turning one off doesn't touch the others; a failed save reverts the toggle and shows a `SnackBar`) — 8 new tests, 108 total. `flutter analyze`/`dart format`/`flutter test` are clean.
 
-- Дайджест: «с последнего входа», а не сырой счётчик (0.14.3) — правка сразу после 0.14.2 по замечанию автора: `pending_post_counts` считал посты подряд независимо от того, заходил ли пользователь в приложение между ними, так что дайджест мог прийти про посты, которые человек уже пролистал в ленте несколько дней назад. Теперь считается «сколько постов от невыбранных в избранное Connections появилось с момента, когда пользователь последний раз открывал приложение» — искренне непрочитанное, а не произвольная накопленная цифра.
+- Digest: "since the last visit" rather than a raw counter (0.14.3) — a fix right after 0.14.2 following the author's remark: `pending_post_counts` counted posts in a row regardless of whether the user had opened the app in between, so the digest could arrive about posts the person had already scrolled through in the feed days ago. It now counts "how many posts from Connections not chosen as favorites have appeared since the user last opened the app" — genuinely unread, rather than an arbitrary accumulated number.
 
-  **«Открыл приложение» — нужен сигнал с клиента.** `auth.users.last_sign_in_at` для этого не годится: сессия держится через refresh-токен неделями без нового «настоящего» входа, так что для большинства пользователей это поле почти никогда не обновлялось бы и читалось бы как «с момента регистрации». Новая `security definer`-функция `touch_user_activity()` — пишет `user_activity.last_active_at = now()` для `auth.uid()`, без аргументов и без прямого гранта на таблицу (RLS включён, политик `authenticated` нет вовсе — единственный путь записи это сам RPC, привязанный к вызывающему, что избавляет от пляски «прибить `last_active_at` к серверным часам через триггер», нужной бы будь тут обычный грант на таблицу). Клиент — `UserActivityRepository.touch()` (`lib/features/notifications/user_activity_repository.dart`), вызывается через `userActivityProvider` из `MainShellScreen` тем же способом и в том же месте, что уже есть `pushRegistrationProvider`: один раз за сессию, только у залогиненного, fire-and-forget.
+  **"Opened the app" needs a signal from the client.** `auth.users.last_sign_in_at` doesn't work for this: the session is kept alive via a refresh token for weeks without a new "real" sign-in, so for most users this field would almost never update and would read as "since registration". A new `security definer` function `touch_user_activity()` writes `user_activity.last_active_at = now()` for `auth.uid()`, with no arguments and no direct grant on the table (RLS is enabled, there are no `authenticated` policies at all — the only write path is the RPC itself, bound to the caller, which avoids the dance of "pin `last_active_at` to the server clock via a trigger" that a regular table grant would require). Client side — `UserActivityRepository.touch()` (`lib/features/notifications/user_activity_repository.dart`), called via `userActivityProvider` from `MainShellScreen` the same way and in the same place as the existing `pushRegistrationProvider`: once per session, only for a signed-in user, fire-and-forget.
 
-  **`enqueue_post_notifications()`**: `pending_post_counts` со своим триггерным инкрементом убрана целиком (`drop table`), вместо неё на каждый новый пост для каждого зрителя — живой `select count(*)` по `posts`, отфильтрованный по Connections/mute/block/избранному того зрителя и `created_at > last_active_at`. Ни разу не открывавший (обновлённое) приложение зритель читается как «стал активен только что» (`coalesce(last_active_at, now())`) — иначе первый же пост после раскатки фичи дал бы кому-то дайджест сразу за всю историю ленты. Повторно не шлётся, пока не сработает условие «уже есть строка `digest` в `notification_outbox` с `created_at` позже начала текущего окна» — окно сдвигается только вызовом `touch_user_activity()`, то есть следующим реальным заходом в приложение, а не временем.
+  **`enqueue_post_notifications()`**: `pending_post_counts` with its trigger increment was removed entirely (`drop table`); instead, for each new post and each viewer, a live `select count(*)` over `posts`, filtered by that viewer's Connections/mute/block/favorites and `created_at > last_active_at`. A viewer who has never opened the (updated) app reads as "became active just now" (`coalesce(last_active_at, now())`) — otherwise the very first post after the feature rolled out would have given someone a digest for the whole feed history at once. It isn't sent again until the condition "there's already a `digest` row in `notification_outbox` with `created_at` later than the start of the current window" holds — the window moves only via a `touch_user_activity()` call, i.e. the next real visit to the app, not with time.
 
-  Внутри пересчёта нет вызовов `has_muted()`/`is_blocked_pair()` построчно — та самая грабля из CLAUDE.md («security definer не инлайнится»), только в этот раз речь о фильтре по кандидатам-постам, а не по всей `posts`/`comments`, поэтому вместо помощников — прямые `join`/`not exists` по `muted_users`/`blocked_users`/`favorite_users`. Заодно добавлен `posts (author_id, created_at)` — раньше на `posts` не было ничего, кроме индекса первичного ключа, а новый запрос фильтрует именно по этой паре.
+  There are no per-row calls to `has_muted()`/`is_blocked_pair()` inside the recount — that same pitfall from CLAUDE.md ("security definer doesn't get inlined"), only this time it's about filtering candidate posts rather than all of `posts`/`comments`, so instead of the helpers there are direct `join`/`not exists` over `muted_users`/`blocked_users`/`favorite_users`. Along the way, `posts (author_id, created_at)` was added — previously `posts` had nothing but the primary key index, and the new query filters by exactly this pair.
 
-  Проверено на живой БД в одной откатываемой транзакции: RPC-часть (`touch_user_activity()` пишет свою же строку под `set local role authenticated`, прямой `select` по `user_activity` в обход RPC отклонён — `insufficient_privilege`, RLS-политик действительно нет); затем дайджест-сценарий на реальной паре Connections — 3 поста до `last_active_at` (принудительно сдвинутого на час назад) не посчитаны, 6 после плюс седьмой настоящий `insert` (даёт живой инкремент через сам триггер) — дайджест пришёл ровно один раз со счётчиком 7; восьмой пост в том же окне — второго дайджеста нет; ручной сдвиг `last_active_at` вперёд (эмуляция повторного открытия приложения) и девятый пост — окно свежее, зритель снова ниже порога, третьего дайджеста тоже нет. Все проверки — с первой попытки. После `rollback` — ни тестовых постов, ни строк `user_activity` в БД не осталось. Миграция `20260819190000_switch_digest_to_since_last_active.sql` применена и записана в `supabase_migrations.schema_migrations`. Клиентских Dart-тестов не добавлено — `userActivityProvider` дословно повторяет уже непротестированный (по той же причине) `pushRegistrationProvider`, а серверная логика проверена на живую. `flutter analyze`/`dart format`/`flutter test` чисты (108 тестов, без изменений в количестве).
+  Verified on the live DB in a single rolled-back transaction: the RPC part (`touch_user_activity()` writes its own row under `set local role authenticated`; a direct `select` on `user_activity` bypassing the RPC was rejected — `insufficient_privilege`, there really are no RLS policies); then a digest scenario on a real pair of Connections — 3 posts before `last_active_at` (forcibly moved an hour back) weren't counted, 6 after it plus a seventh real `insert` (gives a live increment through the trigger itself) — the digest arrived exactly once with a count of 7; an eighth post in the same window — no second digest; manually moving `last_active_at` forward (emulating reopening the app) and a ninth post — the window is fresh, the viewer is below the threshold again, no third digest either. All checks on the first try. After `rollback` — no test posts or `user_activity` rows remained in the DB. Migration `20260819190000_switch_digest_to_since_last_active.sql` was applied and recorded in `supabase_migrations.schema_migrations`. No client Dart tests were added — `userActivityProvider` literally repeats the (for the same reason) already untested `pushRegistrationProvider`, and the server logic was verified live. `flutter analyze`/`dart format`/`flutter test` are clean (108 tests, no change in count).
 
-  **Довесок в ту же версию** (без нового номера — версия ещё нигде не выпущена, бампать было незачем): на экране настроек снизу появилась строка с версией/сборкой приложения (`package_info_plus`, `PackageInfo.fromPlatform()` — читает то же значение, что видит `flutter build`, а не отдельно хардкоженную строку, которая рано или поздно разошлась бы с `pubspec.yaml`) — закрывает «Вкладка настроек» из «Ближайшего плана» полностью, вторую половину пункта после 0.14.2. Заодно иконки в `AppBar` поменяны местами: тумблер темы теперь первым, шестерёнка настроек — вторым, на всех трёх вкладках.
+  **An add-on in the same version** (no new number — the version hadn't been released anywhere yet, so there was no reason to bump): a line with the app version/build appeared at the bottom of the settings screen (`package_info_plus`, `PackageInfo.fromPlatform()` — reads the same value that `flutter build` sees, rather than a separately hardcoded string that would sooner or later drift from `pubspec.yaml`) — fully closes "Settings tab" from the "Near-term plan", the second half of the item after 0.14.2. Along the way, the icons in the `AppBar` were swapped: the theme toggle is now first and the settings gear second, on all three tabs.
 
-  Проверено на устройстве вживую, не только в БД: экран настроек открылся, показал «Версия 0.14.3 (32)»; выключение `notify_comments` через реальный UI, реальный комментарий от знакомого — `notification_outbox` не получил ни одной строки (не просто «не отправлено», а «не поставлено в очередь» — проверка преференса стоит до `insert`), в шторке уведомлений пусто; включение тумблера обратно тем же способом и новый комментарий — пуш пришёл («Ваш пост прокомментировал(а) Райан Гослинг»), появился в шторке при свёрнутом приложении. Оба тестовых комментария удалены после проверки.
+  Verified live on the device, not just in the DB: the settings screen opened and showed "Версия 0.14.3 (32)" ("Version 0.14.3 (32)"); turning off `notify_comments` through the real UI, then a real comment from a connection — `notification_outbox` got no rows at all (not just "not sent" but "not queued" — the preference check sits before the `insert`), and the notification shade was empty; turning the toggle back on the same way and a new comment — the push arrived ("Ваш пост прокомментировал(а) Райан Гослинг", i.e. "Ryan Gosling commented on your post") and appeared in the shade with the app minimized. Both test comments were deleted after the check.
 
-- Мультимедиа-посты: до 20 фото/видео, карусель, редактирование (0.15.0) — пост больше не ограничен одним фото. Основа для этого — новая таблица `post_media` (`post_id`, `position`, `media_type`, `storage_path`, `poster_path`), заменившая одиночную `posts.image_path`; в ленте медиа листается свайпом влево через `PageView` вместо того, чтобы показываться всё сразу, со счётчиком «i/N» вместо точек (20 точек в ряд не влезли бы вменяемо). Видео — постер (JPEG первого кадра, сгенерированный на клиенте `video_thumbnail`) с иконкой play, тап запускает `video_player`, без автовоспроизведения при скролле; длительность капается на клиенте ~60 сек при выборе файла. Впервые в проекте появилось редактирование опубликованного поста — текста и набора медиа (добавить/удалить/переставить).
+- Multimedia posts: up to 20 photos/videos, a carousel, editing (0.15.0) — a post is no longer limited to one photo. The foundation for this is the new `post_media` table (`post_id`, `position`, `media_type`, `storage_path`, `poster_path`), which replaced the single `posts.image_path`; in the feed, media is paged by swiping left via a `PageView` instead of being shown all at once, with an "i/N" counter instead of dots (20 dots in a row wouldn't fit sensibly). Video — a poster (a JPEG of the first frame, generated on the client by `video_thumbnail`) with a play icon; a tap starts `video_player`, with no autoplay on scroll; the duration is capped on the client at ~60 sec when the file is picked. For the first time in the project, editing a published post became possible — its text and its set of media (add/remove/reorder).
 
-  **Схема.** `post_media` — своя SELECT/INSERT/DELETE-политика, зеркалящая `is_author_visible`/`visible_author_ids()` через join к `posts` (некоррелированный `in (select …)`, не построчно — та самая грабля из CLAUDE.md). **UPDATE-политики на `post_media` нет**: замена файла и reorder — всегда delete+insert строк, не update на месте, так что одна строка не тянет за собой отдельный анализ «что на ней можно менять». Лимит 20 медиа на пост — backstop `BEFORE INSERT` триггер (`CHECK` не умеет cross-row), основной гейт — клиент. Миграции `20260819200000_add_post_media.sql`, `20260819210000_add_posts_update_policy.sql` (первая вообще UPDATE-политика на `posts` — только `text`, identity-колонки недостижимы через грант, existence-oracle проверен: PATCH чужого поста матчит 0 строк, не 403 с деталями), `20260819220000_migrate_image_path_to_post_media.sql` (перенос существующих 11 фото в `post_media` с позицией 0 и `drop column image_path`/`drop constraint posts_has_content` — применена сознательно сразу вместе с раскаткой нового клиента, а не отложена; `posts_has_content` не заменена эквивалентом, инвариант «текст или медиа» стал чисто клиентским, поскольку атомарно проверить его на уровне БД без RPC-обёртки для мультизагрузки уже нельзя).
+  **Schema.** `post_media` has its own SELECT/INSERT/DELETE policy mirroring `is_author_visible`/`visible_author_ids()` via a join to `posts` (an uncorrelated `in (select …)`, not per row — that same pitfall from CLAUDE.md). **There is no UPDATE policy on `post_media`**: replacing a file and reordering are always delete+insert of rows, never an in-place update, so a single row doesn't drag along a separate analysis of "what can be changed on it". The limit of 20 media per post is a backstop `BEFORE INSERT` trigger (`CHECK` can't do cross-row), the main gate is the client. Migrations `20260819200000_add_post_media.sql`, `20260819210000_add_posts_update_policy.sql` (the very first UPDATE policy on `posts` — only `text`, identity columns are unreachable through the grant, the existence oracle was checked: a PATCH of someone else's post matches 0 rows, not a 403 with details), `20260819220000_migrate_image_path_to_post_media.sql` (moving the existing 11 photos into `post_media` with position 0 and `drop column image_path`/`drop constraint posts_has_content` — deliberately applied right together with rolling out the new client rather than postponed; `posts_has_content` wasn't replaced with an equivalent, the "text or media" invariant became purely client-side, since it can no longer be checked atomically at the DB level without an RPC wrapper for multi-upload).
 
-  **Storage.** Путь сменился на `posts/<author_id>/<post_client_token>/<media_client_token>.<ext>` — первые два сегмента не тронуты, поэтому существующие storage-политики не потребовали правок. `media_client_token` минтится на клиенте в момент выбора файла (не сабмита), что даёт идемпотентность на уровне отдельного файла при ретрае, а не только всей посылки. UPDATE-политика storage не нужна: каждый файл — свой объект, замена всегда upload нового + delete старого. Лимит bucket `media` поднят с 20 МБ до 100 МБ, `video/mp4` добавлен в allow-list — применено напрямую через Management API (не миграция, как и раньше для этого бакета).
+  **Storage.** The path changed to `posts/<author_id>/<post_client_token>/<media_client_token>.<ext>` — the first two segments are untouched, so the existing storage policies needed no changes. `media_client_token` is minted on the client at the moment the file is picked (not on submit), which gives idempotency at the level of an individual file on retry, not just the whole submission. No storage UPDATE policy is needed: each file is its own object, and a replacement is always an upload of the new one + delete of the old. The `media` bucket limit was raised from 20 MB to 100 MB, and `video/mp4` was added to the allow-list — applied directly via the Management API (not a migration, as before for this bucket).
 
-  **Клиент.** `Post.imagePath`/`imageUrl` заменены на `List<PostMedia> media`; `fetchPage()` резолвит подписанный URL только для первого слайда каждого поста батчем (`createSignedUrlsResult`) — резолвить все 20×20 на страницу было бы кратным раздутием одного запроса ради слайдов, которые большинство читателей не пролистают, — остальные резолвятся лениво в `onPageChanged`. `FeedRepository.updatePost()` — новый метод, диффует `originalMedia`/`finalMedia` (kept/new), reorder — delete+insert оставшихся строк `post_media`, ни один шаг не требует общей транзакции: удаление уже удалённой строки — no-op, повторный upload — 409-tolerant, `(post_id, storage_path)` unique index даёт `ignoreDuplicates` для повторной вставки. `create_post_screen.dart` стал общим композером create/edit-режимов (`existingPost` опционален) — мультивыбор `pickMultipleMedia()`, сетка превью с drag-reorder (`reorderables` — в SDK только линейный `ReorderableListView`), проверка длительности видео через одноразовый `VideoPlayerController`. Новый пункт «Редактировать» в меню поста рядом с «Удалить».
+  **Client.** `Post.imagePath`/`imageUrl` were replaced with `List<PostMedia> media`; `fetchPage()` resolves a signed URL only for the first slide of each post, in a batch (`createSignedUrlsResult`) — resolving all 20×20 per page would bloat a single request many times over for slides most readers won't swipe through — the rest are resolved lazily in `onPageChanged`. `FeedRepository.updatePost()` is a new method that diffs `originalMedia`/`finalMedia` (kept/new); reordering is delete+insert of the remaining `post_media` rows; no step requires a shared transaction: deleting an already deleted row is a no-op, a repeated upload is 409-tolerant, and the `(post_id, storage_path)` unique index provides `ignoreDuplicates` for a repeated insert. `create_post_screen.dart` became a shared composer for create/edit modes (`existingPost` is optional) — multi-select via `pickMultipleMedia()`, a preview grid with drag-reorder (`reorderables` — the SDK only has a linear `ReorderableListView`), video duration check via a one-off `VideoPlayerController`. A new "Edit" item in the post menu next to "Delete".
 
-  Проверено: 6 RLS-симуляций на живой БД в откатываемых транзакциях (чужой INSERT в `post_media` отклонён; SELECT скрывает медиа от постороннего и показывает знакомому; 21-я вставка падает по лимит-триггеру; чужой UPDATE `posts.text` матчит 0 строк; свой UPDATE проходит; смена `author_id` отклонена грантом) — без побочных данных после отката. Миграции применены и записаны в `supabase_migrations.schema_migrations`; перенос 11 существующих фото в `post_media` подтверждён контрольным числом до/после (11 = 11), колонка `image_path` подтверждённо отсутствует. `flutter analyze`/`dart format` чисты, `flutter test` зелёный по всем 19 файлам (прогонялись каждый по отдельности — параллельный прогон всего набора в этой среде терял вывод части файлов, похоже на квирк захвата многопоточного `\r`-вывода инструментом, а не на реальный сбой тестов). **На физическом устройстве в этой сессии не проверялось** — в среде нет подключённого Android-устройства/эмулятора (`adb` недоступен); карусель, тап-то-плей видео и полный цикл редактирования стоит пройти руками перед следующим релизом в Google Play.
+  Verified: 6 RLS simulations on the live DB in rolled-back transactions (someone else's INSERT into `post_media` rejected; SELECT hides media from an outsider and shows it to a connection; the 21st insert fails on the limit trigger; someone else's UPDATE of `posts.text` matches 0 rows; your own UPDATE goes through; changing `author_id` is rejected by the grant) — no leftover data after rollback. Migrations applied and recorded in `supabase_migrations.schema_migrations`; moving the 11 existing photos into `post_media` was confirmed by a control count before/after (11 = 11), and the `image_path` column is confirmed absent. `flutter analyze`/`dart format` are clean, `flutter test` is green across all 19 files (run one at a time — a parallel run of the whole suite in this environment lost the output of some files, which looks like a quirk of the tool capturing multi-threaded `\r` output rather than a real test failure). **Not verified on a physical device in this session** — there's no connected Android device/emulator in the environment (`adb` is unavailable); the carousel, tap-to-play video and the full editing cycle are worth going through by hand before the next Google Play release.
 
-- Удаление аккаунта и перенос выхода в настройки, оба с подтверждением (0.16.0) — закрывает пункт 1 «Ближайшего плана» (future-development.md), последнюю на тот момент фичу MVP-уровня без реализации; до сих пор аккаунт удалялся только вручную админом по письму. `delete_own_account()` — `security definer`-RPC без аргументов (`auth.uid()` внутри, как и у всех остальных self-scoped RPC в схеме), тело — один `delete from auth.users`, дальше всё держит существующий каскад FK (`on delete cascade` на `public.users` и оттуда по всей схеме — см. data-model.md), отдельно ничего чистить не пришлось. Ревизия каскада перед написанием миграции нашла настоящую дыру: `invite_links.used_by_id` был без какого-либо `on delete`-действия — удаление человека, который когда-то активировал **чужой** инвайт, упало бы сырым нарушением внешнего ключа на чужой строке. Исправлено на `set null` в той же миграции. Storage (аватар, фото/видео постов) FK не касается вообще — клиент удаляет свои объекты по известным путям (`avatar_path` из `users`, `storage_path`/`poster_path` из `post_media` по своим `post_id`) до вызова RPC, best-effort и намеренно не блокирует удаление аккаунта при сбое: после коммита RPC любой недочищенный объект недостижим (storage-политики требуют строк `connections`/`users`, которых уже нет), то есть орфан в бакете, не утечка.
+- Account deletion and moving sign-out into settings, both with confirmation (0.16.0) — closes item 1 of the "Near-term plan" (future-development.md), the last MVP-level feature still unimplemented at that point; until now an account could only be deleted manually by an admin upon an email request. `delete_own_account()` is a `security definer` RPC with no arguments (`auth.uid()` inside, like every other self-scoped RPC in the schema), and its body is a single `delete from auth.users`; the existing FK cascade handles everything else (`on delete cascade` on `public.users` and from there across the whole schema — see data-model.md), so nothing had to be cleaned up separately. Reviewing the cascade before writing the migration found a real hole: `invite_links.used_by_id` had no `on delete` action at all — deleting a person who had once activated **someone else's** invite would have failed with a raw foreign key violation on someone else's row. Fixed to `set null` in the same migration. Storage (avatar, post photos/videos) isn't touched by FKs at all — the client deletes its own objects by known paths (`avatar_path` from `users`, `storage_path`/`poster_path` from `post_media` by its own `post_id`s) before calling the RPC, best-effort, and deliberately doesn't block account deletion on failure: once the RPC commits, any object left behind is unreachable (storage policies require `connections`/`users` rows that no longer exist), i.e. an orphan in the bucket, not a leak.
 
-  **Клиент.** Кнопка выхода убрана из `AppBar` профиля (жила там с самого начала, без подтверждения) и перенесена в новую секцию «Аккаунт» на экране настроек — рядом появилась «Удалить аккаунт» (красным, `colorScheme.error`). Обе кнопки открывают тот же `showDialog<bool>` + `AlertDialog` с Cancel/Confirm, что и everywhere else в проекте (`_confirmAndRun` в `connections_screen.dart`, диалоги удаления поста/комментария) — раньше выход срабатывал мгновенно по тапу, без подтверждения вообще. Обе операции и unregister пуш-токена, и (для удаления) очистку Storage вынесли в новый `AccountRepository` — раньше `signOut()` дёргал `SupabaseClient.auth` прямо из `ProfileScreen`, без обёртки; теперь он тестируем через фейк, как и остальные репозитории. Удаление аккаунта делает `SignOutScope.local` на финальном `signOut()` — серверный revoke-запрос там бессмысленен (сама строка и её refresh-токены уже удалены RPC-вызовом чуть выше), и не должен блокировать локальную очистку сессии, случись сети запнуться именно на этом шаге. Явной навигации после успеха нет ни там, ни там: `router.dart`'s `redirect` уже реагирует на смену auth-состояния и сам уводит на `/sign-in`.
+  **Client.** The sign-out button was removed from the profile `AppBar` (it had lived there from the very beginning, without confirmation) and moved into a new "Account" section on the settings screen — next to it there's now "Delete account" (in red, `colorScheme.error`). Both buttons open the same `showDialog<bool>` + `AlertDialog` with Cancel/Confirm as everywhere else in the project (`_confirmAndRun` in `connections_screen.dart`, the post/comment deletion dialogs) — previously sign-out fired instantly on tap, with no confirmation at all. Both operations, plus push token unregistration and (for deletion) Storage cleanup, moved into a new `AccountRepository` — previously `signOut()` called `SupabaseClient.auth` directly from `ProfileScreen`, with no wrapper; now it's testable through a fake, like the other repositories. Account deletion uses `SignOutScope.local` for the final `signOut()` — a server-side revoke request is pointless there (the row itself and its refresh tokens were already deleted by the RPC call just above), and it shouldn't block local session cleanup should the network hiccup exactly at that step. Neither path has explicit navigation after success: `router.dart`'s `redirect` already reacts to the auth state change and takes the user to `/sign-in` on its own.
 
-  Проверено: `flutter analyze`/`dart format` чисты, `flutter test` зелёный по полному набору (125 тестов, включая новые для confirm/cancel/failure-путей обеих кнопок в `settings_screen_test.dart`). Миграция `20260819230000_add_delete_own_account.sql` применена на живую БД и записана в `supabase_migrations.schema_migrations`. Дыра с `used_by_id` сначала воспроизведена (`delete from auth.users` на активатора чужого инвайта падал `foreign_key_violation`), затем то же самое после миграции — `used_by_id` тихо становится `NULL`, delete проходит. RPC `delete_own_account()` проверен как реальный вызывающий, не суперпользователем: `anon` получает `permission denied` (грант не выдан), `authenticated` без JWT-claims получает собственный guard-эксепшен «Not authenticated», а `authenticated` с `sub` = свой uid одним вызовом сносит профиль, пост, connection, mute, favorite, device-token и notification-preferences разом — при этом профиль второй стороны (friend) остаётся нетронутым. Все проверки — в открываемых транзакциях с временными auth.users-строками и `rollback` в конце, без побочных данных в БД (подтверждено отдельным запросом: 0 тестовых строк остались).
+  Verified: `flutter analyze`/`dart format` are clean, `flutter test` is green on the full suite (125 tests, including new ones for the confirm/cancel/failure paths of both buttons in `settings_screen_test.dart`). Migration `20260819230000_add_delete_own_account.sql` was applied to the live DB and recorded in `supabase_migrations.schema_migrations`. The `used_by_id` hole was first reproduced (`delete from auth.users` on the activator of someone else's invite failed with `foreign_key_violation`), then the same thing after the migration — `used_by_id` quietly becomes `NULL` and the delete goes through. The `delete_own_account()` RPC was checked as a real caller, not as a superuser: `anon` gets `permission denied` (no grant), `authenticated` without JWT claims gets the function's own guard exception "Not authenticated", and `authenticated` with `sub` = its own uid wipes the profile, post, connection, mute, favorite, device token and notification preferences in a single call — while the other side's (the friend's) profile stays untouched. All checks ran in explicitly opened transactions with temporary auth.users rows and a `rollback` at the end, with no side data left in the DB (confirmed by a separate query: 0 test rows remained).
 
-  Пройдено и на физическом Android-устройстве через реальный UI (`flutter run` на подключённом телефоне): для обоих сценариев заведён пустой временный аккаунт напрямую в БД (только `id`/email/`crypt()`-пароль — без прохода через email-подтверждение). «Удалить аккаунт»: диалог подтверждения, тап «Удалить» → приложение само редиректнуло на `/sign-in` (никакой явной навигации в коде, сработал реактивный `redirect` роутера на смену auth-состояния) → в БД подтверждено 0 строк в `auth.users`/`public.users`/`device_tokens` → повторный вход с теми же данными корректно отклонён («Неверный email или пароль», без краша). «Выйти»: тот же паттерн диалога, после подтверждения — тот же чистый редирект на `/sign-in`, при этом сам аккаунт в БД остался (в отличие от удаления), а `device_tokens` пуст — push-токен снялся до выхода, как и задумано. Оба временных аккаунта удалены после проверки, в БД посторонних `amicus-test-*`/`zz-*` строк не осталось.
+  Also walked through on a physical Android device via the real UI (`flutter run` on a connected phone): for both scenarios an empty temporary account was created directly in the DB (only `id`/email/`crypt()` password — without going through email confirmation). "Delete account": confirmation dialog, tap "Delete" → the app redirected to `/sign-in` on its own (no explicit navigation in the code; the router's reactive `redirect` on the auth state change fired) → the DB confirmed 0 rows in `auth.users`/`public.users`/`device_tokens` → signing in again with the same credentials was correctly rejected ("Incorrect email or password", no crash). "Sign out": the same dialog pattern, after confirming — the same clean redirect to `/sign-in`, while the account itself remained in the DB (unlike deletion), and `device_tokens` is empty — the push token was removed before sign-out, as intended. Both temporary accounts were deleted after the check; no stray `amicus-test-*`/`zz-*` rows remained in the DB.
 
-- Галерея фото профиля вместо одной аватарки, до 80 фото (0.16.0) — до сих пор у профиля была ровно одна фотография, целиком заменяемая при каждой загрузке. Теперь `profile_photos(user_id, position, storage_path)` — та же схема, что и `post_media` (одна строка на фото, неплотный `position`, delete+insert вместо update при reorder, backstop-триггер на лимит вместо `CHECK`), только лимит 80, а не 20, и своя, более широкая видимость.
+- A profile photo gallery instead of a single avatar, up to 80 photos (0.16.0) — until now a profile had exactly one photo, replaced wholesale on every upload. Now there's `profile_photos(user_id, position, storage_path)` — the same scheme as `post_media` (one row per photo, non-dense `position`, delete+insert instead of update on reorder, a backstop trigger for the limit instead of a `CHECK`), only the limit is 80 rather than 20, and it has its own, broader visibility.
 
-  **Схема.** Видимость `profile_photos` — себе или Connection, **без** учёта mute/block: то же правило, что уже было у самой аватарки в Storage (20260712120000), а не `is_author_visible()` у постов — заблокированный должен по-прежнему видеть аватар на экране «Заблокированные», где блок и снимают. `is_connected_to_caller()` (20260819160000) оказалась готовой однонаправленной обёрткой ровно для этого случая, третьей копии правила писать не пришлось. `users.avatar_path` остался единственным полем, которое читает весь остальной клиент (лента, список знакомых, `friend_profile_screen`) — вместо того, чтобы переписывать эти места под галерею, новый триггер `sync_avatar_path_from_profile_photos()` держит его в синхроне с фото наименьшей `position` на каждой мутации `profile_photos` (insert/update/delete), включая каскадное удаление аккаунта: к моменту, когда триггер срабатывает на дочерних строках, родительская `users`-строка уже удалена выше по цепочке, и `update` просто не находит, что обновлять. Миграция `20260819240000_add_profile_photos.sql`.
+  **Schema.** `profile_photos` visibility is self or Connection, **without** regard to mute/block: the same rule the avatar itself already had in Storage (20260712120000), not the `is_author_visible()` used for posts — a blocked user must still see the avatar on the "Blocked" screen, which is where the block is lifted. `is_connected_to_caller()` (20260819160000) turned out to be a ready-made one-directional wrapper for exactly this case, so no third copy of the rule had to be written. `users.avatar_path` remained the only field the rest of the client reads (feed, connections list, `friend_profile_screen`) — instead of rewriting those places for the gallery, a new trigger `sync_avatar_path_from_profile_photos()` keeps it in sync with the photo with the lowest `position` on every `profile_photos` mutation (insert/update/delete), including cascading account deletion: by the time the trigger fires on the child rows, the parent `users` row has already been deleted further up the chain, and the `update` simply finds nothing to update. Migration `20260819240000_add_profile_photos.sql`.
 
-  **Storage.** Тот же префикс `avatars/<uid>/…`, что и у одиночной аватарки — существующие storage-политики (SELECT/INSERT/UPDATE/DELETE, 20260707222025) не потребовали правок, файл каждого фото галереи — свой объект под собственным client-минченным токеном.
+  **Storage.** The same `avatars/<uid>/…` prefix as the single avatar — the existing storage policies (SELECT/INSERT/UPDATE/DELETE, 20260707222025) needed no changes; each gallery photo's file is its own object under its own client-minted token.
 
-  **Клиент.** `ProfileRepository.uploadAvatar()` (одно фото, полная замена) заменён на `fetchPhotos`/`addPhotos`/`reorderPhotos`/`deletePhotos`. Экран профиля перестроен: аватар (фото позиции 0, радиус 72 — заметно крупнее исходных 48) и три кнопки «Добавить фото»/«Порядок фото»/«Удалить фото» сидят в `Row` из двух равных `Expanded`, каждый центрирует своего ребёнка — это кладёт центр аватара ровно на четверть ширины экрана слева, а центр кнопок на четверть справа, независимо от фактического размера обоих (не `Spacer`, который просто пришвартовал бы кнопки к правому краю без гарантии, где окажется их центр). Тап по аватару открывает полноэкранную свайпаемую галерею всех фото. Порядок и удаление — два отдельных экрана (`profile_photos_screen.dart`): drag-reorder на `ReorderableWrap` (тот же виджет, что и у медиа поста, превью 140×140 — крупнее исходных 96×96, чтобы фото в сетке было видно, а не угадывалось) с сохранением одним тапом, и tap-to-select с одним диалогом подтверждения на весь батч вместо диалога на каждое фото. Поле имени и кнопка «Сохранить» вместе с этой секцией переехали внутрь `PostListView` как её `header` (первый элемент списка) — раньше секция профиля была отдельным нескроллящимся блоком над списком постов, теперь всё скроллится одним списком, оставляя больше места на экране под сами посты. Кнопка «Сохранить» у имени показывается только когда текст поля отличается от загруженного профиля, а не всегда, как раньше. Тот же приём (`header` у `PostListView`) применён и к `friend_profile_screen.dart` — экран профиля знакомого теперь тоже скроллится одним списком, его аватар того же радиуса 72, что и на своём профиле, а тап по нему открывает ту же полноэкранную галерею (`fetchPhotos(friendId)` — та же таблица, та же видимость «себе или Connection», что уже разрешала читать сам `avatar_path`).
+  **Client.** `ProfileRepository.uploadAvatar()` (one photo, full replacement) was replaced by `fetchPhotos`/`addPhotos`/`reorderPhotos`/`deletePhotos`. The profile screen was rebuilt: the avatar (the position-0 photo, radius 72 — noticeably larger than the original 48) and three buttons "Add photo"/"Reorder"/"Delete photo" sit in a `Row` of two equal `Expanded`s, each centering its child — this puts the avatar's center exactly at a quarter of the screen width from the left and the buttons' center at a quarter from the right, regardless of the actual size of either (not a `Spacer`, which would just dock the buttons to the right edge with no guarantee where their center ends up). Tapping the avatar opens a full-screen swipeable gallery of all photos. Reorder and delete are two separate screens (`profile_photos_screen.dart`): drag-reorder on `ReorderableWrap` (the same widget as post media, 140×140 previews — larger than the original 96×96 so that the photos in the grid are actually visible rather than guessed at) saved with a single tap, and tap-to-select with one confirmation dialog for the whole batch instead of a dialog per photo. The name field and the "Save" button, together with this section, moved inside `PostListView` as its `header` (the first list item) — previously the profile section was a separate non-scrolling block above the post list; now everything scrolls as a single list, leaving more screen space for the posts themselves. The name's "Save" button is shown only when the field text differs from the loaded profile, not always as before. The same technique (`header` on `PostListView`) was applied to `friend_profile_screen.dart` too — a connection's profile screen now also scrolls as a single list, its avatar has the same radius 72 as on your own profile, and tapping it opens the same full-screen gallery (`fetchPhotos(friendId)` — the same table, the same "self or Connection" visibility that already allowed reading `avatar_path` itself).
 
-  **Бэкфилл легаси-аватарок.** Найдено при ручной проверке на живом аккаунте: у пользователя, поставившего аватар ещё через старый однофайловый `uploadAvatar()` (путь `avatars/<uid>/avatar_<millis>.<ext>`, у части сид-данных — совсем старый `avatars/<uid>/avatar.jpg`), не было строки в `profile_photos` — таблица тогда ещё не существовала. Как только такой пользователь добавлял через новую галерею хотя бы одно фото, `sync_avatar_path_from_profile_photos()` пересчитывал `avatar_path` **только** по `profile_photos` — старое фото, никогда там не числившееся, тихо переставало быть аватаром, а сам файл оставался в Storage сиротой. Миграция `20260820100000_recover_orphaned_legacy_avatars.sql` находит такие файлы структурно (под `avatars/<uid>/` лежит файл, чьё имя — не UUID; только так называет файлы новая галерея, значит всё остальное — до неё) и дописывает их в `profile_photos` **последней** позицией, а не нулевой: у аккаунта, уже добавившего новые фото, текущий `avatar_path` не трогается, старое фото просто снова видно и доступно для реордера; у нетронутого аккаунта `profile_photos` была пуста, так что это единственная (и потому нулевая) строка — видимых изменений нет, `avatar_path` и так указывал туда же.
+  **Backfilling legacy avatars.** Found during a manual check on a live account: a user who had set an avatar through the old single-file `uploadAvatar()` (path `avatars/<uid>/avatar_<millis>.<ext>`, and for some seed data the very old `avatars/<uid>/avatar.jpg`) had no row in `profile_photos` — the table didn't exist back then. As soon as such a user added even one photo through the new gallery, `sync_avatar_path_from_profile_photos()` recomputed `avatar_path` **only** from `profile_photos` — the old photo, never listed there, quietly stopped being the avatar, and the file itself stayed in Storage as an orphan. Migration `20260820100000_recover_orphaned_legacy_avatars.sql` finds such files structurally (a file under `avatars/<uid>/` whose name is not a UUID; that's the only way the new gallery names files, so everything else predates it) and appends them to `profile_photos` at the **last** position rather than zero: for an account that has already added new photos, the current `avatar_path` is left alone, and the old photo is simply visible again and available for reordering; for an untouched account `profile_photos` was empty, so this is the only (and therefore zero) row — no visible change, `avatar_path` already pointed there anyway.
 
-  Проверено: `flutter analyze`/`dart format` чисты, `flutter test` зелёный (125 тестов). Обе миграции применены на живую БД и записаны в `supabase_migrations.schema_migrations`. RLS и триггеры `profile_photos` проверены в откатываемых транзакциях на реальных пользователях (без побочных данных — 0 строк осталось после всех прогонов): свой INSERT проходит, чужой (`user_id` не свой) отклонён политикой; SELECT видит фото знакомому и не видит постороннему; `avatar_path` обновляется на фото позиции 0 сразу после вставки и откатывается на следующую по позиции строку после удаления текущей позиции-0 (и на `null`, когда фото не осталось); лимит-триггер пропускает ровно 80-е фото и падает `profile_photos_limit_exceeded` на 81-м; чужой DELETE матчит 0 строк. Бэкфилл-миграция сначала прогнана в откатываемой транзакции против всех затронутых строк (5 нетронутых аккаунтов + 1 уже пострадавший) и сверена построчно, только потом применена на самом деле; после применения отдельным запросом подтверждено, что `avatar_path` пострадавшего аккаунта не изменился, а его старое фото появилось третьей позицией.
+  Verified: `flutter analyze`/`dart format` are clean, `flutter test` is green (125 tests). Both migrations were applied to the live DB and recorded in `supabase_migrations.schema_migrations`. RLS and the `profile_photos` triggers were checked in rolled-back transactions on real users (no side data — 0 rows left after all runs): your own INSERT goes through, someone else's (`user_id` not your own) is rejected by the policy; SELECT shows photos to a connection and doesn't show them to a stranger; `avatar_path` updates to the position-0 photo right after an insert and falls back to the next row by position after the current position 0 is deleted (and to `null` when no photos remain); the limit trigger lets exactly the 80th photo through and fails with `profile_photos_limit_exceeded` on the 81st; someone else's DELETE matches 0 rows. The backfill migration was first run in a rolled-back transaction against all affected rows (5 untouched accounts + 1 already affected) and reconciled row by row, and only then applied for real; after applying, a separate query confirmed that the affected account's `avatar_path` didn't change and its old photo appeared at the third position.
 
-  Пройдено вручную на физическом Android-устройстве (`flutter run` на подключённом телефоне, реальный логин) — этим прогоном и найдена дыра с легаси-аватарками выше, а также несколько раундов макетных правок по итогам живого просмотра (положение и размер кнопок, размер аватара на обоих экранах, размер превью в reorder/delete), каждый передеплоен на устройство и просмотрен заново. Полный сценарный проход (добавление/reorder/удаление фото на обоих экранах — своём и знакомого) всё ещё стоит сделать целиком перед следующим релизом в Google Play — эта сессия проверяла эффект каждой конкретной правки, а не end-to-end сценарий целиком.
+  Walked through manually on a physical Android device (`flutter run` on a connected phone, real login) — that run is what found the legacy avatar hole above, plus several rounds of layout tweaks after the live review (button position and size, avatar size on both screens, preview size in reorder/delete), each redeployed to the device and reviewed again. A full scenario pass (adding/reordering/deleting photos on both screens — your own and a connection's) still needs to be done end to end before the next Google Play release — this session checked the effect of each specific tweak, not the end-to-end scenario as a whole.
 
-- Переключение языка в настройках + локализация push-уведомлений (0.16.0) — закрывает оба пункта «Ближайшего плана» (future-development.md), список там теперь пуст. Раньше язык интерфейса всегда следовал системной локали (`AppLocalizations.supportedLocales` уже покрывал `en`/`ru`, переключателя не было), а текст пушей в `send-push` был захардкожен на русском независимо от языка получателя.
+- Language switching in settings + localized push notifications (0.16.0) — closes both items of the "Near-term plan" (future-development.md); the list there is now empty. Previously the UI language always followed the system locale (`AppLocalizations.supportedLocales` already covered `en`/`ru`, there was no switcher), and the push text in `send-push` was hardcoded in Russian regardless of the recipient's language.
 
-  **Клиент.** Новый `LocaleNotifier` (`lib/l10n/locale_provider.dart`) — тот же паттерн «null = системная», что уже использует `ThemeModeNotifier`: `null` до первого явного выбора, персистится в `shared_preferences` (`app_locale`, только код языка). `KrugApp` (`app.dart`) передаёт его в `MaterialApp.router`'s `locale:` — раньше этот параметр не задавался вовсе и Flutter сам резолвил его из списка устройства. На экране настроек — новая строка «Язык» между «Уведомления» и «Аккаунт» с выпадающим списком (Как в системе / English / Русский); выбор применяется мгновенно, без перезапуска экрана. Отдельный `effectiveLocaleCodeProvider` реализует ту же логику фолбэка, что `MaterialApp` делает внутри себя (переопределение, иначе локаль устройства, иначе `en`) — нужен отдельно, потому что регистрация push-токена (`pushRegistrationProvider`) происходит до появления любого виджета и не может спросить `Localizations.localeOf(context)`.
+  **Client.** A new `LocaleNotifier` (`lib/l10n/locale_provider.dart`) — the same "null = system" pattern `ThemeModeNotifier` already uses: `null` until the first explicit choice, persisted in `shared_preferences` (`app_locale`, language code only). `KrugApp` (`app.dart`) passes it into `MaterialApp.router`'s `locale:` — previously this parameter wasn't set at all and Flutter resolved it from the device's list itself. On the settings screen there's a new "Language" row between "Notifications" and "Account" with a dropdown (System default / English / Русский); the choice applies instantly, without reopening the screen. A separate `effectiveLocaleCodeProvider` implements the same fallback logic `MaterialApp` does internally (the override, otherwise the device locale, otherwise `en`) — it's needed separately because push token registration (`pushRegistrationProvider`) happens before any widget exists and can't ask `Localizations.localeOf(context)`.
 
-  **Схема.** `device_tokens` — новая колонка `locale text not null default 'ru' check (locale in ('en','ru'))`, миграция `20260820110000_add_device_token_locale.sql`. Локаль хранится на уровне токена (устройства), а не пользователя: `device_tokens` — это ровно то, что `send-push` и так читает при резолве получателя, так что join не нужен, а если один аккаунт залогинен на двух устройствах с разным языком — каждое получит текст на своём. Дефолт `'ru'`, а не `en`, которым резолвится сам клиент без явного выбора — специально: существующие строки, заведённые до этой колонки, должны по-прежнему получать русский текст (как и раньше) до первого же `registerDevice()`, а не молча переключиться на английский из-за дефолта колонки. Инсерт-грант на `device_tokens` (20260819140000) — явный список колонок, не «всё», так что `locale` пришлось туда добавить отдельным `grant insert`.
+  **Schema.** `device_tokens` gets a new column `locale text not null default 'ru' check (locale in ('en','ru'))`, migration `20260820110000_add_device_token_locale.sql`. The locale is stored per token (device), not per user: `device_tokens` is exactly what `send-push` already reads when resolving the recipient, so no join is needed, and if one account is signed in on two devices with different languages, each gets text in its own. The default is `'ru'`, not the `en` the client itself resolves to without an explicit choice — on purpose: existing rows created before this column must keep receiving Russian text (as before) until the very first `registerDevice()`, rather than silently switching to English because of the column default. The insert grant on `device_tokens` (20260819140000) is an explicit column list, not "everything", so `locale` had to be added there with a separate `grant insert`.
 
-  `PushNotificationsRepository.registerDevice()` получил обязательный параметр `locale`, пишет его при каждом апсерте токена — и при первой регистрации, и при `onTokenRefresh`. `pushRegistrationProvider` теперь смотрит не только на смену пользователя, но и на `effectiveLocaleCodeProvider` — переключение языка в настройках пересобирает провайдер целиком (старая `onTokenRefresh`-подписка отменяется, `requestPermission()`/`getToken()` перевызываются, но это дёшево — разрешение уже выдано, токен закэширован) и апсертит ту же строку `device_tokens` с новой локалью, так что запись не протухает до следующего перезапуска.
+  `PushNotificationsRepository.registerDevice()` got a required `locale` parameter and writes it on every token upsert — both on first registration and on `onTokenRefresh`. `pushRegistrationProvider` now watches not only for a user change but also `effectiveLocaleCodeProvider` — switching the language in settings rebuilds the provider entirely (the old `onTokenRefresh` subscription is cancelled, `requestPermission()`/`getToken()` are called again, but that's cheap — permission is already granted, the token is cached) and upserts the same `device_tokens` row with the new locale, so the record doesn't go stale until the next restart.
 
-  `supabase/functions/send-push/index.ts`: `TEXTS` теперь `Record<locale, Record<kind, string[]>>` вместо плоского `Record<kind, string[]>` — четыре английских варианта добавлены на каждый `kind` (`new_post`, `inactive_week`, `digest`, `post_comment`, `comment_reply`), той же тональности, что и русские. `pickText(locale, kind, payload)` берёт локаль конкретного токена (`TEXTS[locale] ?? TEXTS.ru` — фолбэк на случай будущей строки со значением вне текущего чек-констрейнта); выбор текста переехал из цикла по строкам outbox внутрь цикла по токенам получателя, поскольку теперь это per-token решение, а не per-row.
+  `supabase/functions/send-push/index.ts`: `TEXTS` is now `Record<locale, Record<kind, string[]>>` instead of a flat `Record<kind, string[]>` — four English variants were added for each `kind` (`new_post`, `inactive_week`, `digest`, `post_comment`, `comment_reply`), in the same tone as the Russian ones. `pickText(locale, kind, payload)` takes the locale of the specific token (`TEXTS[locale] ?? TEXTS.ru` — a fallback in case a future row has a value outside the current check constraint); text selection moved from the loop over outbox rows into the loop over the recipient's tokens, since it's now a per-token decision rather than per-row.
 
-  Проверено: миграция применена на живую БД и записана в `supabase_migrations.schema_migrations`; колонка и её дефолт подтверждены прямым запросом к `information_schema.columns`. RLS-инсерт с `locale='en'` от реального пользователя (не суперпользователя) проходит; инсерт с `locale='fr'` падает по `device_tokens_locale_check` — оба прогона в откатываемых транзакциях, без побочных строк. `send-push` передеплоен (`supabase functions deploy send-push`, без Docker — деплой ассета не требует локальной сборки). `flutter analyze`/`dart format` чисты. `flutter test`: три сценария в `settings_screen_test.dart`, тапавшие «Delete account» напрямую, стали падать — новая строка «Язык» вытолкнула эту кнопку за пределы фиксированного 600px viewport теста; добавлен `ensureVisible()` + `pumpAndSettle()` перед тапом во всех трёх. Отдельно всплыл и не по теме этой фичи «Asset 'shaders/ink_sparkle.frag' not found» на 6 не связанных с языком/пушами тестах — воспроизводился и на немодифицированном `develop`, то есть проблема окружения, а не кода; `flutter clean && flutter pub get` пересобрал кеш ассетов и снял её — все 125 тестов зелёные.
+  Verified: the migration was applied to the live DB and recorded in `supabase_migrations.schema_migrations`; the column and its default were confirmed by a direct query against `information_schema.columns`. An RLS insert with `locale='en'` from a real user (not a superuser) goes through; an insert with `locale='fr'` fails on `device_tokens_locale_check` — both runs in rolled-back transactions, with no side rows. `send-push` was redeployed (`supabase functions deploy send-push`, without Docker — deploying the asset doesn't need a local build). `flutter analyze`/`dart format` are clean. `flutter test`: three scenarios in `settings_screen_test.dart` that tapped "Delete account" directly started failing — the new "Language" row pushed that button outside the test's fixed 600px viewport; `ensureVisible()` + `pumpAndSettle()` were added before the tap in all three. Separately, and unrelated to this feature, "Asset 'shaders/ink_sparkle.frag' not found" surfaced on 6 tests unrelated to language/push — it also reproduced on an unmodified `develop`, i.e. an environment problem, not a code one; `flutter clean && flutter pub get` rebuilt the asset cache and cleared it — all 125 tests are green.
 
-  Пройдено на физическом Android-устройстве (`flutter run` на подключённом телефоне): экран настроек открыл новую строку «Язык», переключение на English мгновенно перерисовало весь интерфейс на английский без перезапуска; прямым запросом к БД сразу после тапа подтверждено, что `device_tokens.locale` для этого токена обновился на `'en'` в ту же секунду. Возврат на «Как в системе» откатил его обратно на `'ru'` (локаль устройства — `ru-RU`). **Не проверено в этой сессии**: реальная доставка локализованного пуша на устройство — потребовало бы вставить тестовую строку в `notification_outbox` и дождаться минутного `pg_cron`-дрейна; автор решил отложить этот прогон. Стоит сделать вручную перед следующим релизом в Google Play.
+  Walked through on a physical Android device (`flutter run` on a connected phone): the settings screen showed the new "Language" row, and switching to English instantly redrew the whole UI in English without a restart; a direct DB query right after the tap confirmed that `device_tokens.locale` for this token was updated to `'en'` within the same second. Going back to "System default" reverted it to `'ru'` (the device locale is `ru-RU`). **Not verified in this session**: actual delivery of a localized push to the device — that would have required inserting a test row into `notification_outbox` and waiting for the per-minute `pg_cron` drain; the author decided to postpone that run. It's worth doing manually before the next Google Play release.
 
-- Второй полный аудит: 14 находок закрыто (0.16.1) — ревью всего проекта целиком, не диффа: 68 миграций, edge-функция, весь Dart, Android- и CI-конфиг. Тесты при этом были зелёными (125/125), то есть ни одну из находок они не ловили. Ниже — по убыванию серьёзности.
+- Second full audit: 14 findings closed (0.16.1) — a review of the whole project, not a diff: 68 migrations, the edge function, all the Dart, the Android and CI config. The tests were green throughout (125/125), meaning they caught none of the findings. Below, in decreasing order of severity.
 
-  **Кэш ленты отдавал ленту предыдущего аккаунта.** `FeedCache` ключевался только по scope (`feed_cache_main`), без пользователя, и не чистился ни при выходе, ни при удалении аккаунта. Вход другим аккаунтом на том же устройстве — и `_primeFromCache()` рисовал ему посты предыдущего: тексты, имена авторов и подписанные URL медиа, живые ещё 24 ч, от людей, с которыми он не знаком. Офлайн это оставалось на экране бессрочно, потому что `PostListView` намеренно откатывается на кэш при неудачном запросе. Ключ теперь `feed_cache_<viewer>_<scope>`, плюс `FeedCache.clear()` по префиксу (забирает и старые безымянные ключи) в `signOut()` и `deleteAccount()`. Оба рубежа нужны независимо: ключ держит, если `clear()` не отработал (краш, force-stop), `clear()` — чтобы байты не лежали на диске после ухода аккаунта.
+  **The feed cache served the previous account's feed.** `FeedCache` was keyed only by scope (`feed_cache_main`), without the user, and was cleared neither on sign-out nor on account deletion. Sign in with a different account on the same device — and `_primeFromCache()` drew the previous account's posts for them: texts, author names and signed media URLs, still live for 24 h, from people they aren't connected to. Offline this stayed on screen indefinitely, because `PostListView` deliberately falls back to the cache when a request fails. The key is now `feed_cache_<viewer>_<scope>`, plus `FeedCache.clear()` by prefix (which also sweeps the old unnamed keys) in `signOut()` and `deleteAccount()`. Both lines of defense are needed independently: the key holds if `clear()` didn't run (crash, force-stop), and `clear()` ensures the bytes don't stay on disk after the account is gone.
 
-  **Карусель рисовала медиа чужого поста.** `_MediaCarouselState` заводил `_items` из `widget.media` один раз (`late`-поле) и не имел `didUpdateWidget`, а `build()` читает именно `_items`. Карточки в `ListView.separated` идут без ключей, поэтому после refresh, когда наверху появляется новый пост, Flutter переиспользует State по индексу — и фото старого поста оказывались под именем и датой нового. Добавлены `didUpdateWidget` со сравнением по id строк (не по identity списка: `Post.copyWith` при реакции возвращает тот же `List`, и сбрасывать уже разрезолвленные URL нельзя) и счётчик поколений, чтобы долетевший резолв старого поста не записался в новый список. Регрессионный тест проверен на снятом фиксе — падает ровно с ожидаемым «показан старый URL».
+  **The carousel drew another post's media.** `_MediaCarouselState` initialized `_items` from `widget.media` once (a `late` field) and had no `didUpdateWidget`, while `build()` reads exactly `_items`. Cards in `ListView.separated` have no keys, so after a refresh, when a new post appears at the top, Flutter reuses State by index — and the old post's photos ended up under the new post's name and date. Added `didUpdateWidget` comparing by row ids (not by list identity: `Post.copyWith` on a reaction returns the same `List`, and already-resolved URLs must not be reset) and a generation counter so that a late-arriving resolve for the old post isn't written into the new list. The regression test was checked with the fix removed — it fails with exactly the expected "old URL shown".
 
-  **`send-push` дренировалась кем угодно.** Функция делает привилегированную работу под `service_role`, но не проверяла вызывающего никак, а платформенный `verify_jwt` по умолчанию устраивает любой JWT проекта — включая anon-ключ, который лежит внутри APK (`--dart-define`) и публичен by design. Любой, кто распаковал приложение, мог дёргать её в цикле: каждый вызов — обмен токена у Google плюс запрос в FCM на каждое устройство получателя, и `sent_at` проставляется независимо от успеха доставки, то есть недоставленные уведомления просто терялись (ретрая тут нет намеренно). Добавлена проверка вызывающего по отдельному общему секрету в собственном заголовке `x-send-push-secret`, сравнением за фиксированное время, а не `===`.
+  **`send-push` could be drained by anyone.** The function does privileged work under `service_role`, but didn't check the caller at all, and the platform's `verify_jwt` by default accepts any project JWT — including the anon key, which sits inside the APK (`--dart-define`) and is public by design. Anyone who unpacked the app could call it in a loop: each call is a token exchange with Google plus an FCM request per recipient device, and `sent_at` is set regardless of delivery success, i.e. undelivered notifications were simply lost (there's deliberately no retry here). Added a caller check against a separate shared secret in a custom `x-send-push-secret` header, using a constant-time comparison rather than `===`.
 
-  Первая версия этой правки сравнивала bearer с `SUPABASE_SERVICE_ROLE_KEY` и **выключила пуши на четыре минуты в проде** — стоит записать, потому что предпосылку я проверял и проверил не ту пару. Сверялось, что ключ в Vault, которым cron дёргает функцию, совпадает с `service_role` из Management API: совпадал побайтово. Но функция сравнивает не с ним, а с тем, что платформа инжектит в `SUPABASE_SERVICE_ROLE_KEY`, — а у проекта одновременно живут два поколения ключей (legacy JWT и новые `sb_secret_…`), и это разные значения разной длины. Каждый легитимный вызов получил 401, что видно в `net._http_response`. Ничего не потерялось: `sent_at` проставляется только при успехе, так что строки просто ждали бы в очереди (она в тот момент была пуста). Поэтому секрет теперь отдельный и существует ровно ради этого рукопожатия: `Authorization` обязан остаться валидным JWT — его проверяет `verify_jwt`-гейт перед функцией, — а разъехаться формату ключей больше негде. Миграция `20260820160000` добавляет заголовок в cron. Заодно `sendToToken()` обёрнут в try/catch: раньше исключение из обмена токена рвало весь дренаж, `sent_at` не проставлялся, и следующая минута слала уже доставленное повторно.
+  The first version of this fix compared the bearer with `SUPABASE_SERVICE_ROLE_KEY` and **turned off pushes for four minutes in production** — worth recording, because I did check the premise, just the wrong pair. What was checked was that the key in Vault, which cron uses to call the function, matches the `service_role` from the Management API: it matched byte for byte. But the function compares not against that, but against what the platform injects into `SUPABASE_SERVICE_ROLE_KEY` — and the project has two generations of keys live at once (legacy JWT and the new `sb_secret_…`), which are different values of different lengths. Every legitimate call got a 401, visible in `net._http_response`. Nothing was lost: `sent_at` is set only on success, so rows would simply have waited in the queue (which was empty at the time). That's why the secret is now separate and exists purely for this handshake: `Authorization` must remain a valid JWT — it's checked by the `verify_jwt` gate in front of the function — and there's no longer anywhere for the key format to diverge. Migration `20260820160000` adds the header to the cron job. Also, `sendToToken()` was wrapped in try/catch: previously an exception from the token exchange broke the whole drain, `sent_at` wasn't set, and the next minute re-sent what had already been delivered.
 
-  **Последний слот медиа был недостижим.** `remaining` уходил в `limit` пикера как есть, а `image_picker` кидает `ArgumentError` на всём, что меньше 2 — то есть на 19-м из 20 медиа поста и на 79-м из 80 фото профиля тап по «добавить» взрывался вместо открытия галереи. Причём **синхронно**, до первого `await` метода, так что `try` вокруг результата это и не поймал бы. Общий хелпер `pickerLimit()` отдаёт `null` («без лимита») там, где остался один слот; реальный кап и так делает `take(remaining)` на обоих экранах. В тесте зафиксирована и сама предпосылка — если пикер когда-нибудь примет 1, хелпер станет мусором и это будет видно.
+  **The last media slot was unreachable.** `remaining` went into the picker's `limit` as is, and `image_picker` throws `ArgumentError` on anything less than 2 — i.e. on the 19th of 20 post media and the 79th of 80 profile photos, tapping "add" blew up instead of opening the gallery. And **synchronously**, before the method's first `await`, so a `try` around the result wouldn't have caught it either. A shared helper `pickerLimit()` returns `null` ("no limit") where one slot is left; the real cap is enforced by `take(remaining)` on both screens anyway. The test also pins the premise itself — if the picker ever accepts 1, the helper becomes dead weight and that will be visible.
 
-  **Пост с 20 медиа нельзя было переотправить.** `BEFORE INSERT`-триггер в Postgres срабатывает до арбитража `ON CONFLICT`, поэтому строка, которую `DO NOTHING` всё равно отбросит, проходила через `enforce_post_media_limit()`. На ретрае (`.timeout()` не отменяет запрос — пост уже опубликован, а экран показал ошибку) первая же из 20 строк упиралась в `count(*) = 20 >= 20`, и пользователь навсегда застревал на «не удалось опубликовать». Оба триггера лимита теперь пропускают повтор уже существующего элемента по тому же уникальному ключу, по которому разрешается конфликт; настоящий 21-й элемент отклоняется как раньше. Миграция `20260820120000`, проверено симуляцией под ролью `authenticated`: ретрай 20 строк проходит и оставляет 20, новый 21-й падает с `post_media_limit_exceeded`.
+  **A post with 20 media couldn't be resubmitted.** A `BEFORE INSERT` trigger in Postgres fires before `ON CONFLICT` arbitration, so a row that `DO NOTHING` would discard anyway still went through `enforce_post_media_limit()`. On a retry (`.timeout()` doesn't cancel the request — the post is already published, but the screen showed an error) the very first of the 20 rows hit `count(*) = 20 >= 20`, and the user was permanently stuck on "Failed to publish". Both limit triggers now let through a repeat of an already existing item by the same unique key the conflict is resolved on; a genuine 21st item is rejected as before. Migration `20260820120000`, verified by simulation under the `authenticated` role: a retry of 20 rows goes through and leaves 20, a new 21st fails with `post_media_limit_exceeded`.
 
-  **Добавление фото профиля не переживало таймаут.** `addPhotos()` грузил через голый `uploadBinary`, тогда как лента для того же случая давно имела 409-толерантную обёртку: повтор батча, часть которого уже долетела, падал на «resource already exists» — и так каждый раз. Обёртка вынесена в общий `shared/tolerant_upload.dart` и используется обоими репозиториями.
+  **Adding profile photos didn't survive a timeout.** `addPhotos()` uploaded via a bare `uploadBinary`, whereas the feed had long had a 409-tolerant wrapper for the same case: retrying a batch, part of which had already landed, failed with "resource already exists" — every time. The wrapper was extracted into a shared `shared/tolerant_upload.dart` and is used by both repositories.
 
-  **Бакет `media` в репозитории отставал от прода и всё равно не покрывал клиент.** `20260709134154` оставила бакет image-only на 20 MiB; когда появились видео, ограничения правились руками в дашборде (на момент аудита живой бакет стоял на 100 MiB и `video/mp4`), и в миграции это не попало — пересборка из миграций дала бы схему, где видео не грузится вовсе. Плюс дыра шире: content-type `storage_client` берёт из `lookupMimeType()` по **имени** объекта, а композер принимает шесть расширений (`mp4, mov, m4v, 3gp, webm, mkv`) против одного разрешённого типа, так что снятый на iPhone `.mov` уезжал как `video/quicktime` и отлетал. Миграция `20260820130000` фиксирует 100 MiB и все шесть video-типов.
+  **The `media` bucket in the repo lagged behind production and didn't cover the client anyway.** `20260709134154` left the bucket image-only at 20 MiB; when videos appeared, the limits were edited by hand in the dashboard (at the time of the audit the live bucket was at 100 MiB and `video/mp4`), and that never made it into a migration — rebuilding from migrations would have produced a schema where video doesn't upload at all. Plus the hole was wider: `storage_client` takes the content type from `lookupMimeType()` by the object's **name**, and the composer accepts six extensions (`mp4, mov, m4v, 3gp, webm, mkv`) against one allowed type, so a `.mov` shot on an iPhone went up as `video/quicktime` and bounced. Migration `20260820130000` pins 100 MiB and all six video types.
 
-  **Android Auto Backup выносил refresh-токен с устройства.** У `<application>` не было ни `allowBackup="false"`, ни правил извлечения, а Auto Backup включён по умолчанию и забирает SharedPreferences — ровно то место, где `supabase_flutter` держит сессию (`SharedPreferencesLocalStorage`, обычный XML) и где лежит кэш ленты. Восстановленный на другом устройстве этот refresh-токен — рабочая сессия аккаунта, пароль не нужен. Добавлены `allowBackup="false"` (закрывает облачный бэкап на всех версиях) и `data_extraction_rules.xml`/`backup_rules.xml` (закрывают device-to-device на Android 12+, чего `allowBackup` не делает). Проверено на смёрдженном манифесте release-сборки — все три атрибута дожили до него, ни один манифест библиотеки их не перебил.
+  **Android Auto Backup carried the refresh token off the device.** `<application>` had neither `allowBackup="false"` nor extraction rules, and Auto Backup is on by default and picks up SharedPreferences — exactly where `supabase_flutter` keeps the session (`SharedPreferencesLocalStorage`, plain XML) and where the feed cache lives. Restored on another device, that refresh token is a working session for the account, no password needed. Added `allowBackup="false"` (closes cloud backup on all versions) and `data_extraction_rules.xml`/`backup_rules.xml` (close device-to-device on Android 12+, which `allowBackup` doesn't). Verified on the merged manifest of the release build — all three attributes survived into it, and no library manifest overrode them.
 
-  **`public.users` — последняя таблица без сужения write-гранта.** Приём из `20260818130000` дошёл до posts/comments/reactions/favorite_users/device_tokens/post_media/profile_photos, но не до `users`: UPDATE-политика проверяет только «моя ли это строка», а грант оставался на всех колонках. То есть обычным PATCH любой пользователь включал себе `dislikes_disabled` — флаг, который по замыслу `20260711120000` ставится отдельным data-update и в клиенте не пишется ниоткуда, — и подделывал `created_at`, обходя проверку «аккаунт моложе недели» в `enqueue_inactive_week_notifications()`. Теперь `update (name, avatar_path)` и никакого INSERT (строку заводит триггер). Заодно `name` ограничено 100 символами (`posts.text`/`comments.text` капнуты с `20260716120000`, а имя, попадающее в каждую строку ленты, — нет) с обрезкой в `handle_new_user()`, чтобы длинное имя из `raw_user_meta_data` не превращалось в ошибку регистрации, и с `maxLength` на экране профиля. Миграция `20260820140000`, все четыре сценария проверены симуляцией.
+  **`public.users` was the last table without a narrowed write grant.** The technique from `20260818130000` reached posts/comments/reactions/favorite_users/device_tokens/post_media/profile_photos, but not `users`: the UPDATE policy only checks "is this my row", while the grant remained on all columns. So with a plain PATCH any user could turn on `dislikes_disabled` for themselves — a flag that, by the design of `20260711120000`, is set by a separate data update and is never written anywhere in the client — and forge `created_at`, bypassing the "account younger than a week" check in `enqueue_inactive_week_notifications()`. Now it's `update (name, avatar_path)` and no INSERT at all (the row is created by a trigger). Also, `name` is capped at 100 characters (`posts.text`/`comments.text` have been capped since `20260716120000`, but the name, which ends up in every feed row, wasn't), with truncation in `handle_new_user()` so that a long name from `raw_user_meta_data` doesn't turn into a sign-up error, and with `maxLength` on the profile screen. Migration `20260820140000`, all four scenarios verified by simulation.
 
-  **Reorder мог стереть галерею целиком.** И `profile_photos`, и `post_media` намеренно живут без UPDATE-политики, перестановка — delete+insert строк. Но клиент слал это двумя запросами PostgREST, то есть двумя транзакциями: обрыв после первой (а `.timeout()` делает это рядовым случаем) оставлял не «порядок не сохранился», а отсутствие строк. Для галереи это худший случай в схеме — до 80 строк плюс триггер `sync_avatar_path_from_profile_photos()`, успевший обнулить `users.avatar_path`, так что аватарка исчезала из ленты, списка знакомых и с экрана «Заблокированные» разом, а файлы оставались в Storage без единой ссылки: ровно то сиротство, ради разбора которого писалась `20260820100000`. Транзакцию тут может дать только сервер — PostgREST за вызов делает один запрос. Заведены `reorder_profile_photos(photo_ids)` (требует **всю** галерею: позиции переписываются в плотный 0..N-1, частичная перестановка налезла бы на нетронутые строки; несовпадение — `PT422`) и `set_post_media(post_id, items)`, который принимает желаемое конечное состояние и возвращает пути, на которые больше никто не ссылается, — клиент удаляет объекты уже ПОСЛЕ переписывания строк (осиротевший объект это потраченное место, а удалённый объект при живой строке — битая картинка в ленте у всех). Диффинг ушёл на сервер, `updatePost()` лишился параметра `originalMedia`. Миграция `20260820150000`.
+  **Reorder could wipe out the entire gallery.** Both `profile_photos` and `post_media` deliberately have no UPDATE policy; reordering is delete+insert of rows. But the client sent this as two PostgREST requests, i.e. two transactions: a disconnect after the first (and `.timeout()` makes this an ordinary case) left not "the order wasn't saved" but missing rows. For the gallery this is the worst case in the schema — up to 80 rows plus the `sync_avatar_path_from_profile_photos()` trigger, which would have already nulled `users.avatar_path`, so the avatar disappeared from the feed, the connections list and the "Blocked" screen all at once, while the files stayed in Storage without a single reference: exactly the kind of orphaning `20260820100000` was written to clean up. Only the server can provide a transaction here — PostgREST makes one request per call. Added `reorder_profile_photos(photo_ids)` (requires the **whole** gallery: positions are rewritten to a dense 0..N-1, and a partial reorder would collide with untouched rows; a mismatch is `PT422`) and `set_post_media(post_id, items)`, which takes the desired final state and returns the paths nothing references anymore — the client deletes the objects only AFTER the rows are rewritten (an orphaned object is wasted space, while a deleted object with a live row is a broken image in everyone's feed). Diffing moved to the server, and `updatePost()` lost its `originalMedia` parameter. Migration `20260820150000`.
 
-  **Слайд продолжал играть старое видео.** `_MediaSlideState` держал `VideoPlayerController` от прежнего `widget.item` и без `didUpdateWidget` отдавал `VideoPlayer(_controller)` для чего угодно, что пришло следующим. Добавлен сброс по смене id строки (именно id: rebuild, всего лишь подставивший разрезолвленный URL той же строке, не должен прерывать воспроизведение). Заодно `_play()` получил try/catch — непроигрываемый кодек или протухший URL раньше давали необработанную асинхронную ошибку и утечку контроллера.
+  **A slide kept playing the old video.** `_MediaSlideState` held the `VideoPlayerController` from the previous `widget.item` and, lacking `didUpdateWidget`, returned `VideoPlayer(_controller)` for whatever came next. Added a reset on a row id change (specifically id: a rebuild that merely substituted the resolved URL for the same row must not interrupt playback). Also, `_play()` got a try/catch — an unplayable codec or an expired URL previously produced an unhandled async error and a leaked controller.
 
-  **Удаление аккаунта не убирало галерею.** Чистились только `users.avatar_path` (это лишь верхнее фото, position 0) и медиа постов — `profile_photos` появились миграцией позже самого удаления аккаунта, и до 79 объектов оставались в бакете навсегда, а строки к тому моменту уже уносил каскад, так что найти их было нечем. Теперь пути собираются объединением обоих источников (у легаси-аватарки своей строки нет).
+  **Account deletion didn't remove the gallery.** Only `users.avatar_path` (which is just the top photo, position 0) and post media were cleaned up — `profile_photos` appeared in a migration later than account deletion itself, so up to 79 objects stayed in the bucket forever, and by that point the cascade had already taken the rows away, so there was nothing to find them by. Now the paths are collected as the union of both sources (a legacy avatar has no row of its own).
 
-  **Кнопка «добавить медиа» залипала намертво.** `_pickMedia()` ставил `_isPicking = true` без `try/finally`: исключение внутри цикла обработки файлов (неподдерживаемый кодек роняет `initialize()`, огромный файл — `readAsBytes()`) навсегда оставляло кнопку выключенной, выйти можно было только потеряв черновик. Обработка теперь пофайловая — один битый файл не стоит пользователю остальных выбранных, — с новой строкой `failedToAddMediaError` в обеих локалях.
+  **The "add media" button got stuck for good.** `_pickMedia()` set `_isPicking = true` without `try/finally`: an exception inside the file-processing loop (an unsupported codec crashes `initialize()`, a huge file crashes `readAsBytes()`) left the button disabled forever, and the only way out was to lose the draft. Processing is now per file — one broken file doesn't cost the user the rest of their selection — with a new `failedToAddMediaError` string in both locales.
 
-  **Документация.** В `docs/data-model.md` список таблиц всё ещё содержал `pending_post_counts`, удалённую в `20260819190000`, и не содержал `notification_preferences` и `user_activity`; описания reorder и Storage приведены к новому состоянию. В «Грабли» (CLAUDE.md/AGENTS.md, побайтовые близнецы) добавлен пункт про `BEFORE INSERT` до `ON CONFLICT`.
+  **Documentation.** In `docs/data-model.md` the table list still contained `pending_post_counts`, dropped in `20260819190000`, and lacked `notification_preferences` and `user_activity`; the reorder and Storage descriptions were brought up to date. An item about `BEFORE INSERT` firing before `ON CONFLICT` was added to "Pitfalls" (CLAUDE.md/AGENTS.md, byte-for-byte twins).
 
-  Проверено: `make verify` зелёный (136 тестов против 125 до правок), release-сборка `bundleRelease` собирается, все четыре миграции применены на живую БД и записаны в `supabase_migrations.schema_migrations`. Сужение грантов, ретрай лимита, оба RPC и отказ чужому пользователю проверены симуляцией `set local role authenticated` + `request.jwt.claims` в откатываемых транзакциях, а не на глаз.
+  Verified: `make verify` is green (136 tests versus 125 before the changes), the `bundleRelease` release build builds, all four migrations were applied to the live DB and recorded in `supabase_migrations.schema_migrations`. The grant narrowing, the limit retry, both RPCs and the rejection of another user were verified by simulation with `set local role authenticated` + `request.jwt.claims` in rolled-back transactions, not by eye.
 
-- Карусель фото: предзагрузка соседнего слайда и память позиции (0.16.2) — две жалобы на листание фото в постах, обе про одно место (`_MediaCarousel` в `post_list_view.dart`).
+- Photo carousel: prefetching the adjacent slide and remembering the position (0.16.2) — two complaints about swiping through photos in posts, both about the same place (`_MediaCarousel` in `post_list_view.dart`).
 
-  **Второе и дальше фото грузились долго.** `fetchPage()` намеренно подписывает URL только первому слайду каждого поста (иначе страница ленты стоила бы до 20x подписей ради слайдов, которые чаще всего не смотрят), а карусель добирала остальные лениво — но запускала подпись из `onPageChanged`, то есть уже **после** того, как свайп завершился: пользователь смотрел на спиннер, пока идут подпись + скачивание. Теперь резолв идёт окном `_prefetchRadius = 1` вокруг текущего слайда (`_resolveAround`), одним батчем через новый `FeedRepository.resolveMediaUrls()` (`createSignedUrlsResult` — один round trip на слайд+постер+соседей вместо шести), а `allowImplicitScrolling: true` на `PageView` держит соседнюю страницу в дереве, так что `CachedNetworkImage` начинает качать байты до свайпа, а не после. Тот же приём применён и к полноэкранному просмотру. Заодно закрыта старая мелочь: упавший резолв (офлайн, таймаут) раньше был необработанной асинхронной ошибкой — теперь слайд просто остаётся со спиннером и повторяется на следующем свайпе. `fetchPage()` переведён на тот же `resolveMediaUrls()`, дубль батч-подписи убран.
+  **The second and later photos took a long time to load.** `fetchPage()` deliberately signs URLs only for the first slide of each post (otherwise a feed page would cost up to 20x the signatures for slides that mostly go unviewed), and the carousel fetched the rest lazily — but kicked off signing from `onPageChanged`, i.e. **after** the swipe had already finished: the user stared at a spinner while signing + download ran. Now resolution runs in a `_prefetchRadius = 1` window around the current slide (`_resolveAround`), as a single batch via the new `FeedRepository.resolveMediaUrls()` (`createSignedUrlsResult` — one round trip for slide+poster+neighbors instead of six), and `allowImplicitScrolling: true` on the `PageView` keeps the adjacent page in the tree, so `CachedNetworkImage` starts downloading bytes before the swipe rather than after. The same technique was applied to the full-screen viewer. Also closed an old nit: a failed resolve (offline, timeout) used to be an unhandled async error — now the slide just stays with a spinner and is retried on the next swipe. `fetchPage()` was switched to the same `resolveMediaUrls()`, and the duplicate batch signing was removed.
 
-  **Позиция в карусели сбрасывалась при скролле ленты.** Пост, уехавший из окна `ListView`, уничтожается вместе с состоянием карусели, и вернувшийся строился заново с первого фото — оставил пост на 3/4, отлистал вниз и обратно, снова 1/4. Добавлен `CarouselPositionCache` (`carousel_position_cache.dart`) — LRU-мапа `post_id → индекс слайда` на 200 записей, **только в памяти**: это контекст текущего прохода по ленте, после закрытия приложения пост честно открывается с первого фото (ровно как и просил пользователь). Ключ — id поста, а не позиция в списке, поэтому переиспользованный `State` не наследует чужое место; индекс клампится по длине (медиа могли отредактировать), а `clear()` вызывается на выходе из аккаунта и удалении — id чужих постов следующему аккаунту не нужны.
+  **The carousel position reset when scrolling the feed.** A post that scrolled out of the `ListView` window is destroyed along with the carousel state, and when it came back it was rebuilt from the first photo — leave a post at 3/4, scroll down and back, and it's 1/4 again. Added `CarouselPositionCache` (`carousel_position_cache.dart`) — an LRU map `post_id → slide index` with 200 entries, **in memory only**: this is the context of the current pass through the feed, and after the app is closed a post honestly opens from the first photo (exactly as the user asked). The key is the post id, not the list position, so a reused `State` doesn't inherit someone else's place; the index is clamped to the length (the media may have been edited), and `clear()` is called on sign-out and deletion — the next account has no need for other people's post ids.
 
-  Проверено: `make verify` зелёный (143 теста против 136). Обе правки покрыты виджет-тестами на настоящем `ListView` — соседний слайд подписан и построен до свайпа, а позиция переживает уход поста за пределы cache extent и возврат; тест на память падает, если убрать запись в кэш.
+  Verified: `make verify` is green (143 tests versus 136). Both changes are covered by widget tests on a real `ListView` — the adjacent slide is signed and built before the swipe, and the position survives the post going beyond the cache extent and coming back; the memory test fails if the cache write is removed.
 
-- Тексты уведомлений, подписи настроек и фильтр ленты (0.16.3) — запись добавлена задним числом: коммиты `0f20237` и `890aff4` подняли версию до `0.16.3+37`, но в CHANGELOG её не внесли (нашёл третий полный аудит, см. ниже).
+- Notification texts, settings labels and the feed filter (0.16.3) — entry added retroactively: commits `0f20237` and `890aff4` bumped the version to `0.16.3+37`, but it never made it into the CHANGELOG (found by the third full audit, see below).
 
-  **Регистр в русской локали.** Императивы на «ты» переведены в «вы» — английский оригинал везде выдержан в одном регистре, русский разъезжался. Заодно подписи тумблеров уведомлений названы по содержанию, а не повторяют слово «Уведомления» под заголовком секции, который и так это говорит.
+  **Register in the Russian locale.** Imperatives using the informal "ты" were switched to the formal "вы" — the English original keeps a single register throughout, while the Russian drifted between the two. Along the way the notification toggle labels were named after what they control instead of repeating the word "Уведомления" ("Notifications") under a section heading that already says it.
 
-  **Тумблер системного аккаунта переименован** в оповещения об обновлениях приложения: в `send-push` добавлен набор текстов `app_update`, а `notification_outbox.kind` расширен этим значением (`20260820180000`). В `890aff4` связь пошла дальше: пост системного аккаунта больше не ставит в очередь ничего сам по себе — kind и настройка остаются для того, кто будет слать это уведомление отдельно (`20260820190000`).
+  **The system account toggle was renamed** to app update alerts: `send-push` gained an `app_update` text set, and `notification_outbox.kind` was extended with that value (`20260820180000`). In `890aff4` the link went further: a system account post no longer enqueues anything on its own — the kind and the setting remain for whoever will send this notification separately (`20260820190000`).
 
-  **Лента.** Системный аккаунт убран из общего запроса ленты — его посты видны только при прямом заходе в профиль.
+  **Feed.** The system account was removed from the general feed query — its posts are only visible when you open its profile directly.
 
-- Третий полный аудит: 22 находки закрыто (0.16.4) — снова ревью всего проекта целиком, не диффа: 74 миграции, edge-функция, весь Dart, Android- и CI-конфиг, документация. Тесты снова были зелёными (143/143) и снова не ловили ни одной находки. Ниже — по убыванию серьёзности.
+- Third full audit: 22 findings closed (0.16.4) — again a review of the whole project, not a diff: 74 migrations, the edge function, all of the Dart code, Android and CI config, documentation. The tests were green again (143/143) and again caught none of the findings. Below, in decreasing order of severity.
 
-  **Публикация постов лежала в проде.** `20260819190000` заменила счётчик дайджеста окном по `user_activity` и дропнула таблицу `pending_post_counts`. Следующие две миграции правили в `enqueue_post_notifications()` только ветку системного аккаунта, но были написаны поверх *дореформенного* текста функции и накатили его целиком через `create or replace` — вместе с циклом, пишущим в дропнутую таблицу. `check_function_bodies` проверяет plpgsql только синтаксически, имена таблиц разрешаются в рантайме, поэтому оба наката прошли молча. Триггер `AFTER INSERT` работает в транзакции самой вставки, так что `42P01` откатывал сам пост: публиковать не мог никто, у кого есть хоть одна Connection без mute/block/избранного — на момент починки 7 из 15 живых аккаунтов. `20260821100000` собирает тело заново из двух источников явно. Заодно вернулся сам дайджест «с момента последнего входа», а `user_activity`/`touch_user_activity()`/`posts_author_id_created_at_idx` перестали быть сиротами: клиент дёргал RPC на каждый запуск, читать её было некому.
+  **Publishing posts was broken in production.** `20260819190000` replaced the digest counter with a window over `user_activity` and dropped the `pending_post_counts` table. The next two migrations only changed the system account branch of `enqueue_post_notifications()`, but they were written on top of the *pre-reform* text of the function and applied it in full via `create or replace` — together with the loop that writes into the dropped table. `check_function_bodies` checks plpgsql only syntactically, and table names are resolved at runtime, so both applies went through silently. An `AFTER INSERT` trigger runs in the transaction of the insert itself, so `42P01` rolled back the post itself: nobody who had at least one Connection without mute/block/favorite could publish — 7 of 15 live accounts at the time of the fix. `20260821100000` rebuilds the body explicitly from both sources. Along the way, the "since your last visit" digest itself came back, and `user_activity`/`touch_user_activity()`/`posts_author_id_created_at_idx` stopped being orphans: the client called the RPC on every launch, but nothing read it.
 
-  **Отказ от дизлайков обходился прямым запросом.** `20260819130000` пересоздавала INSERT-политику `reactions` ради пиннинга `created_at` и не перенесла guard `dislikes_disabled` из `20260711120000`. UPDATE-близнец его сохранил, так что правило жило наполовину: тот, кто ещё не реагировал, ставил дизлайк защищённому автору обычным POST и попадал в `reaction_summary()`; тот, у кого реакция уже стояла, получал отказ. Воспроизведено симуляцией до правки, закрыто `20260821110000`.
+  **The dislike opt-out could be bypassed with a direct request.** `20260819130000` recreated the INSERT policy on `reactions` to pin `created_at` and did not carry over the `dislikes_disabled` guard from `20260711120000`. Its UPDATE twin kept it, so the rule was only half alive: someone who had not reacted yet could dislike a protected author with a plain POST and land in `reaction_summary()`; someone who already had a reaction got refused. Reproduced by simulation before the fix, closed by `20260821110000`.
 
-  **Дренаж очереди уведомлений слал дубликаты.** Строки выбирались по `sent_at is null` и ничем не помечались на время работы, а `sent_at` проставлялся после всего цикла — при том, что cron ходит раз в минуту, а `net.http_post` fire-and-forget. 200 строк × ~2 устройства × ~400 мс последовательных запросов ≈ 160 с, то есть прогон накладывался на следующие два и слал один пуш 2–3 раза. Добавлены `notification_outbox.claimed_at` и `claim_notification_outbox()` с `for update skip locked` и окном возврата 5 минут (`20260821150000`), отправки идут пулом по 10, токен Google берётся один раз до батча — его сбой теперь отпускает claim и отдаёт 500 вместо тихой потери всей пачки под видом 200.
+  **Draining the notification queue sent duplicates.** Rows were selected by `sent_at is null` and not marked in any way while being processed, and `sent_at` was set after the whole loop — while cron fires once a minute and `net.http_post` is fire-and-forget. 200 rows × ~2 devices × ~400 ms of sequential requests ≈ 160 s, so a run overlapped the next two and sent the same push 2–3 times. Added `notification_outbox.claimed_at` and `claim_notification_outbox()` with `for update skip locked` and a 5-minute reclaim window (`20260821150000`); sends go out in a pool of 10, and the Google token is fetched once before the batch — its failure now releases the claim and returns 500 instead of silently losing the whole batch disguised as a 200.
 
-  **Прунинг device_tokens мог выкосить все регистрации разом.** Любой 404/400 от FCM считался мёртвым токеном, а удаление шло по `fcm_token` без `user_id`. Неверный `FCM_PROJECT_ID` даёт 404 на каждый токен батча — то есть одна опечатка в конфиге стирала пуши всем сразу. Теперь читается тело ошибки и требуется явный `UNREGISTERED` (голый `NOT_FOUND` сознательно не принимается — это же ответ при чужом проекте), а удаление ключуется парой `(user_id, fcm_token)`: два аккаунта на одном телефоне держат одну строку токена, и прунинг уносил чужую регистрацию.
+  **Pruning device_tokens could wipe out every registration at once.** Any 404/400 from FCM was treated as a dead token, and the delete went by `fcm_token` without `user_id`. A wrong `FCM_PROJECT_ID` returns 404 for every token in the batch — meaning one typo in the config wiped pushes for everyone at once. Now the error body is read and an explicit `UNREGISTERED` is required (a bare `NOT_FOUND` is deliberately not accepted — it is also the response for someone else's project), and the delete is keyed by the `(user_id, fcm_token)` pair: two accounts on one phone hold the same token string, and pruning took out the other account's registration.
 
-  **Меню поста удаляло не тот пост.** `onEdit`/`onDelete` замыкались на `index` из `itemBuilder` и жили внутри маршрута `PopupMenuButton`, переживая замену `_posts` первой сетевой страницей поверх кэш-превью. Сторона записи от этого уже защищалась (`removeWhere` по id), чтение на входе — нет: `RangeError` или безвозвратное удаление соседнего поста. Все три метода переведены на `Post` вместо `int`.
+  **The post menu deleted the wrong post.** `onEdit`/`onDelete` closed over `index` from `itemBuilder` and lived inside the `PopupMenuButton` route, outliving the replacement of `_posts` by the first network page on top of the cached preview. The write side was already protected against this (`removeWhere` by id), the read on entry was not: a `RangeError` or an irreversible deletion of the neighboring post. All three methods were switched to take a `Post` instead of an `int`.
 
-  **Порядок «файлы → строка» стоил данных в трёх местах.** Удаление аккаунта чистило бакет до `delete_own_account()`, так что таймаут RPC оставлял живой аккаунт вообще без фотографий и медиа — у него и у всех его Connections. То же в `deletePost` (пост оставался битым слотом в ленте у всех) и в `deletePhotos` (плюс `users.avatar_path` указывал на удалённый объект, и аватарка пропадала везде). Везде перевёрнуто на «строка → файлы», чистка бакета стала best-effort. Это оказалось возможно потому, что DELETE-политики storage проверяют только префикс пути против `auth.uid()` и не читают `users`/`connections` — сверено по `pg_policy`, комментарий в 0.16.0 на этот счёт был неверен.
+  **The "files → row" order cost data in three places.** Account deletion cleared the bucket before `delete_own_account()`, so an RPC timeout left a live account with no photos or media at all — for the account itself and for all of its Connections. The same in `deletePost` (the post remained as a broken slot in everyone's feed) and in `deletePhotos` (plus `users.avatar_path` pointed to a deleted object, and the avatar disappeared everywhere). Everywhere it was flipped to "row → files", and bucket cleanup became best-effort. This turned out to be possible because the storage DELETE policies only check the path prefix against `auth.uid()` and do not read `users`/`connections` — verified against `pg_policy`; the comment in 0.16.0 on this point was wrong.
 
-  **Тумблеры уведомлений молча включались обратно.** Оптимистичный откат восстанавливал снимок целиком, поэтому упавший запрос отменял соседний тумблер, который успел сохраниться, — а так как `save()` апсертит все пять булевых сразу, следующее сохранение записывало этот устаревший снимок на сервер. Откат стал пофайловым. Покрыто тестом, который падает на старом коде.
+  **Notification toggles silently switched themselves back on.** The optimistic rollback restored the whole snapshot, so a failed request reverted a neighboring toggle that had already been saved — and since `save()` upserts all five booleans at once, the next save wrote that stale snapshot to the server. The rollback became per-field. Covered by a test that fails on the old code.
 
-  **Имя в профиле нельзя было очистить.** Засев поля проверял его пустоту, а слушатель из `initState` перестраивал экран на каждом нажатии: backspace по выделенному имени немедленно возвращал старый текст вместе с кареткой. Заменено на флаг `_nameSeeded` — та же форма seed-once, что у `SettingsScreen`.
+  **The name in the profile could not be cleared.** Seeding the field checked whether it was empty, and the listener from `initState` rebuilt the screen on every keystroke: backspace over a selected name immediately brought the old text back, caret and all. Replaced with a `_nameSeeded` flag — the same seed-once shape as in `SettingsScreen`.
 
-  **Деплой висел на `pull_request_target`.** Джоба собирала пост-мерж код (включая присланные автором PR `build.gradle.kts`/`settings.gradle.kts`) с `ANDROID_KEYSTORE_BASE64` и `PLAY_SERVICE_ACCOUNT_JSON` в окружении — единственным барьером был человек, нажавший Merge, а ключ, по комментарию в `build.gradle.kts`, «нельзя ни заменить, ни восстановить». Переведено на `push` в main (BASE_REF — `github.event.before` с откатом на `HEAD^`, номер PR ищется по коммиту). Все четыре сторонних action в обоих workflow припиннуты к SHA вместо подвижных тегов. Релизный путь больше не доверяет тому, что CI был зелёным: перед сборкой добавлен шаг `make verify`. Молчаливый откат релиза на debug-ключ закрыт, но не с первой попытки — см. отдельный пункт ниже.
+  **Deploy ran on `pull_request_target`.** The job built post-merge code (including `build.gradle.kts`/`settings.gradle.kts` submitted by the PR author) with `ANDROID_KEYSTORE_BASE64` and `PLAY_SERVICE_ACCOUNT_JSON` in the environment — the only barrier was the person who pressed Merge, and the key, per the comment in `build.gradle.kts`, "can be neither replaced nor recovered". Switched to `push` to main (BASE_REF is `github.event.before` with a fallback to `HEAD^`, the PR number is looked up by commit). All four third-party actions in both workflows are pinned to SHAs instead of moving tags. The release path no longer trusts that CI was green: a `make verify` step was added before the build. The silent fallback of the release to the debug key is closed, but not on the first try — see the separate item below.
 
-  **Оракулы и лишние гранты.** `is_author_of_comment_visible()` отвечала тремя значениями вместо двух (`false` — комментарий есть, автор скрыт; `null` — комментария нет) и через PostgREST работала оракулом существования строки: заблокированный, сохранивший чужой id, мог опросом следить, жива ли она. Сведено к строгому boolean (`20260821130000`) — на политики это не влияет, там функция стоит только в цепочках `or`. Отдельно `post_media` и `profile_photos` созданы после `20260818140000` и снова получили дефолтные гранты Supabase для `anon`, включая **TRUNCATE**, на который RLS не распространяется в принципе; сняты `20260821120000`.
+  **Oracles and excess grants.** `is_author_of_comment_visible()` returned three values instead of two (`false` — the comment exists, the author is hidden; `null` — there is no comment) and through PostgREST worked as a row-existence oracle: a blocked user who had saved someone else's id could poll it to track whether the row was still alive. Reduced to a strict boolean (`20260821130000`) — this does not affect the policies, where the function only appears in `or` chains. Separately, `post_media` and `profile_photos` were created after `20260818140000` and again received Supabase's default grants for `anon`, including **TRUNCATE**, which RLS does not apply to at all; revoked by `20260821120000`.
 
-  **Индексы под уже существующие запросы.** `connections` имела индекс только на половину `user_a_id`, тогда как каждое решение о видимости спрашивает обе (`visible_author_ids()`, `are_connected()`, цикл в триггере постов) — `a = X or b = X` без второго индекса вырождается в seq scan всей таблицы. Плюс `favorite_users(favorite_id)` (полный скан внутри триггера на каждой публикации) и `posts(created_at desc, id desc)` под сортировку ленты.
+  **Indexes for queries that already existed.** `connections` had an index only on the `user_a_id` half, while every visibility decision asks about both (`visible_author_ids()`, `are_connected()`, the loop in the posts trigger) — `a = X or b = X` without a second index degenerates into a seq scan of the whole table. Plus `favorite_users(favorite_id)` (a full scan inside the trigger on every publish) and `posts(created_at desc, id desc)` for the feed sort.
 
-  **Чистка.** N+1 подписей URL в редакторе поста (до 40 запросов на пост из 20 элементов) заменён одним батчем через существующий `resolveMediaUrls()`, после чего одиночный `resolveMediaUrl()` стал мёртвым и удалён. `fetchFriends` перестал делать четыре последовательных round trip вместо одного. Аватарки и плитки галереи декодируются под размер отрисовки (`ResizeImage`), а не в полные ~12 МБ ARGB на каждую, и экран удаления фото стал ленивым `GridView` вместо `Wrap`, строившего все 80 плиток разом. Пасхалка вынута из провайдера темы: счёт нажатий переехал в `TapStreak`, навигация — к виджету, у сетевого запроса появилась обработка ошибки. `systemAccountId` больше не фильтрует ленту вкомпилированным литералом — набор отдаёт `system_account_ids()` (`20260821160000`), константа осталась запасным вариантом на случай офлайна. Убраны три копии `const _bucket = 'media'`, дубль `_run`/`_runFavoriteToggle`, мёртвый параметр `userId` в `reorderPhotos` и его цепочка из четырёх мест, дублирующийся английский вариант текста пуша. Экран регистрации перестал отличать уже занятый email от свободного — Supabase специально возвращает пользователя без identities именно чтобы аккаунты нельзя было перечислять, а экран читал этот сигнал и печатал «email уже зарегистрирован». Добавлены пропущенные проверки `mounted` в четырёх `catch`-блоках, где соседний `finally` их уже делал.
+  **Cleanup.** N+1 URL signing in the post editor (up to 40 requests for a post with 20 items) was replaced by a single batch via the existing `resolveMediaUrls()`, after which the single `resolveMediaUrl()` became dead and was removed. `fetchFriends` no longer makes four sequential round trips instead of one. Avatars and gallery tiles are decoded at their render size (`ResizeImage`) rather than at the full ~12 MB of ARGB each, and the photo deletion screen became a lazy `GridView` instead of a `Wrap` that built all 80 tiles at once. The easter egg was pulled out of the theme provider: tap counting moved to `TapStreak`, navigation to the widget, and the network request got error handling. `systemAccountId` no longer filters the feed with a compiled-in literal — the set is returned by `system_account_ids()` (`20260821160000`), and the constant stays as a fallback for offline. Removed three copies of `const _bucket = 'media'`, the `_run`/`_runFavoriteToggle` duplicate, the dead `userId` parameter in `reorderPhotos` along with its chain across four places, and a duplicated English variant of the push text. The sign-up screen stopped distinguishing an already taken email from a free one — Supabase deliberately returns a user without identities precisely so that accounts cannot be enumerated, but the screen read that signal and printed "email already registered". Added missing `mounted` checks in four `catch` blocks where the adjacent `finally` already did them.
 
-  **Последние три пункта того же аудита.** `muted_users`/`blocked_users` остались единственными таблицами, где `authenticated` мог писать серверный `created_at`: они появились раньше, чем в проекте сложился приём с колоночными грантами. Сужены до `(muter_id, muted_id)`/`(blocker_id, blocked_id)` тем же способом и по той же причине, что и `favorite_users` в 20260819140000 — пин по значению сломал бы штатный повторный upsert через ветку DO UPDATE. Дальше `device_tokens`: `fcm_token` был свободным `text` без длины, а число строк на пользователя не ограничивалось ничем, при том что одна строка outbox разворачивается в запрос к FCM на каждый токен — десять тысяч мусорных строк вернули бы наложение прогонов дренажа, которое только что закрыли claim'ом. Добавлены `check (char_length between 64 and 4096)` и backstop-триггер на 20 строк. Триггер **вытесняет самую старую строку, а не падает** — сознательно иначе, чем лимиты на медиа: регистрация устройства идёт fire-and-forget и экрана под собой не имеет, так что исключение означало бы, что пользователь, накопивший просроченные токены, молча перестаёт получать пуши навсегда. Дубликат по `(user_id, fcm_token)` пропускается первым условием — тот самый `BEFORE INSERT` до арбитража `ON CONFLICT` из «Граблей», и здесь попадание в DO UPDATE не редкость, а норма: `_upsertToken` шлётся на каждый запуск и каждую смену языка.
+  **The last three items of the same audit.** `muted_users`/`blocked_users` remained the only tables where `authenticated` could write the server-side `created_at`: they appeared before the project settled on the column-grant technique. Narrowed to `(muter_id, muted_id)`/`(blocker_id, blocked_id)` the same way and for the same reason as `favorite_users` in 20260819140000 — pinning by value would have broken the regular repeated upsert through the DO UPDATE branch. Next, `device_tokens`: `fcm_token` was a free-form `text` with no length limit, and the number of rows per user was not limited by anything, even though one outbox row expands into an FCM request per token — ten thousand junk rows would have brought back the overlapping drain runs that the claim had just closed. Added `check (char_length between 64 and 4096)` and a backstop trigger at 20 rows. The trigger **evicts the oldest row rather than failing** — deliberately unlike the media limits: device registration is fire-and-forget and has no screen behind it, so an exception would mean that a user who has accumulated expired tokens silently stops receiving pushes forever. A duplicate on `(user_id, fcm_token)` is let through by the first condition — that very `BEFORE INSERT` ahead of `ON CONFLICT` arbitration from "Pitfalls", and here hitting DO UPDATE is not rare but the norm: `_upsertToken` is sent on every launch and every language change.
 
-  **Видео больше не лежит в памяти всю сессию композера.** `PendingMedia.bytes` заменён на `MediaSource`: картинки остаются байтами (их и так рисует превью, они ужаты до `maxWidth: 1600`), видео несёт путь к файлу. Раньше `readAsBytes()` вызывался на каждый выбранный клип сразу при выборе, и до 20 клипов по 50–100 МБ висели в памяти от выбора до отправки.
+  **Video no longer sits in memory for the whole composer session.** `PendingMedia.bytes` was replaced with `MediaSource`: images stay as bytes (the preview draws them anyway, and they are downscaled to `maxWidth: 1600`), video carries a file path. Previously `readAsBytes()` was called on every selected clip right at selection time, and up to 20 clips of 50–100 MB each sat in memory from selection until sending.
 
-  Отдельно стоит записать, чем это НЕ является, потому что первая версия правки была хуже исходной. Напрашивающийся `storage.upload(path, File)` выглядит потоковым и им не является: в `storage_client 2.6.0` он делает `file.readAsBytesSync()` (`src/fetch.dart`, `_handleFileRequest`) и передаёт результат в тот же `MultipartFile.fromBytes`, что и `uploadBinary` — те же байты в памяти, но прочитанные **синхронно** на вызывающем изоляте, то есть замороженный UI на стомегабайтном клипе. Выигрыш здесь не в том, что чтения нет, а в том, КОГДА оно происходит: клип читается асинхронно в момент своей загрузки и отпускается после неё, вместо того чтобы быть прочитанным при выборе и лежать рядом с девятнадцатью другими. Это записано в комментарии у `uploadTolerantFile`, чтобы следующий человек не «починил» его обратно на `upload(File)`.
+  It is worth writing down separately what this is NOT, because the first version of the fix was worse than the original. The obvious `storage.upload(path, File)` looks like streaming and is not: in `storage_client 2.6.0` it does `file.readAsBytesSync()` (`src/fetch.dart`, `_handleFileRequest`) and passes the result into the same `MultipartFile.fromBytes` as `uploadBinary` — the same bytes in memory, but read **synchronously** on the calling isolate, i.e. a frozen UI on a hundred-megabyte clip. The win here is not that there is no read, but WHEN it happens: a clip is read asynchronously at the moment of its own upload and released after it, instead of being read at selection time and sitting next to nineteen others. This is recorded in the comment on `uploadTolerantFile` so that the next person does not "fix" it back to `upload(File)`.
 
-  **Проверка email до отправки запроса.** До сих пор на экране регистрации валидировалось только имя — адрес уходил на сервер как есть. Отсюда в базе три аккаунта на `@example.com`: домен зарезервирован RFC 2606 именно для того, чтобы почта на него не доходила никогда, так что письмо подтверждения физически не могло прийти, а аккаунт навсегда оставался неподтверждённым и недоступным для входа. Добавлен `validateEmail()` (`shared/email_validation.dart`): синтаксис плюс список доменов и TLD, недоставляемых по спецификации (`example.com/.net/.org`, `.test`, `.example`, `.invalid`, `.localhost`, `.local`). Подключён к регистрации и к восстановлению пароля — оба пути шлют письмо.
+  **Email validation before sending the request.** Until now the sign-up screen validated only the name — the address went to the server as is. Hence three accounts in the database on `@example.com`: the domain is reserved by RFC 2606 precisely so that mail to it is never delivered, so the confirmation email physically could not arrive, and the account stayed unconfirmed and unable to sign in forever. Added `validateEmail()` (`shared/email_validation.dart`): syntax plus a list of domains and TLDs that are undeliverable by specification (`example.com/.net/.org`, `.test`, `.example`, `.invalid`, `.localhost`, `.local`). Wired into sign-up and password recovery — both paths send an email.
 
-  Сознательно НЕ блокируются одноразовые почтовые сервисы: это суждение о настоящих доменах, список требует постоянного сопровождения, а одна ошибка запирает живого человека. В списке только то, что недоставляемо по стандарту, — отказ не стоит никому ничего. Проверка чисто клиентская и security-контролем не является: обратиться к auth API напрямую по-прежнему может кто угодно, поэтому ничто на её выполнении не завязано.
+  Disposable email services are deliberately NOT blocked: that is a judgment about real domains, the list needs constant maintenance, and a single mistake locks out a real person. The list contains only what is undeliverable by standard — rejecting it costs nobody anything. The check is purely client-side and is not a security control: anyone can still call the auth API directly, so nothing depends on it being enforced.
 
-  Виджет-тесты на это опираются на то же свойство, что и существующий тест на пустое имя: в их `ProviderScope` нет Supabase-клиента, так что если проверка когда-нибудь перестанет срабатывать ДО `signUp()`, вызов упадёт вместо показа сообщения. Проходящий тест — доказательство, что запрос не ушёл.
+  The widget tests for this rely on the same property as the existing empty-name test: their `ProviderScope` has no Supabase client, so if the check ever stops firing BEFORE `signUp()`, the call will crash instead of showing the message. A passing test is proof that the request was not sent.
 
-  **Уборка брошенных регистраций.** Supabase неподтверждённые аккаунты не удаляет сам: строка в `auth.users` (и через `handle_new_user()` в `public.users`) появляется в момент нажатия «Зарегистрироваться», а не перехода по ссылке из письма. Накопилось шесть таких — три на `@example.com`, куда письмо не могло дойти в принципе, и три неподтверждённых на живом gmail; у всех шести по нулям во всех таблицах. Удалены вручную, база 16 → 10 аккаунтов, содержимое не тронуто (22 поста, 11 связей, 54 реакции, 9 комментариев до и после).
+  **Cleaning up abandoned sign-ups.** Supabase does not delete unconfirmed accounts on its own: the row in `auth.users` (and, via `handle_new_user()`, in `public.users`) appears at the moment "Sign up" is pressed, not when the link in the email is followed. Six such accounts had piled up — three on `@example.com`, where the email could never arrive in principle, and three unconfirmed ones on a real gmail; all six had zeros in every table. Deleted manually, database 16 → 10 accounts, content untouched (22 posts, 11 connections, 54 reactions, 9 comments before and after).
 
-  Чтобы не накапливалось снова — `purge_abandoned_signups()` и ежедневный cron в 03:40 UTC (`20260822100000`). Условия узкие намеренно, потому что функция удаляет людей: только неподтверждённые, только старше 30 суток, только с нулём строк во всех таблицах, и явно не системный аккаунт. Последние две проверки сегодня избыточны — без подтверждения нет сессии, а значит и данных, — но именно они окажутся единственной защитой, если кто-нибудь когда-нибудь поменяет правила подтверждения email.
+  To keep them from piling up again — `purge_abandoned_signups()` and a daily cron at 03:40 UTC (`20260822100000`). The conditions are deliberately narrow, because the function deletes people: only unconfirmed, only older than 30 days, only with zero rows in every table, and explicitly not the system account. The last two checks are redundant today — without confirmation there is no session, and hence no data — but they are exactly what will turn out to be the only protection if someone ever changes the email confirmation rules.
 
-  Проверено симуляцией в откатываемой транзакции на подставных аккаунтах: старый брошенный удаляется, свежий (3 дня) остаётся, подтверждённый возрастом 400 дней остаётся, и старые неподтверждённые с постом или со связью остаются, тогда как такой же без активности удаляется. На живой базе прогон вернул 0.
+  Verified by simulation in a rolled-back transaction on fake accounts: an old abandoned one is deleted, a fresh one (3 days) stays, a confirmed one aged 400 days stays, and old unconfirmed ones with a post or a connection stay, while an identical one with no activity is deleted. On the live database the run returned 0.
 
-  **Откат релизной сборки на debug-ключ: со второй попытки.** Без `android/key.properties` сборка `--release` подписывалась всемирно известным отладочным ключом и называлась `app-release.aab`, как любая другая. Первой правкой сюда поставили `logger.warn` с баннером — и это было неверное средство сразу по двум причинам. Предупреждение теряется в логе сборки, который никто не читает; но хуже то, что на машине, где `key.properties` есть — то есть на всех, где это вообще важно, — ветка с предупреждением недостижима, так что отличить работающее предупреждение от сломанного нельзя, не спрятав ключ намеренно. Именно так это и вскрылось: в логе `pre-push` баннера не было, я сначала объяснил это фильтрацией вывода Gradle в `flutter build` — и ошибся, потому что причина была в том, что fallback просто не срабатывал.
+  **Release build falling back to the debug key: on the second try.** Without `android/key.properties` a `--release` build was signed with the world-famous debug key and named `app-release.aab`, like any other. The first fix put a `logger.warn` with a banner here — and that was the wrong remedy for two reasons at once. A warning gets lost in the build log that nobody reads; but worse, on a machine where `key.properties` is present — that is, on every machine where this matters at all — the warning branch is unreachable, so you cannot tell a working warning from a broken one without deliberately hiding the key. That is exactly how it came to light: there was no banner in the `pre-push` log, I first explained that by Gradle output being filtered in `flutter build` — and was wrong, because the real reason was that the fallback simply wasn't triggering.
 
-  Теперь сборка **падает**, а не предупреждает. Отказ Flutter показывает всегда, и это верное поведение по умолчанию: неподписанный релиз никому не нужен. Осознанная компиляционная проверка остаётся доступной через `-PallowDebugSigning=true` — его явно передают `make build-android` и шаг сборки в CI. Деплой-workflow его не передаёт намеренно, поэтому не появившийся там keystore остановит сборку вместо выкладки debug-подписанного бандла в alpha.
+  Now the build **fails** instead of warning. Flutter always shows the failure, and that is the right default: nobody needs an unsigned release. A deliberate compile check stays available via `-PallowDebugSigning=true` — `make build-android` and the CI build step pass it explicitly. The deploy workflow deliberately does not pass it, so a keystore that failed to show up there will stop the build instead of shipping a debug-signed bundle to alpha.
 
-  Проверено настоящими сборками, а не рассуждением: без ключа и без флага — падение с полным баннером в выводе `flutter build`; без ключа с флагом — сборка проходит; `make build-android` без ключа проходит; с ключом на месте проходит как раньше. `key.properties` на время проверок убирался и возвращался, контрольная сумма сверена до и после.
+  Verified by real builds, not by reasoning: without the key and without the flag — failure with the full banner in the `flutter build` output; without the key with the flag — the build passes; `make build-android` without the key passes; with the key in place it passes as before. `key.properties` was moved away and put back for the checks, and its checksum was compared before and after.
 
-  **Ревизия самих тестов.** Замер покрытия показал 46.8% строк и очень неровное распределение: экраны, писавшиеся вместе с тестами, покрыты на 77–87%, а вся область профиля и репозитории — почти нет. Хуже того, построчная сверка по недавним правкам дала неприятный результат: **восемь из десяти изменённых мест не выполнялись ни одним тестом** — оба порядка удаления, удаление аккаунта, вся видео-правка, `system_account_ids()`, reorder и фикс поля имени. То есть правки, описанные как «предотвращают потерю данных», держались на одном рассуждении.
+  **Auditing the tests themselves.** A coverage measurement showed 46.8% of lines and a very uneven distribution: screens that were written together with tests are covered at 77–87%, while the whole profile area and the repositories are barely covered. Worse, a line-by-line check against recent fixes gave an unpleasant result: **eight out of ten changed places were not executed by any test** — both deletion orders, account deletion, the whole video fix, `system_account_ids()`, reorder and the name field fix. That is, fixes described as "preventing data loss" rested on reasoning alone.
 
-  Лишних тестов при этом не нашлось, и это отчасти свойство языка: тест, ссылающийся на удалённый символ, не скомпилируется, поэтому мёртвых тестов тут не бывает. Дубликатов между файлами нет, устаревших утверждений о поведении тоже.
+  No redundant tests turned up, though, and that is partly a property of the language: a test referring to a removed symbol won't compile, so there are no dead tests here. There are no duplicates between files and no outdated assertions about behavior either.
 
-  Правило порядка удаления вынесено в `deleteRowsThenObjects()` — оно жило в трёх копиях и во всех трёх было перевёрнуто одинаково, ровно тот же рисунок, что и с правилом видимости в 0.11.0. Теперь оно сформулировано один раз и проверяется четырьмя тестами; остальные три места его наследуют. Добавлены тесты на экраны галереи (выбор, удаление только отмеченного, отмена, ошибка, ленивость сетки), на поле имени в профиле, на валидацию email при восстановлении пароля и на оба экрана с ошибкой загрузки фото. Покрытие 46.8% → 55.4%, тестов 143 → 203.
+  The deletion-order rule was extracted into `deleteRowsThenObjects()` — it lived in three copies and was inverted the same way in all three, exactly the same pattern as with the visibility rule in 0.11.0. Now it is stated once and checked by four tests; the other three places inherit it. Added tests for the gallery screens (selection, deleting only what is checked, cancel, error, grid laziness), for the name field in the profile, for email validation in password recovery and for both screens with a photo loading error. Coverage 46.8% → 55.4%, tests 143 → 203.
 
-  Каждый новый тест на регрессию проверен на разрушение — прогнан против старого кода и падает на нём: перевёрнутый порядок удаления валит 3 из 4, старый засев поля имени валит тест на очистку.
+  Every new regression test was checked for breakage — run against the old code, and it fails on it: the inverted deletion order breaks 3 of 4, the old name field seeding breaks the clearing test.
 
-  **Мёртвая строка локализации оказалась пропущенной веткой.** `failedToLoadPhotosError` был объявлен в обеих локалях и не использовался нигде. Причина нашлась там же: и `profile_screen`, и `friend_profile_screen` читали галерею как `.value ?? const []`, то есть **сбой загрузки был неотличим от «фотографий нет»** — кнопки просто стояли неактивными, аватарка не открывалась, объяснения не было. Строку написали ровно под это и забыли подключить. Подключена в обоих местах.
+  **A dead localization string turned out to be a missing branch.** `failedToLoadPhotosError` was declared in both locales and used nowhere. The reason was found right there: both `profile_screen` and `friend_profile_screen` read the gallery as `.value ?? const []`, so **a loading failure was indistinguishable from "no photos"** — the buttons just sat disabled, the avatar did not open, and there was no explanation. The string had been written for exactly this and never wired up. Now wired up in both places.
 
-  **Уведомление об обновлении — только тем, кто отстал.** kind `app_update` жил без отправителя с 20260820190000: настройка в интерфейсе есть, а слать было нечем и, главное, не по чему — без знания версии любая рассылка звала бы обновиться и тех, кто уже обновился. Теперь устройство сообщает свою версию (`device_tokens.app_version`/`.app_build`, 20260822110000), а `enqueue_app_update_notifications(build, version)` (20260822120000) ставит в очередь только отставших.
+  **Update notification — only for those who have fallen behind.** The `app_update` kind had lived without a sender since 20260820190000: the setting exists in the UI, but there was nothing to send it with and, more importantly, nothing to base it on — without knowing the version, any broadcast would also tell people who had already updated to update. Now the device reports its version (`device_tokens.app_version`/`.app_build`, 20260822110000), and `enqueue_app_update_notifications(build, version)` (20260822120000) enqueues only those who are behind.
 
-  Версия лежит на устройстве, а не на пользователе, потому что это свойство установки: телефон и планшет одного человека вполне могут быть на разных версиях, и «пользователь на 0.16.4» — бессмысленное утверждение. Таблица и так апсертится на каждый запуск, так что поле поддерживается свежим без единого нового запроса. Сравнение идёт только по `app_build` (versionCode, монотонный) — строковое сравнение `0.9.0` с `0.16.0` это классический способ ошибиться, поэтому `app_version` хранится исключительно для чтения глазами.
+  The version lives on the device, not on the user, because it is a property of the installation: one person's phone and tablet may well be on different versions, and "the user is on 0.16.4" is a meaningless statement. The table is upserted on every launch anyway, so the field is kept fresh without a single new request. The comparison uses only `app_build` (versionCode, monotonic) — comparing `0.9.0` with `0.16.0` as strings is the classic way to get it wrong, so `app_version` is stored purely for human reading.
 
-  Отставшим считается тот, у кого МАКСИМУМ build по всем устройствам ниже целевого. Причина механическая — очередь адресуется пользователю, а send-push веером бьёт по всем его токенам, адресовать одно устройство она не умеет. Причина смысловая важнее: обновился на телефоне — про обновление знает, и напоминать из-за планшета в ящике незачем. NULL читается как «старее всего»: клиент, не умеющий сообщить версию, заведомо старее того, который умеет.
+  A user counts as behind if the MAXIMUM build across all their devices is below the target. The mechanical reason: the queue is addressed to a user, and send-push fans out to all of their tokens; it cannot address a single device. The semantic reason matters more: if you updated on your phone, you know about the update, and there is no point nagging because of a tablet in a drawer. NULL is read as "oldest of all": a client that cannot report its version is by definition older than one that can.
 
-  Отдельная предосторожность: на новых колонках стоят CHECK-ограничения, а регистрация токена идёт fire-and-forget — отказ по ограничению уронил бы саму регистрацию, молча и вместе со всеми уведомлениями пользователя. Поэтому клиент нормализует оба поля до того, что база примет (`shared/app_version.dart`, 8 тестов), а ограничение остаётся защитой от подделанного значения, а не первой линией.
+  A separate precaution: the new columns have CHECK constraints, and token registration is fire-and-forget — a constraint violation would bring down the registration itself, silently and together with all of the user's notifications. So the client normalizes both fields to what the database will accept (`shared/app_version.dart`, 8 tests), and the constraint remains a defense against a forged value rather than the first line.
 
-  Повторный вызов безопасен: дедупликация по `payload->>'build'`, одно уведомление на релиз независимо от числа запусков — это сознательно жёстче окна по времени, потому что «обновись до 38» дважды это спам даже с неделей между. Следующий релиз придёт с другим build и разбудит рассылку сам.
+  Calling it again is safe: deduplication on `payload->>'build'`, one notification per release regardless of the number of runs — this is deliberately stricter than a time window, because "update to 38" twice is spam even with a week in between. The next release will come with a different build and trigger the broadcast on its own.
 
-  Проверено симуляцией: пользователь с устаревшим И свежим устройством не уведомляется, с одним устаревшим — уведомляется, с NULL-версией — уведомляется, три запуска подряд дают ровно одну строку на человека, нулевой аргумент отклонён. Отдельно сверено, что значения, которые шлёт клиент, база принимает, а подделанные — нет.
+  Verified by simulation: a user with an outdated AND a fresh device is not notified, one with a single outdated device is notified, one with a NULL version is notified, three runs in a row produce exactly one row per person, a zero argument is rejected. Separately verified that the values the client sends are accepted by the database, and forged ones are not.
 
-  **`updated_at` у device_tokens врал.** Всплыло попутно, при разборе прав на предыдущем пункте. Колонка не обновлялась НИКОГДА: `default now()` срабатывает только на вставке, а клиентский апсерт переписывает строку на каждый запуск приложения и смену языка, не упоминая её в payload. На живой базе у всех строк `created_at = updated_at`, хотя приложение их регулярно трогает — то есть по колонке нельзя было понять, когда устройство последний раз выходило на связь.
+  **`updated_at` on device_tokens lied.** Surfaced in passing while working through the grants for the previous item. The column was NEVER updated: `default now()` only fires on insert, and the client upsert rewrites the row on every app launch and language change without mentioning it in the payload. On the live database every row had `created_at = updated_at`, even though the app touches them regularly — so the column could not tell you when a device was last in contact.
 
-  Вторая половина той же дырки: грант на UPDATE у таблицы табличный (в отличие от INSERT, суженного до колонок ещё в 20260819140000), поэтому клиент мог переписать в своей строке и `created_at`. Вреда от этого сегодня нет — ни одно решение в схеме эти даты не читает, — но это тот же класс подделываемой серверной колонки, что закрывался уже шесть раз.
+  The second half of the same hole: the UPDATE grant on the table is table-wide (unlike INSERT, narrowed to columns back in 20260819140000), so the client could also rewrite `created_at` in its own row. There is no harm from this today — no decision in the schema reads these dates — but it is the same class of forgeable server-side column that has already been closed six times.
 
-  Сузить грант нельзя: PostgREST кладёт в SET все колонки payload, включая `user_id` и `fcm_token`, так что колоночный грант на UPDATE уронил бы регистрацию пушей целиком. Ровно этот случай уже разбирался для `reactions` (20260819150000), решение перенесено дословно — BEFORE UPDATE триггер `pin_device_token_timestamps()`, который возвращает `created_at` на место и ставит `updated_at = now()`.
+  The grant cannot be narrowed: PostgREST puts all payload columns into SET, including `user_id` and `fcm_token`, so a column-level UPDATE grant would break push registration entirely. Exactly this case was already worked through for `reactions` (20260819150000), and the solution was carried over verbatim — a BEFORE UPDATE trigger `pin_device_token_timestamps()` that puts `created_at` back and sets `updated_at = now()`.
 
-  Проверено симуляцией: обычная перерегистрация двигает `updated_at` вперёд и оставляет `created_at` на месте, попытка выставить обе даты 2019 годом отбрасывается — `created_at` сохраняет исходное значение, `updated_at` становится текущим.
+  Verified by simulation: a normal re-registration moves `updated_at` forward and leaves `created_at` in place; an attempt to set both dates to 2019 is discarded — `created_at` keeps its original value, `updated_at` becomes the current time.
 
-  Проверено: `make verify` зелёный (211 тестов против 143). Десять миграций применены на живую БД и записаны в `supabase_migrations.schema_migrations`, edge-функция выкачена (v11, `verify_jwt` сохранён) и подтверждена по `net._http_response` — cron стабильно получает 200. Обе дыры (дизлайк и оракул) воспроизведены симуляцией `set_config('request.jwt.claims', …)` до правки и проверены после, гранты `anon` сверены по `information_schema.role_table_grants` (было две таблицы, стало ноль). Тест на откат тумблеров падает, если вернуть старый код. Колоночные гранты и лимит токенов проверены симуляцией в откатываемых транзакциях: легитимная запись проходит, подделка `created_at` отклоняется с 42501, 25 вставок оставляют 20 строк, повторная регистрация того же устройства ничего не вытесняет. Стриминг видео на устройстве не проверялся — телефон не был подключён.
-- Четвёртый полный аудит: 11 находок закрыто (0.16.5) — снова ревью всего проекта целиком, а не диффа: 79 миграций, edge-функция, весь Dart, Android- и CI-конфиг. Тесты и в этот раз были зелёными (211/211) и снова не поймали ни одной находки. Ниже — по убыванию серьёзности.
+  Verified: `make verify` is green (211 tests versus 143). Ten migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations`, the edge function deployed (v11, `verify_jwt` preserved) and confirmed via `net._http_response` — cron consistently gets 200. Both holes (dislike and oracle) were reproduced by simulation with `set_config('request.jwt.claims', …)` before the fix and checked after, `anon` grants verified against `information_schema.role_table_grants` (there were two tables, now zero). The toggle rollback test fails if the old code is restored. Column grants and the token limit were verified by simulation in rolled-back transactions: a legitimate write goes through, forging `created_at` is rejected with 42501, 25 inserts leave 20 rows, re-registering the same device evicts nothing. Video streaming was not checked on a device — the phone was not connected.
+- Fourth full audit: 11 findings closed (0.16.5) — again a review of the whole project rather than a diff: 79 migrations, the edge function, all of the Dart code, Android and CI config. The tests were green this time too (211/211) and again caught none of the findings. Below, in decreasing order of severity.
 
-  **Правила ответов работали оракулом существования.** `enforce_comment_reply_rules()` — `security definer` BEFORE INSERT-триггер, а такие триггеры в Postgres срабатывают ДО `WITH CHECK` политики (`ExecBRInsertTriggers` идёт раньше `ExecWithCheckOptions`). Он читал `comments` без RLS и кидал пять разных сообщений, так что заблокированный, сохранивший id чужого комментария, отправлял ответ на видимый ему пост и по тексту ошибки читал состояние скрытой строки: «нет такой» / «есть, но на другом посте» / «есть, и это ответ» / «есть, и это заглушка» / отказ RLS. Пять различимых ответов там, где обязан быть один. Тот же класс, что закрывался уже трижды (`20260818130000`, `20260819130000`, `20260821130000`) — мимо тех правок он прошёл именно потому, что живёт не в политике, а перед ней. Теперь триггер молчит про всё, чего вызывающий не видит: не видно — `return new`, вердикт выносит политика, одинаковым 42501 на все случаи. Видимость проверяет новая `is_comment_visible()`, ею же переписаны обе ветки INSERT-политики — это заодно закрыло щель, из-за которой политика была шире права читать строку (комментарий видимого автора под невидимым постом её проходил; раньше это ловил как раз триггер). `20260822140000`.
+  **Reply rules worked as an existence oracle.** `enforce_comment_reply_rules()` is a `security definer` BEFORE INSERT trigger, and in Postgres such triggers fire BEFORE the policy's `WITH CHECK` (`ExecBRInsertTriggers` runs before `ExecWithCheckOptions`). It read `comments` without RLS and raised five different messages, so a blocked user who had saved the id of someone else's comment could send a reply on a post visible to them and read the state of the hidden row from the error text: "no such comment" / "exists, but on a different post" / "exists, and it is a reply" / "exists, and it is a placeholder" / RLS refusal. Five distinguishable responses where there must be one. The same class that had already been closed three times (`20260818130000`, `20260819130000`, `20260821130000`) — it slipped past those fixes precisely because it lives not in the policy but in front of it. Now the trigger says nothing about anything the caller cannot see: not visible — `return new`, and the policy delivers the verdict, with the same 42501 in every case. Visibility is checked by the new `is_comment_visible()`, which was also used to rewrite both branches of the INSERT policy — this also closed a gap that made the policy broader than the right to read the row (a comment by a visible author under an invisible post passed it; previously it was the trigger that caught this). `20260822140000`.
 
-  **Видео нельзя было опубликовать с мобильного интернета.** `uploadTolerant` вешал на загрузку в Storage общий `networkTimeout` — 12 секунд, — при том что бакет принимает объекты до 100 MiB, а композер до 60 с нетранскодированного 1080p, то есть 50–100 МБ. Пятьдесят мегабайт за двенадцать секунд требуют ~33 Мбит/с; на обычном аплинке `TimeoutException` срабатывал раньше, чем уходило тело запроса. Хуже того, `.timeout()` не отменяет запрос, поэтому брошенная загрузка часто долетала — и третий-четвёртый ретрай «срабатывал», столкнувшись с ней и получив 409, который `uploadTolerant` считает успехом. Введён `uploadTimeout(bytes)`: `networkTimeout + bytes / 128 KiB/с`, потолок 15 минут. Фото 300 КБ по-прежнему отваливается за 14 с, 50 МБ получает ~7 минут.
+  **Video could not be published over mobile data.** `uploadTolerant` applied the general `networkTimeout` — 12 seconds — to the Storage upload, even though the bucket accepts objects up to 100 MiB, and the composer up to 60 s of non-transcoded 1080p, i.e. 50–100 MB. Fifty megabytes in twelve seconds requires ~33 Mbit/s; on a typical uplink the `TimeoutException` fired before the request body was even sent. Worse, `.timeout()` does not cancel the request, so the abandoned upload often made it through — and the third or fourth retry "succeeded" by colliding with it and getting a 409, which `uploadTolerant` treats as success. Introduced `uploadTimeout(bytes)`: `networkTimeout + bytes / 128 KiB/s`, capped at 15 minutes. A 300 KB photo still times out at 14 s, 50 MB gets ~7 minutes.
 
-  **`delete_own_comment()` различала «нет такого» и «чужой».** Тот же вопрос «жива ли строка», заданный напрямую: по разнице ответов можно было опрашивать судьбу скрытого комментария. Обе ветки сведены к одному `PT404` — ровно как `set_post_media()` уже делает с «не мой»/«не существует». `20260822140000`.
+  **`delete_own_comment()` distinguished "no such comment" from "someone else's".** The same "is the row alive" question, asked directly: the difference in responses could be used to poll the fate of a hidden comment. Both branches were collapsed into a single `PT404` — exactly as `set_post_media()` already does with "not mine"/"doesn't exist". `20260822140000`.
 
-  **Утёкший код приглашения нельзя было отозвать.** Кнопка после первого нажатия подписана «Создать новый код» и не создавала: `create_invite_link()` идемпотентна и возвращала ту же строку, а `invite_links_one_active_per_owner` не давал завести вторую активную. Код предъявительский — кто активировал, тот и Connection со всей лентой, профилем и галереей, — так что отправивший его не в тот чат не мог сделать ничего. Добавлена `rotate_invite_link()`: удаляет неиспользованные строки владельца и чеканит новую. Именно удаляет, а не ставит `is_used`, чтобы отозванный код читался как `PT404` («нет такого»), а не `PT409` («уже использован») — второе неправда. Клиент зовёт её только из ветки «код уже на экране» и только после подтверждения. `20260822150000`.
+  **A leaked invite code could not be revoked.** After the first press the button is labeled "Create new code" and did not create one: `create_invite_link()` is idempotent and returned the same string, and `invite_links_one_active_per_owner` did not allow a second active one. The code is a bearer code — whoever redeems it becomes a Connection with the whole feed, profile and gallery — so someone who sent it to the wrong chat could do nothing. Added `rotate_invite_link()`: it deletes the owner's unused rows and mints a new one. It deletes rather than setting `is_used`, so that a revoked code reads as `PT404` ("no such code") rather than `PT409` ("already used") — the latter is untrue. The client calls it only from the "code is already on screen" branch and only after confirmation. `20260822150000`.
 
-  **Правка поста теряла подпись.** В `updatePost` уборка осиротевших объектов в Storage стояла МЕЖДУ закоммиченным `set_post_media()` и апдейтом текста, и без защиты. Правка, которая меняла подпись и убирала фото, коммитила медиа, падала на таймауте `remove()` и до текста не доходила — а композер сообщал, что не сохранилось ничего. Обе записи строк убраны внутрь `deleteRowsThenObjects`, уборка идёт последней и best-effort, как и во всех остальных путях удаления.
+  **Editing a post lost the caption.** In `updatePost`, cleanup of orphaned Storage objects sat BETWEEN the committed `set_post_media()` and the text update, and unprotected. An edit that changed the caption and removed a photo committed the media, failed on a `remove()` timeout and never got to the text — while the composer reported that nothing had been saved. Both row writes were moved inside `deleteRowsThenObjects`; cleanup goes last and is best-effort, as in all other deletion paths.
 
-  **Вытеснение пуш-токенов выбрасывало рабочий телефон.** `enforce_device_token_limit()` держит 19 строк с наибольшим `created_at` — и это было правдой, пока `created_at` был единственным временем в таблице. `20260822130000` (0.16.4) прибила его к дате первой регистрации и завела `updated_at` как «последний выход на связь», после чего сортировка стала означать «19 позже всех заведённых». У человека с годовалым телефоном, открываемым каждый день, и двумя десятками мёртвых токенов помоложе двадцать первая регистрация выбрасывала именно телефон. Ключ сортировки переведён на `updated_at`. `20260822160000`.
+  **Push token eviction threw out a working phone.** `enforce_device_token_limit()` keeps the 19 rows with the highest `created_at` — and that was right as long as `created_at` was the only timestamp in the table. `20260822130000` (0.16.4) pinned it to the date of first registration and introduced `updated_at` as "last in contact", after which the sort came to mean "the 19 most recently created". For a person with a year-old phone opened every day and two dozen younger dead tokens, the twenty-first registration evicted precisely the phone. The sort key was switched to `updated_at`. `20260822160000`.
 
-  **`set_post_media()` принимала произвольный `storage_path`.** Функция `security definer`, то есть пишет в `post_media` мимо INSERT-политики и колоночного гранта — обе проверки остались только на прямом пути вставки. Через RPC к своему посту можно было прицепить строку с путём `posts/<чужой-uuid>/…`. Утечкой на чтение это не было: подписывает объект уже зритель, а storage-политика матчит второй сегмент против его собственного `visible_author_ids()`. Но инвариант, названный несущим и в клиенте, и в data-model.md, переставал быть инвариантом. Добавлена проверка префикса `posts/<auth.uid()>/`, та же, что у storage-политики на INSERT; миграция начинается с блока, который падает, если хоть одна живая строка правилу не удовлетворяет. `20260822170000`.
+  **`set_post_media()` accepted an arbitrary `storage_path`.** The function is `security definer`, meaning it writes to `post_media` bypassing the INSERT policy and the column grant — both checks remained only on the direct insert path. Via the RPC you could attach a row with the path `posts/<someone-else's-uuid>/…` to your own post. This was not a read leak: the object is signed by the viewer, and the storage policy matches the second segment against the viewer's own `visible_author_ids()`. But an invariant called load-bearing both in the client and in data-model.md stopped being an invariant. Added a check of the `posts/<auth.uid()>/` prefix, the same as the storage INSERT policy has; the migration starts with a block that fails if even one live row does not satisfy the rule. `20260822170000`.
 
-  **Пустой ответ `system_account_ids()` укладывал ленту насмерть.** Список подставлялся в `not.in.(…)` без проверки: пустой давал `author_id=not.in.()`, а это не фильтр, а 400. И он кэшировался на всё время жизни репозитория, так что одна такая выдача вешала ленту до перезапуска — при том что офлайн-запасной вариант рядом не срабатывал бы, ведь запрос-то прошёл. Пустой список теперь просто не превращается в фильтр.
+  **An empty `system_account_ids()` response killed the feed dead.** The list was substituted into `not.in.(…)` without a check: an empty one produced `author_id=not.in.()`, which is not a filter but a 400. And it was cached for the whole lifetime of the repository, so one such response hung the feed until restart — while the offline fallback next to it would not have kicked in, since the request itself had succeeded. An empty list is now simply not turned into a filter.
 
-  **Видео проверялось только по длительности.** 45 секунд 4K/60 проходят лимит в минуту и заведомо больше 100 MiB, а Storage отвечает на это 413 уже после того, как файл целиком прочитан в память и отправлен. Композер показывал общее «не удалось опубликовать», то есть клип выглядел как подвисшая сеть, а не как то, что не выйдет никогда. Добавлена проверка размера до извлечения постера и отдельная строка в обеих локалях.
+  **Video was checked only by duration.** 45 seconds of 4K/60 passes the one-minute limit and is certainly over 100 MiB, and Storage answers that with a 413 only after the whole file has been read into memory and sent. The composer showed a generic "Failed to publish", so the clip looked like a stalled network rather than something that will never go through. Added a size check before poster extraction and a dedicated string in both locales.
 
-  **`PageController` создавался в `build()`** у `ProfilePhotoViewerScreen` — единственное место в проекте, где контроллер не принадлежит `State`. Каждая перестройка (системная тема, масштаб текста, поворот) давала новый контроллер с `initialPage`, то есть просмотрщик прыгал обратно на фото, с которого его открыли, а прежние `ChangeNotifier` никто не диспозил. Экран переведён в `StatefulWidget`.
+  **`PageController` was created in `build()`** of `ProfilePhotoViewerScreen` — the only place in the project where a controller is not owned by a `State`. Every rebuild (system theme, text scale, rotation) produced a new controller with `initialPage`, so the viewer jumped back to the photo it had been opened on, and the previous `ChangeNotifier`s were never disposed. The screen was converted to a `StatefulWidget`.
 
-  **Второй захардкоженный id системного аккаунта.** `20260821160000` (0.16.4) увела ленту на серверный `system_account_ids()` и оставила константу запасным вариантом — но пасхалка на тумблере темы продолжала читать литерал напрямую. Это ровно та копия, которая ломается молча: после ротации `fetchProfile` бросил бы на `.single()` для несуществующего uuid, `catch` рядом это глотает, и шесть щелчков переключателя просто перестали бы что-либо делать. Поиск переехал в `shared/system_accounts.dart`, оба потребителя спрашивают сервер, кэш общий.
+  **A second hardcoded system account id.** `20260821160000` (0.16.4) moved the feed to the server-side `system_account_ids()` and kept the constant as a fallback — but the easter egg on the theme toggle kept reading the literal directly. That is exactly the kind of copy that breaks silently: after a rotation, `fetchProfile` would throw on `.single()` for a nonexistent uuid, the `catch` next to it swallows that, and six clicks on the switch would simply stop doing anything. The lookup moved to `shared/system_accounts.dart`; both consumers ask the server, and the cache is shared.
 
-  Проверено: `make verify` зелёный, 220 тестов против 211 (6 на `uploadTimeout`, 3 на ротацию кода). Четыре миграции применены на живую БД и записаны в `supabase_migrations.schema_migrations`. Оракул воспроизведён симуляцией до правки — «существующий невидимый» и «несуществующий» давали разные сообщения, после правки оба дают побайтово одинаковый 42501; регрессия проверена на трёх законных путях, включая ответ владельца поста комментатору. `delete_own_comment` отдаёт один `PT404` на чужой и на несуществующий, свой по-прежнему удаляется. Ротация: открытая строка после вызова одна, старый код исчез, предъявителю он отвечает `PT404`. Чужой `storage_path` и чужой `poster_path` дают `PT422`, свой работает. Вытеснение проверено на синтетических 20 токенах, где самый старый по `created_at` — самый свежий по `updated_at`: он выжил, ушёл самый старый по `updated_at`. Контрольные числа по одиннадцати таблицам до и после наката совпали. На устройстве ничего не проверялось — телефон не подключён.
-- Пятый полный аудит: 10 находок закрыто, одна отозвана (0.16.6) — снова ревью всего проекта целиком, а не диффа: 83 миграции, edge-функция, весь Dart, Android- и CI-конфиг. Тесты снова были зелёными (220/220) и снова не поймали ни одной находки. Ниже — по убыванию серьёзности.
+  Verified: `make verify` is green, 220 tests versus 211 (6 for `uploadTimeout`, 3 for code rotation). Four migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations`. The oracle was reproduced by simulation before the fix — "existing invisible" and "nonexistent" produced different messages; after the fix both produce a byte-for-byte identical 42501; regressions checked on three legitimate paths, including the post owner replying to a commenter. `delete_own_comment` returns a single `PT404` for someone else's and for a nonexistent comment, and your own is still deleted. Rotation: after the call there is exactly one open row, the old code is gone, and it answers `PT404` to its bearer. Someone else's `storage_path` and someone else's `poster_path` give `PT422`, your own works. Eviction was checked on 20 synthetic tokens where the oldest by `created_at` is the freshest by `updated_at`: it survived, and the oldest by `updated_at` was the one evicted. Control counts across eleven tables matched before and after applying. Nothing was checked on a device — the phone was not connected.
+- Fifth full audit: 10 findings closed, one withdrawn (0.16.6) — again a review of the whole project, not of a diff: 83 migrations, the edge function, all of the Dart, the Android and CI config. The tests were green again (220/220) and again caught none of the findings. Below, in decreasing order of severity.
 
-  **Строку медиа можно было завести с чужим путём.** `20260822170000` (0.16.5) закрыла это в `set_post_media()` — то есть на пути РЕДАКТИРОВАНИЯ поста, — и не тронула путь СОЗДАНИЯ: `createPost` пишет `post_media` обычным INSERT'ом, а его политика спрашивала только «мой ли это пост». У `profile_photos` то же самое стояло с `20260819240000`, и там хуже: триггер `sync_avatar_path_from_profile_photos()` переносит `storage_path` строки с наименьшей `position` в `users.avatar_path`, то есть чужой путь расходится по всем экранам, которые рисуют аватарку. Угадывать ничего не надо — `avatar_path` знакомого приезжает клиенту как есть, `fetchFriends` его и запрашивает. Утечки байтов нет (подписывает объект зритель, storage-политика матчит второй сегмент против его собственного `visible_author_ids()`), ломается авторство. Обе INSERT-политики получили ту же проверку префикса, что уже стоит в RPC и в storage-политике. `20260822180000`.
+  **A media row could be created with someone else's path.** `20260822170000` (0.16.5) closed this in `set_post_media()` — that is, on the post EDITING path — and didn't touch the CREATION path: `createPost` writes `post_media` with a plain INSERT, and its policy only asked "is this my post". `profile_photos` had had the same thing since `20260819240000`, and there it's worse: the `sync_avatar_path_from_profile_photos()` trigger copies the `storage_path` of the row with the lowest `position` into `users.avatar_path`, so the foreign path spreads to every screen that draws an avatar. Nothing has to be guessed — a connection's `avatar_path` reaches the client as is, `fetchFriends` requests exactly that. No bytes leak (the viewer signs the object, the storage policy matches the second segment against the viewer's own `visible_author_ids()`), what breaks is authorship. Both INSERT policies got the same prefix check that the RPC and the storage policy already have. `20260822180000`.
 
-  **`users.avatar_path` был доступен клиенту на запись.** Вторая дверь в ту же комнату, и грант остался с версии до галереи: колонку пишет только триггер, клиент её исключительно читает (`grep -rn avatar_path app/lib` — все попадания на чтение), а `grant update (name, avatar_path)` из `20260820140000` был жив. RLS-политика на `users` говорит лишь «моя ли это строка», так что PATCH с чужим путём проходил и держался, пока владелец сам не тронет свою галерею — триггер висит на `profile_photos`, пересчитывать колонку ему не с чего. Грант сужен до `update (name)`. Сузить его можно было только вместе с переводом триггера в `security definer`: он `invoker`, и без гранта его UPDATE падал бы с «permission denied for column avatar_path», забирая с собой всякое добавление, удаление и reorder фотографий. `20260822210000`.
+  **`users.avatar_path` was writable by the client.** A second door into the same room, and the grant was left over from the pre-gallery version: only the trigger writes the column, the client only ever reads it (`grep -rn avatar_path app/lib` — every hit is a read), yet `grant update (name, avatar_path)` from `20260820140000` was still alive. The RLS policy on `users` only says "is this my row", so a PATCH with a foreign path went through and stuck until the owner touched their own gallery — the trigger hangs off `profile_photos`, it has nothing to recompute the column from. The grant is narrowed to `update (name)`. It could only be narrowed together with switching the trigger to `security definer`: it was `invoker`, and without the grant its UPDATE would fail with "permission denied for column avatar_path", taking down every add, delete and reorder of photos with it. `20260822210000`.
 
-  **Пустое имя и пост без содержимого.** `users_name_length` ограничивал имя сверху и не ограничивал снизу, а фолбэк `'Без имени'` живёт только в `handle_new_user()` — PATCH с `{"name":""}` проходил, и автор исчезал из шапки поста, списка знакомых, строки комментария и слота `{author_name}` в пуше. Добавлен `users_name_not_blank`. С постами сложнее: `posts_has_content` сняли в `20260819220000` вместе с `image_path` и не заменили, но синхронным CHECK'ом это и не выражается — `createPost` вставляет пост и его `post_media` двумя запросами PostgREST, то есть двумя транзакциями, и проверка в момент вставки поста отвергла бы легальный пост из одних фотографий. Поэтому `posts_text_not_blank` ловит то, что проверяемо сразу (текст из пробелов), а пост, оставшийся без всякого содержимого, подчищает новый крон `purge-empty-posts` — час с запасом, медиа заливаются ДО вставки строки поста, легальный разрыв тут в один round trip. `20260822200000`.
+  **An empty name and a post with no content.** `users_name_length` bounded the name from above but not from below, and the `'Без имени'` fallback lives only in `handle_new_user()` — a PATCH with `{"name":""}` went through, and the author vanished from the post header, the connections list, the comment line and the `{author_name}` slot in the push. `users_name_not_blank` added. Posts are trickier: `posts_has_content` was dropped in `20260819220000` together with `image_path` and never replaced, but a synchronous CHECK can't express it anyway — `createPost` inserts the post and its `post_media` in two PostgREST requests, i.e. two transactions, and a check at post-insert time would reject a legitimate photos-only post. So `posts_text_not_blank` catches what can be checked right away (whitespace-only text), and a post left without any content is cleaned up by the new `purge-empty-posts` cron — an hour with margin to spare; media are uploaded BEFORE the post row is inserted, the legitimate gap here is one round trip. `20260822200000`.
 
-  **Второй захардкоженный id системного аккаунта, теперь на сервере.** `20260821160000` завела `system_account_ids()` ровно затем, чтобы id не жил в двух местах, и в 0.16.5 из клиента его убрали — а на сервере копий так и осталось две, `is_system_account()` со своим литералом и `system_account_ids()` со своим, ничем не связанные. Ротация с правкой одной функции не падает громко: поехала только первая — посты нового аккаунта лезут в общую ленту каждому; только вторая — лента прячет аккаунт, который правило видимости системным уже не считает. Теперь набор объявляет `system_account_ids()`, а `is_system_account()` спрашивает её. Попутно `immutable` -> `stable` (иначе нельзя звать `stable`-функцию) и `exists (…)` вместо `p_id in (…)` — строгий boolean вместо трёхзначного, тот же мотив, что у `is_author_of_comment_visible` в `20260821130000`. `20260822220000`.
+  **A second hardcoded system account id, this time on the server.** `20260821160000` introduced `system_account_ids()` precisely so the id wouldn't live in two places, and in 0.16.5 it was removed from the client — yet the server still had two copies, `is_system_account()` with its own literal and `system_account_ids()` with its own, unconnected. A rotation that edits only one function doesn't fail loudly: if only the first moves, the new account's posts show up in everyone's general feed; if only the second, the feed hides an account that the visibility rule no longer considers system. Now `system_account_ids()` declares the set, and `is_system_account()` asks it. Along the way `immutable` -> `stable` (otherwise it can't call a `stable` function) and `exists (…)` instead of `p_id in (…)` — a strict boolean instead of a three-valued one, the same motive as `is_author_of_comment_visible` in `20260821130000`. `20260822220000`.
 
-  **Редактор поста, открытый офлайн, бросал необработанное исключение.** `_resolveExistingMediaUrls()` запускается из `initState` без `await` и был единственным сетевым вызовом на экране без `catch` — при отсутствии связи (или на таймауте в 12 с) бросок уходил из осиротевшего future прямо в `FlutterError.onError`. Обе копии того же резолва в карусели давно защищены. Теперь ловится и сообщается; фотографии при этом не теряются — `_ExistingSlot` держит свой `PostMedia` независимо от превью, и сохранение отправляет его как `KeptMedia`, так что серый плейсхолдер это только серый плейсхолдер.
+  **The post editor, opened offline, threw an unhandled exception.** `_resolveExistingMediaUrls()` is started from `initState` without `await` and was the only network call on the screen without a `catch` — with no connection (or on the 12 s timeout) the throw escaped the orphaned future straight into `FlutterError.onError`. Both copies of the same resolve in the carousel have long been guarded. Now it's caught and reported; no photos are lost in the process — `_ExistingSlot` holds its own `PostMedia` independently of the preview, and saving sends it as `KeptMedia`, so a grey placeholder is just a grey placeholder.
 
-  **Экран переупорядочивания фото строил все 80 плиток сразу.** `ReorderableWrap` внутри `SingleChildScrollView` — ровно та форма, которую соседний экран удаления сменил на `GridView.builder` именно поэтому, и здесь она осталась: открытие полной галереи запускало 80 загрузок и 80 декодов до того, как на экране появлялась первая плитка. Wrap ленивым не бывает (ему надо измерить каждого ребёнка, чтобы разложить строки), поэтому сетка уступила месту ленивому `ReorderableListView` — одно фото в строке. Заодно нумерация стала видимой, а с ней и правило «первое фото — твоя аватарка», которое в сетке только подразумевалось. Внимание при чтении диффа: `ReorderableListView` отдаёт `newIndex` до изъятия элемента, а `ReorderableWrap` (композер им пользуется до сих пор) — итоговый, так что общий обработчик у них выглядит уместным и им не является.
+  **The photo reorder screen built all 80 tiles at once.** `ReorderableWrap` inside a `SingleChildScrollView` — exactly the shape the neighbouring delete screen replaced with `GridView.builder` for exactly this reason, and here it had stayed: opening a full gallery started 80 loads and 80 decodes before the first tile appeared on screen. A Wrap is never lazy (it has to measure every child to lay out the rows), so the grid gave way to a lazy `ReorderableListView` — one photo per row. As a bonus the numbering became visible, and with it the "the first photo is your avatar" rule, which the grid only implied. Heads-up when reading the diff: `ReorderableListView` reports `newIndex` before the item is removed, while `ReorderableWrap` (the composer still uses it) reports the final one, so a shared handler for them looks appropriate and isn't.
 
-  **Плитки композера декодировали фото целиком в коробку 96×96.** `Image.memory` мимо `sizedMemoryImage`, при том что все остальные мелкие картинки в проекте через него и идут. Фото приезжают с `maxWidth: 1600`, то есть ~12 МБ ARGB каждое независимо от размера отрисовки; двадцать разрешённых элементов — ~240 МБ против 100 МБ `ImageCache`, который после этого молотит и передекодирует на каждой перестройке композера.
+  **Composer tiles decoded full photos into a 96×96 box.** `Image.memory` bypassing `sizedMemoryImage`, even though every other small image in the project goes through it. Photos arrive with `maxWidth: 1600`, i.e. ~12 MB of ARGB each regardless of the render size; the twenty allowed items come to ~240 MB against a 100 MB `ImageCache`, which then thrashes and re-decodes on every composer rebuild.
 
-  **`avatarBytesProvider` держал в памяти каждое когда-либо открытое фото.** Голый `keepAlive()` без границы: кэш писался под аватарки, которые списки переиспользуют, но через то же семейство идут и целые галереи — открыть экран удаления или переупорядочивания на 80 фото значило прибить в памяти 80 JPEG'ов по `maxWidth: 1600`, и отпустить их было некому. Он же оставлял фотографии предыдущего аккаунта резидентными после выхода — то же самое, что `FeedCache` закрывает на диске ключами по пользователю. Теперь keep-alive отпускается через 5 минут после ухода последнего слушателя (`onCancel`/`onResume`), так что возврат на экран по-прежнему не перекачивает ничего.
+  **`avatarBytesProvider` kept every photo ever opened in memory.** A bare `keepAlive()` with no bound: the cache was written for avatars that lists reuse, but whole galleries go through the same family — opening the delete or reorder screen with 80 photos meant pinning 80 JPEGs at `maxWidth: 1600` in memory, with nobody to release them. It also left the previous account's photos resident after sign-out — the same thing `FeedCache` closes on disk with per-user keys. Now the keep-alive is released 5 minutes after the last listener leaves (`onCancel`/`onResume`), so returning to a screen still re-downloads nothing.
 
-  **Комментарий про storage-политики врал наполовину.** `tolerant_upload.dart` обосновывал отказ от `upsert: true` тем, что UPDATE-политики нет «ни для одного префикса». Для `posts/` правда, для `avatars/` — нет: политика лежала с `20260707222025` и не использовалась ни одним путём. Это то рассуждение, на которое сошлётся следующий читатель, прежде чем потянуться к `upsert`, поэтому политика снята, а не комментарий переписан. `20260822210000`.
+  **A comment about the storage policies was half wrong.** `tolerant_upload.dart` justified not using `upsert: true` by there being no UPDATE policy "for any prefix". True for `posts/`, not for `avatars/`: the policy had been there since `20260707222025` and was used by no path at all. This is the reasoning the next reader will point to before reaching for `upsert`, so the policy was dropped rather than the comment rewritten. `20260822210000`.
 
-  **Отозвано: «backstop-лимиты не работают на пакетной вставке».** Утверждалось, что `BEFORE ROW`-триггер не видит строк, вставленных тем же оператором (Postgres не двигает command counter между строками одного INSERT), а значит лимиты 20 и 80 не держат ни на одном живом пути — оба шлют пачку одним upsert'ом. Проверено изолированным триггером на временной таблице: вставка пяти строк одним оператором при лимите три останавливается ровно на четвёртой. plpgsql зовёт `CommandCounterIncrement()` перед каждым SPI-запросом, поэтому снимок внутри триггера видит уже вставленное. Лимиты работают, находка снята, написанная под неё миграция удалена.
+  **Withdrawn: "the backstop limits don't work on a batch insert".** The claim was that a `BEFORE ROW` trigger doesn't see rows inserted by the same statement (Postgres doesn't advance the command counter between rows of a single INSERT), so the 20 and 80 limits hold on no live path — both send the batch in one upsert. Checked with an isolated trigger on a temporary table: inserting five rows in one statement with a limit of three stops exactly at the fourth. plpgsql calls `CommandCounterIncrement()` before every SPI query, so the snapshot inside the trigger already sees what was inserted. The limits work, the finding is withdrawn, and the migration written for it is deleted.
 
-  Проверено: `make verify` зелёный, 223 теста против 220. Четыре миграции применены на живую БД и записаны в `supabase_migrations.schema_migrations` (83 -> 87). Каждая дыра воспроизведена симуляцией `set_config('request.jwt.claims', …)` в откатываемой транзакции ДО правки и перепроверена после: чужой путь в `post_media` и в `profile_photos` принимался, теперь 42501, свой префикс по-прежнему проходит; прямая запись `avatar_path` проходила, теперь «permission denied», при этом триггер синхронизации пишет колонку как раньше — проверено на добавлении, удалении и полном reorder; `name` из пробелов и текст поста из пробелов принимались, теперь 23514. `purge_empty_posts()` проверена на трёх приманках: старый пустой пост удалён, свежий пустой (его `post_media` ещё в пути) и старый с медиа не тронуты. `is_system_account()` после переписывания даёт строгий `false` на NULL, правило видимости не сдвинулось — `visible_author_ids()` независимо пересчитано запросом без единого вызова функции и сошлось; обе ветки `enqueue_post_notifications()` проверены вставкой поста от обычного и от системного аккаунта. Оба новых теста проверены на дискриминацию: без `catch` падает тест на офлайн-редактор, без поправки `newIndex` перестановка даёт `[p1, p2, p0]` вместо `[p1, p0, p2]`. На устройстве ничего не проверялось — телефон не подключён.
-- Шестой полный аудит: 7 находок закрыто (0.16.7) — снова ревью всего проекта целиком, а не диффа: 87 миграций, edge-функция, весь Dart, Android- и CI-конфиг, сборочные скрипты и документация. Тесты снова были зелёными (223/223) и снова не поймали ни одной находки. Ниже — по убыванию серьёзности.
+  Verified: `make verify` green, 223 tests vs 220. Four migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations` (83 -> 87). Every hole was reproduced by simulating `set_config('request.jwt.claims', …)` in a rolled-back transaction BEFORE the fix and re-checked after: a foreign path in `post_media` and in `profile_photos` was accepted, now 42501, one's own prefix still passes; a direct write to `avatar_path` went through, now "permission denied", while the sync trigger writes the column as before — checked on add, delete and a full reorder; a whitespace-only `name` and whitespace-only post text were accepted, now 23514. `purge_empty_posts()` was checked on three decoys: the old empty post deleted, a fresh empty one (its `post_media` still in flight) and an old one with media left untouched. After the rewrite `is_system_account()` returns a strict `false` on NULL, the visibility rule didn't shift — `visible_author_ids()` was independently recomputed by a query without a single function call and matched; both branches of `enqueue_post_notifications()` were checked by inserting a post from a regular account and from the system account. Both new tests were checked for discrimination: without the `catch` the offline-editor test fails, without the `newIndex` correction the reorder gives `[p1, p2, p0]` instead of `[p1, p0, p2]`. Nothing was checked on a device — the phone wasn't connected.
+- Sixth full audit: 7 findings closed (0.16.7) — again a review of the whole project, not of a diff: 87 migrations, the edge function, all of the Dart, the Android and CI config, the build scripts and the documentation. The tests were green again (223/223) and again caught none of the findings. Below, in decreasing order of severity.
 
-  **Дизлайк можно было поставить автору, который от них отказался.** Запрет `dislikes_disabled` живёт в двух политиках `reactions` — на постановке реакции и на её смене. INSERT-ветку `20260821110000` (0.16.4) уже чинила, восстанавливая потерянный guard; UPDATE-близнец при этом остался без того условия, на котором guard вообще держится: `exists (select 1 from posts p where p.id = reactions.post_id)`. Сам guard написан подзапросом к `posts`, который выполняется правами вызывающего и потому сам фильтруется политикой `posts`: пост не виден — подзапрос пуст — guard читает это как «флага нет», а не как «не могу проверить». Ровно тот класс, что и дыра `blocked_users` из 0.11.0. Скрыть от себя чужой пост можно самому, мьютом, ничьего участия не требуется: поставить лайк, замьютить автора, отправить PATCH со сменой своей же строки на `dislike`. Счётчик считает `reaction_summary()` — `security definer`, мимо RLS, — так что автор дизлайк увидит. Условие видимости добавлено в обе половины политики: в `using`, чтобы строка на невидимом посте вообще не попадала под UPDATE, и в `with check`, чтобы guard'у было на что опереться. `created_at = now()` в UPDATE-ветку сознательно не добавлено — `pin_reaction_identity()` (`20260819150000`) возвращает колонку к старому значению на каждом апдейте, такое условие отвергало бы любую законную смену реакции. DELETE не тронут: снять свою реакцию с поста, ставшего невидимым, — законное действие. `20260822230000`.
+  **A dislike could be given to an author who had opted out of them.** The `dislikes_disabled` ban lives in two `reactions` policies — on setting a reaction and on changing it. `20260821110000` (0.16.4) had already fixed the INSERT branch, restoring the lost guard; its UPDATE twin, however, was left without the condition the guard rests on in the first place: `exists (select 1 from posts p where p.id = reactions.post_id)`. The guard itself is written as a subquery on `posts`, which runs with the caller's rights and is therefore itself filtered by the `posts` policy: post not visible — subquery empty — the guard reads that as "no flag", not as "can't check". Exactly the same class as the `blocked_users` hole from 0.11.0. You can hide someone's post from yourself on your own, with a mute, no one else's participation needed: like the post, mute the author, send a PATCH changing your own row to `dislike`. The counter is computed by `reaction_summary()` — `security definer`, bypassing RLS — so the author will see the dislike. The visibility condition is added to both halves of the policy: to `using`, so a row on an invisible post doesn't fall under the UPDATE at all, and to `with check`, so the guard has something to stand on. `created_at = now()` was deliberately not added to the UPDATE branch — `pin_reaction_identity()` (`20260819150000`) resets the column to its old value on every update, so such a condition would reject any legitimate reaction change. DELETE is untouched: removing your own reaction from a post that has become invisible is a legitimate action. `20260822230000`.
 
-  **У роли залогиненного осталось право очищать таблицы целиком.** `20260818140000` забрала дефолтные гранты Supabase у `anon` и назвала там довод, который был не про аккуратность: **на TRUNCATE row-level security не распространяется в принципе** — политики фильтруют строки, а он не строчная операция, второго рубежа у него нет вовсе. `20260821120000` повторила ту же уборку для `post_media`/`profile_photos`. Обе трогали только `anon`; у `authenticated` — роли, которую носит каждый вошедший, — то же право осталось на всех тринадцати таблицах, и держало его ровно одно обстоятельство: PostgREST не отображает TRUNCATE ни на один HTTP-глагол. Тот самый аргумент, который эти же миграции признали недостаточным. Сняты `TRUNCATE`, `TRIGGER` и `REFERENCES`; `revoke all`, каким закрывали `anon`, здесь не годится — SELECT/INSERT/UPDATE/DELETE роли нужны. `MAINTAIN` оставлен осознанно: он не даёт ни прочитать, ни изменить, ни удалить ни одной строки. Вторая половина правки — `alter default privileges`, иначе следующая созданная таблица получила бы всё обратно, как это и произошло между `20260818140000` и `20260821120000`. `20260822240000`.
+  **The logged-in role still had the right to wipe tables entirely.** `20260818140000` took Supabase's default grants away from `anon` and stated a reason there that wasn't about tidiness: **row-level security does not apply to TRUNCATE at all** — policies filter rows, and it isn't a row operation, it has no second line of defence whatsoever. `20260821120000` repeated the same cleanup for `post_media`/`profile_photos`. Both touched only `anon`; `authenticated` — the role every signed-in user carries — kept the same right on all thirteen tables, held back by exactly one circumstance: PostgREST doesn't map TRUNCATE to any HTTP verb. The very argument those same migrations had judged insufficient. `TRUNCATE`, `TRIGGER` and `REFERENCES` revoked; the `revoke all` used to close `anon` doesn't fit here — the role needs SELECT/INSERT/UPDATE/DELETE. `MAINTAIN` is kept on purpose: it doesn't allow reading, changing or deleting a single row. The second half of the fix is `alter default privileges`, otherwise the next table created would get everything back, as indeed happened between `20260818140000` and `20260821120000`. `20260822240000`.
 
-  **Бакет `media` не заводила ни одна миграция.** `20260709134154` и `20260820130000` настраивают его через `update … where id = 'media'`, то есть исходят из того, что он уже есть — верно для боевого проекта, где его создали руками, и неверно для любого другого. `20260820130000` прямо писала, зачем ограничения вернули в репозиторий («пересборка проекта из миграций воспроизвела бы состояние, в котором видео не загружается»), но довод доведён до половины: починены значения, а объект, к которому они относятся, остался снаружи. На чистом проекте оба `update` не находят ни строки и молча проходят зелёными. Хуже второе: нигде не зафиксирован `public`, а на нём стоят все четыре SELECT-политики — публичный бакет отменяет их разом, и при создании руками это ровно один переключатель не в том положении. Теперь `insert … on conflict do update`: на чистом проекте бакет создаётся сразу, на боевом это no-op по значениям, а `public = false` из начального значения становится инвариантом, который повторный накат восстановит. `20260822260000`.
+  **No migration created the `media` bucket.** `20260709134154` and `20260820130000` configure it via `update … where id = 'media'`, i.e. they assume it already exists — true for the production project, where it was created by hand, and false for any other. `20260820130000` stated outright why the restrictions were brought back into the repository ("rebuilding the project from migrations would reproduce a state in which video doesn't upload"), but the argument was carried only halfway: the values were fixed, while the object they belong to stayed outside. On a clean project both `update`s find no row and silently pass green. The second problem is worse: `public` is pinned nowhere, and all four SELECT policies depend on it — a public bucket cancels them all at once, and when created by hand that's exactly one toggle in the wrong position. Now it's `insert … on conflict do update`: on a clean project the bucket is created right away, on production it's a no-op value-wise, and `public = false` goes from an initial value to an invariant that a re-apply will restore. `20260822260000`.
 
-  **Обновление токена уведомлений теряло свою ошибку.** Подписка на `onTokenRefresh` вызывала `_upsertToken()`, не дожидаясь результата и не перехватывая его: ротация токена (переустановка, сброс данных Play Services) при отсутствии связи превращала таймаут записи в необработанное асинхронное исключение — из колбэка стрима его отдать некому, оно уходит в `FlutterError.onError`. Новый идентификатор при этом не сохранён, повторить попытку некому, и пуши на устройство молчат до следующего запуска приложения. Тот же приём, что уже применён к офлайн-редактору поста в 0.16.6. Заодно та же форма исправлена у фонового сохранения кэша ленты: `unawaited` глушит линтер, а не сбой.
+  **Notification token refresh lost its error.** The `onTokenRefresh` subscription called `_upsertToken()` without awaiting the result or catching it: a token rotation (reinstall, Play Services data reset) with no connection turned the write timeout into an unhandled async exception — there's no one to hand it to from a stream callback, so it goes to `FlutterError.onError`. The new identifier isn't saved in the process, there's no one to retry, and pushes to the device stay silent until the next app launch. The same technique already applied to the offline post editor in 0.16.6. The same shape was also fixed in the background save of the feed cache: `unawaited` silences the linter, not the failure.
 
-  **Видео продолжало играть после перелистывания слайда.** `allowImplicitScrolling` в карусели специально держит соседнюю страницу живой, чтобы фото было уже загружено к моменту свайпа — для картинки это бесплатно, а для играющего видео означало, что его никто не уничтожает и не ставит на паузу: звук шёл поверх следующей фотографии, пока зритель не пролистает на два слайда дальше или не уведёт пост с экрана. Слайд теперь знает, текущий он или нет, и на потере этого признака ставит паузу, а не уничтожает — свайп назад продолжает с того же места. Полноэкранный просмотр получил то же самое и по той же причине.
+  **Video kept playing after swiping past its slide.** `allowImplicitScrolling` in the carousel deliberately keeps the neighbouring page alive so the photo is already loaded by the time of the swipe — free for an image, but for a playing video it meant nobody disposed or paused it: the sound played over the next photo until the viewer swiped two slides further or scrolled the post off screen. A slide now knows whether it's the current one, and on losing that flag it pauses rather than disposes — swiping back resumes from the same spot. The fullscreen viewer got the same, for the same reason.
 
-  **`visible_author_ids()` искала системный аккаунт перебором всей таблицы пользователей.** Функция отвечает на вопрос «чьи записи мне можно показывать» и стоит под SELECT-политиками `posts`, `comments`, `post_media` и под storage-политикой фото постов, то есть зовётся на каждой ленте, каждом экране комментариев и каждой подписи медиа-ссылки. Ветку завела `20260818150000`, когда единственным способом узнать этот id был предикат «пройди по `users` и спроси про каждую строку»; с тех пор появился прямой источник, а `20260822220000` (0.16.6) сделала его единственным — так что перебор остался по инерции и ходил в `users` за константой, лежащей рядом. В миллисекундах разницы сегодня почти нет, важна форма: стоимость росла вместе с числом зарегистрированных, хотя ответ ветки от них не зависит. Ровно ту же форму — вызов на каждую строку растущей таблицы — вычищала `20260726180000`, выиграв на ленте 217 мс -> 3.5 мс; здесь она вернулась этажом ниже, внутри написанной той же миграцией функции. `20260822250000`.
+  **`visible_author_ids()` looked up the system account by scanning the whole users table.** The function answers "whose records may I be shown" and sits under the SELECT policies of `posts`, `comments`, `post_media` and under the storage policy for post photos, i.e. it's called on every feed, every comments screen and every media link signing. The branch was introduced by `20260818150000`, when the only way to learn that id was the predicate "walk `users` and ask about every row"; since then a direct source appeared, and `20260822220000` (0.16.6) made it the only one — so the scan stayed by inertia and went to `users` for a constant sitting right next to it. In milliseconds there's almost no difference today; what matters is the shape: the cost grew with the number of registered users, even though the branch's answer doesn't depend on them. Exactly the same shape — a call per row of a growing table — was cleaned out by `20260726180000`, winning 217 ms -> 3.5 ms on the feed; here it came back one floor lower, inside a function written by that same migration. `20260822250000`.
 
-  **Очистка поля ввода комментария после ухода с экрана.** `_send()` чистил `TextEditingController` до проверки `mounted`, а не после: нажатие «назад» во время отправки уничтожает State вместе с контроллером, и запись в него бросает «A TextEditingController was used after being disposed» (проверено отдельно — именно бросает, а не тихо ничего не делает). **Находка при этом переоценена, и это стоит записать честно:** заявлялось падение в отладке, а на деле бросок ловит собственный `catch` того же метода, который тут же выходит по `!mounted`, так что наружу не попадает ничего. Реально пропускались только перезагрузка списка и снятие идемпотентного токена — на экране, которого уже нет, это ничего не стоит. Правка оставлена (это станет настоящей ошибкой в тот день, когда тот `catch` сузят до случаев, ради которых он написан), но как гигиена, а не как дыра. Регрессионный тест был написан и удалён: прогон со старым кодом показал, что он проходит и там — снаружи два варианта неразличимы, всё поглощает тот же `catch`.
+  **Clearing the comment input after leaving the screen.** `_send()` cleared the `TextEditingController` before the `mounted` check, not after: pressing "back" during sending destroys the State together with the controller, and writing to it throws "A TextEditingController was used after being disposed" (checked separately — it really throws, rather than silently doing nothing). **The finding was overrated, though, and that's worth recording honestly:** a debug crash was claimed, but in fact the throw is caught by the same method's own `catch`, which immediately exits on `!mounted`, so nothing gets out. All that was actually skipped was reloading the list and clearing the idempotency token — on a screen that no longer exists, that costs nothing. The fix is kept (it will become a real bug the day that `catch` is narrowed to the cases it was written for), but as hygiene, not as a hole. A regression test was written and deleted: a run against the old code showed it passes there too — from the outside the two variants are indistinguishable, the same `catch` swallows everything.
 
-  **Ревизия документации.** Отдельным проходом — сверка всех девяти файлов между собой и с кодом, потому что расходились они молча. Нашлось и починено: `README.md` перечислял четыре папки фич из семи, отправлял за моделью данных в бриф (где лежит её первый черновик, а не действующая схема), не упоминал `supabase/functions/` вовсе и называл трек Play «Internal Testing», хотя выкладка идёт в Closed testing (`alpha`); `implementation-plan.md` утверждал, что миграции накатываются через Supabase CLI — прямое противоречие с CLAUDE.md, где Management API, — и что CI/CD сборок «остался ручным процессом», хотя пуш в `main` выкладывает релиз сам; `project-brief.md` открывался словами «что делаем сейчас» про MVP, закрытый много версий назад. Бриф и план реализации получили честные шапки «документ исторический» — они и есть история, ценная как есть, но читать их как справку нельзя.
+  **Documentation review.** A separate pass — cross-checking all nine files against each other and against the code, because they had drifted apart silently. Found and fixed: `README.md` listed four of the seven feature folders, sent readers to the brief for the data model (where its first draft lives, not the current schema), didn't mention `supabase/functions/` at all, and called the Play track "Internal Testing", although releases go to Closed testing (`alpha`); `implementation-plan.md` claimed migrations are applied via the Supabase CLI — a direct contradiction of CLAUDE.md, which says Management API — and that CI/CD for builds "remained a manual process", although a push to `main` ships a release by itself; `project-brief.md` opened with "what we're doing now" about an MVP closed many versions ago. The brief and the implementation plan got honest "historical document" headers — they are history, valuable as is, but they can't be read as reference.
 
-  `docs/future-development.archive.md` оказался файлом-сиротой: 154 строки, ни одной ссылки откуда-либо, шапка не отличима от живого плана, а содержимое — предыдущая редакция `future-development.md`, в которой часть пунктов давно сделана (новостной аккаунт, собственная стена, таймауты, серверный счётчик комментариев). Помечен как архив с перечнем того, что из него уже закрыто, и связан ссылкой с живым файлом. Удалить его — по-прежнему один `git rm` без последствий, но это решение автора, а не уборки.
+  `docs/future-development.archive.md` turned out to be an orphan file: 154 lines, not a single link to it from anywhere, a header indistinguishable from the live plan, and content that is the previous revision of `future-development.md`, in which some items were done long ago (the news account, one's own wall, timeouts, the server-side comment counter). It's marked as an archive with a list of what in it is already closed, and linked from the live file. Deleting it is still a single `git rm` with no consequences, but that's the author's decision, not a cleanup one.
 
-  Заведён `docs/operations.md` — единственное, для чего действительно не было места: расписания pg_cron, инвентарь секретов по трём хранилищам (Vault базы, секреты Edge Function, секреты GitHub), релизный путь и рассылка «обновитесь». Раньше это лежало разорванным между схемой (`data-model.md` держал runbook по `enqueue_app_update_notifications()` и список кронов), комментариями миграций (провижининг секретов) и комментариями workflow. Из `data-model.md` операционка **перенесена**, а не скопирована — там осталась схема. Порядок наката миграций сознательно не продублирован: он живёт в «Конвенциях работы» CLAUDE.md, `operations.md` на него ссылается. Из «Граблей» CLAUDE.md убрана отсылка к CHANGELOG — правило стоит само по себе, а тянуть за собой историю версий этот файл не должен. `app/README.md` избавлен от болванки `flutter create` про «starting point for a Flutter application». Все внутренние ссылки во всех файлах проверены — битых нет.
+  Added `docs/operations.md` — the one thing that genuinely had no home: the pg_cron schedules, the inventory of secrets across three stores (the database Vault, Edge Function secrets, GitHub secrets), the release path and the "please update" broadcast. Previously this was scattered between the schema (`data-model.md` held the runbook for `enqueue_app_update_notifications()` and the cron list), migration comments (secret provisioning) and workflow comments. The operational material was **moved** out of `data-model.md`, not copied — the schema stayed there. The migration apply order is deliberately not duplicated: it lives in "Working conventions" in CLAUDE.md, and `operations.md` links to it. The reference to CHANGELOG was removed from "Pitfalls" in CLAUDE.md — the rule stands on its own, and that file shouldn't drag the version history along with it. `app/README.md` got rid of the `flutter create` boilerplate about a "starting point for a Flutter application". All internal links in all files were checked — none are broken.
 
-  Проверено: `make verify` зелёный, 223 теста (новых нет — см. последнюю находку). Четыре миграции применены на живую БД и записаны в `supabase_migrations.schema_migrations` (87 -> 91). Дыра с реакциями воспроизведена симуляцией `set_config('request.jwt.claims', …)` в откатываемой транзакции ДО правки: после мьюта пост виден в 0 строк, а UPDATE всё равно переключал реакцию в `dislike` и давал автору счётчик 1; после правки тот же сценарий трогает 0 строк и оставляет `like`, при этом законная смена лайк->нейтрально работает, дизлайк обычному автору работает, дизлайк защищённому на видимом посте по-прежнему 42501, а удаление своей реакции с невидимого поста по-прежнему проходит. TRUNCATE воспроизведён так же наглядно: пользователь, которому политики показывали 3 строки `reactions`, снёс все 56; после правки — 42501, таблица цела, а вставка комментария, правка своего имени и мьют/размьют проходят как раньше. Дефолт для будущих таблиц проверен по `pg_default_acl`: `arwdDxtm` -> `arwdm`. Тело `visible_author_ids()` проверено не по «применилось ли», а по `prosrc` на признаки старого текста (см. «Грабли» в CLAUDE.md про `create or replace`), и равенство результата подтверждено прогоном старой и новой формулы для всех 12 живых пользователей — расхождений 0; `Seq Scan on users` из плана исчез, 3.00 -> 2.26 мс. Бакет после наката не изменился ни в одном поле, включая дату создания, — миграция и должна была быть no-op на живой базе. Контрольный срез «сколько контента видит каждый пользователь» снят по всем двенадцати после всех правок: никто ничего не потерял. На устройстве ничего не проверялось — телефон не подключён.
+  Verified: `make verify` green, 223 tests (no new ones — see the last finding). Four migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations` (87 -> 91). The reactions hole was reproduced by simulating `set_config('request.jwt.claims', …)` in a rolled-back transaction BEFORE the fix: after the mute the post was visible in 0 rows, yet the UPDATE still switched the reaction to `dislike` and gave the author a count of 1; after the fix the same scenario touches 0 rows and leaves `like`, while a legitimate like->neutral change works, a dislike to a regular author works, a dislike to a protected author on a visible post is still 42501, and deleting one's own reaction from an invisible post still goes through. TRUNCATE was reproduced just as vividly: a user whom the policies showed 3 rows of `reactions` wiped all 56; after the fix — 42501, the table intact, while inserting a comment, editing one's own name and mute/unmute work as before. The default for future tables was checked via `pg_default_acl`: `arwdDxtm` -> `arwdm`. The body of `visible_author_ids()` was checked not by "did it apply" but by `prosrc` for traces of the old text (see "Pitfalls" in CLAUDE.md about `create or replace`), and result equality was confirmed by running the old and the new formula for all 12 live users — 0 discrepancies; `Seq Scan on users` disappeared from the plan, 3.00 -> 2.26 ms. The bucket didn't change in a single field after the apply, including the creation date — the migration was supposed to be a no-op on the live database. A control snapshot of "how much content each user sees" was taken for all twelve after all the fixes: nobody lost anything. Nothing was checked on a device — the phone wasn't connected.
 
-- Седьмой полный аудит: 8 находок закрыто (0.16.8) — снова ревью всего проекта целиком, а не диффа: 91 миграция, edge-функция, весь Dart, Android- и CI-конфиг, сборочные скрипты и документация. Тесты снова были зелёными (223/223) и снова не поймали ни одной находки. Ниже — по убыванию серьёзности.
+- Seventh full audit: 8 findings closed (0.16.8) — again a review of the whole project, not of a diff: 91 migrations, the edge function, all of the Dart, the Android and CI config, the build scripts and the documentation. The tests were green again (223/223) and again caught none of the findings. Below, in decreasing order of severity.
 
-  **`notification_outbox` росла вечно, и её собственная дедупликация шла без индекса.** Строки не удалял никто — ни один из четырёх кронов. При этом три места спрашивают таблицу одинаково, «был ли у ЭТОГО пользователя уже такой kind», и самое горячее из них — guard дайджеста внутри `enqueue_post_notifications()`, то есть на КАЖДОЙ вставке поста и по разу на каждого знакомого автора. Единственный индекс, `notification_outbox_unsent_idx (created_at) where sent_at is null`, написан под `claim_notification_outbox()` и для этих запросов бесполезен дважды: в ключе нет `user_id`, а частичное условие перестаёт выполняться через минуту после вставки, когда дренаж проставляет `sent_at`. На момент аудита все 62 строки были отправлены, то есть guard читал таблицу целиком. Форма та же, что вычищала `20260822250000`: стоимость узкого вопроса про одного человека растёт вместе со всей историей проекта. Добавлен индекс `(user_id, kind, created_at desc)` и крон `purge-notification-outbox` с ретенцией 90 суток — не меньше, потому что guard дайджеста смотрит назад до `last_active_at` читателя, а дедупликация `app_update` идёт по `payload->>'build'` вообще без временной границы. Миграция `20260823100000`.
+  **`notification_outbox` grew forever, and its own deduplication ran without an index.** Nobody deleted rows — none of the four crons. Meanwhile three places query the table the same way, "has THIS user already had this kind", and the hottest of them is the digest guard inside `enqueue_post_notifications()`, i.e. on EVERY post insert and once per each of the author's connections. The only index, `notification_outbox_unsent_idx (created_at) where sent_at is null`, is written for `claim_notification_outbox()` and is useless for these queries twice over: `user_id` isn't in the key, and the partial condition stops holding a minute after insertion, when the drain sets `sent_at`. At the time of the audit all 62 rows had been sent, i.e. the guard read the whole table. The same shape that `20260822250000` cleaned out: the cost of a narrow question about one person grows with the entire history of the project. Added an index on `(user_id, kind, created_at desc)` and a `purge-notification-outbox` cron with 90-day retention — no less, because the digest guard looks back as far as the reader's `last_active_at`, and `app_update` deduplication goes by `payload->>'build'` with no time bound at all. Migration `20260823100000`.
 
-  **Объекты в бакете, на которые не ссылается ни одна строка, не удалял никто.** Лимиты «20 медиа на пост» и «80 фото» строчные — их считают триггеры по таблицам, а storage-политика на INSERT проверяет ровно один факт, совпадает ли второй сегмент пути с `auth.uid()`. Объект без строки не нарушает ничего. Это не гипотеза, а норма работы: `createPost` заливает файлы ДО вставки строк, так что каждый брошенный черновик оставляет за собой то, что успел залить (до 20 объектов по 100 MiB). Плюс два исторических источника — файлы удалённых пользователей (`delete_own_account()` каскадит только по БД, из бакета удаляет клиент, и это best-effort по построению) и пути дореформенного формата, чьи строки не пережили переезд в `post_media`. Найдено 5 таких объектов из 31. Заведён крон `reap-orphaned-media` с тремя предохранителями: сутки с момента заливки (легальный разрыв — один round trip, самый щедрый клиентский дедлайн 15 минут), строго распознанная форма пути (`posts`/`avatars` + uuid вторым сегментом, так что служебные `.emptyFolderPlaceholder` не трогаются) и не больше 100 объектов за запуск. Удаляет через storage-api, а не `delete from storage.objects`: строка там — индекс метаданных, байты лежат в S3, и удаление строки напрямую оставило бы файл навсегда, уже невидимым. Оттуда же свойство самовосстановления — функция не трогает строки сама, поэтому неудавшийся HTTP-вызов просто повторится следующей ночью. Рядом лежит `orphaned_media_paths()`, чтобы посмотреть список, ничего не удаляя. Миграция `20260823110000`.
+  **Nobody deleted bucket objects that no row references.** The "20 media per post" and "80 photos" limits are row-based — triggers count them over tables, and the INSERT storage policy checks exactly one fact: whether the second path segment matches `auth.uid()`. An object without a row violates nothing. This isn't a hypothesis but normal operation: `createPost` uploads files BEFORE inserting rows, so every abandoned draft leaves behind whatever it managed to upload (up to 20 objects of 100 MiB each). Plus two historical sources — files of deleted users (`delete_own_account()` cascades only through the DB, the client deletes from the bucket, and that's best-effort by construction) and paths in the pre-reform format whose rows didn't survive the move to `post_media`. Found 5 such objects out of 31. Added a `reap-orphaned-media` cron with three safeguards: a day since upload (the legitimate gap is one round trip, the most generous client deadline is 15 minutes), a strictly recognized path shape (`posts`/`avatars` + a uuid as the second segment, so service `.emptyFolderPlaceholder` files aren't touched) and no more than 100 objects per run. It deletes through the storage-api, not `delete from storage.objects`: the row there is a metadata index, the bytes live in S3, and deleting the row directly would leave the file forever, now invisible. The self-healing property comes from the same place — the function doesn't touch rows itself, so a failed HTTP call simply repeats the next night. Next to it sits `orphaned_media_paths()`, to view the list without deleting anything. Migration `20260823110000`.
 
-  **Публикация поста могла оставить пост без фотографий и сказать, что не удалось опубликовать.** `createPost` делал три запроса PostgREST подряд — вставить пост, прочитать `id`, вставить медиа, — то есть три транзакции, а `.timeout()` перестаёт ждать, не отменяя запрос. Достаточно первому закоммититься, а второму не дойти: пост уже живой в ленте у всех знакомых, пуш «новый пост» уже ушёл, композер показал «не удалось опубликовать». `purge_empty_posts()` это не ловит и не может — он удаляет посты, у которых `text is null` И нет медиа, а пост с текстом под условие не подходит и остаётся навсегда именно в том виде, в котором автор его не публиковал. Ту же форму `20260820150000` уже вычищала из пути РЕДАКТИРОВАНИЯ, заведя `set_post_media()`; путь создания она не тронула, хотя последствия там хуже. Заведена `create_post_with_media(client_token, text, items)` — одна транзакция, та же идемпотентность на `(author_id, client_token)`, тот же префиксный чек путей, что и у `set_post_media()`. Заодно «ни текста, ни медиа» наконец проверяется синхронно (`PT422`), а не только кроном час спустя. Гранты на прямой INSERT намеренно НЕ сняты: ими пользуются установленные сборки из Play. Миграция `20260823120000`.
+  **Publishing a post could leave the post without its photos and say it failed to publish.** `createPost` made three PostgREST requests in a row — insert the post, read the `id`, insert the media — i.e. three transactions, and `.timeout()` stops waiting without cancelling the request. It's enough for the first to commit and the second not to arrive: the post is already live in the feed of all the connections, the "new post" push has already gone out, and the composer showed "Failed to publish". `purge_empty_posts()` doesn't catch this and can't — it deletes posts that have `text is null` AND no media, while a post with text doesn't match the condition and stays forever in exactly the form the author never published. `20260820150000` had already cleaned the same shape out of the EDITING path by introducing `set_post_media()`; it didn't touch the creation path, even though the consequences there are worse. Added `create_post_with_media(client_token, text, items)` — one transaction, the same idempotency on `(author_id, client_token)`, the same path prefix check as `set_post_media()`. As a bonus, "neither text nor media" is finally checked synchronously (`PT422`), not just by a cron an hour later. The grants for a direct INSERT were deliberately NOT revoked: builds installed from Play use them. Migration `20260823120000`.
 
-  **Инвайт-код был 40-битным, вечным и без защиты от перебора.** `encode(gen_random_bytes(5), 'hex')` — 10 символов, 2^40 вариантов. Для предъявительского кредентиала, который живёт до активации и открывает ленту, профиль и всю галерею, этого мало: перебор идёт не по одному коду, а сразу по всему пулу невостребованных (при N живых кодах ожидаемая работа 2^40/N), а `activate_invite_link()` не замедляет его ничем — ни задержки, ни счётчика неудач. Стало 16 байт, 32 символа, 128 бит; заодно исчезла возможность коллизии на `invite_links_code_key`, от которой в функциях не было цикла с повтором. Код и раньше был рассчитан на «скопировать и переслать», так что длина ничего не ломает. Существующие коды не переписывались: девять использованных мертвы, а единственный живой отзывается кнопкой «создать новый код» — молча отзывать миграцией код, который владелец мог кому-то отправить, было бы решением за него. Миграция `20260823140000`.
+  **The invite code was 40-bit, eternal and unprotected against brute force.** `encode(gen_random_bytes(5), 'hex')` — 10 characters, 2^40 variants. For a bearer credential that lives until activation and opens the feed, the profile and the whole gallery, that's too little: brute force doesn't go after one code but the whole pool of unclaimed ones at once (with N live codes the expected work is 2^40/N), and `activate_invite_link()` doesn't slow it down in any way — no delay, no failure counter. Now 16 bytes, 32 characters, 128 bits; along the way the possibility of a collision on `invite_links_code_key` disappeared, which the functions had no retry loop for. The code was already meant to be "copied and forwarded", so the length breaks nothing. Existing codes weren't rewritten: the nine used ones are dead, and the only live one is revoked with the "Create new code" button — silently revoking via a migration a code the owner might have sent to someone would be making the decision for them. Migration `20260823140000`.
 
-  **Композер принимал форматы картинок, которые бакет не примет никогда.** У видео был явный список расширений, совпадающий с `allowed_mime_types`; у картинок — не было. Storage берёт content-type из расширения в ИМЕНИ объекта, а не из содержимого, поэтому `.gif` (или `.bmp`, `.tiff`) отвергается на заливке и будет отвергаться на каждом ретрае, а пользователь видит общее «не удалось опубликовать» — ровно тот тупик, который `_maxVideoBytes` закрывал для слишком больших клипов. Оба списка вынесены в `shared/media_extensions.dart` (одна декларация на композер и на галерею профиля), оба пикера теперь отсеивают неподходящее сами и с внятным сообщением. Показательно, что один из найденных в бакете сирот — `1784056582678764.png`, внутри JPEG.
+  **The composer accepted image formats the bucket will never accept.** Video had an explicit extension list matching `allowed_mime_types`; images didn't. Storage takes the content-type from the extension in the object's NAME, not from its contents, so `.gif` (or `.bmp`, `.tiff`) is rejected on upload and will be rejected on every retry, while the user sees a generic "Failed to publish" — exactly the dead end `_maxVideoBytes` closed for clips that are too large. Both lists were moved to `shared/media_extensions.dart` (one declaration for the composer and the profile gallery), both pickers now filter out unsuitable files themselves, with a clear message. Tellingly, one of the orphans found in the bucket is `1784056582678764.png` with a JPEG inside.
 
-  **Аватарку и галерею системного аккаунта не видел никто.** Исключение «системный аккаунт видно всем» заводили в четыре приёма — SELECT-политика `users`, `is_author_visible()`, `visible_author_ids()`, storage-политика фотографий постов, — и ни до storage-политики аватарок, ни до SELECT-политики `profile_photos` оно не дошло. Системный аккаунт ничей не Connection, так что обе отвечали «нельзя» вообще всем. Наружу это выходит пасхалкой переключателя темы: она открывает профиль Amicus, а тот рисует аватарку и по тапу галерею. Сработало бы молча — серой иконкой человечка, без единой ошибки где-либо, — ровно в тот момент, когда аккаунту поставят аватар (на момент аудита у него `avatar_path is null`, поэтому дыра была латентной). Обе политики теперь спрашивают ту же `is_system_account()`. Миграция `20260823130000`.
+  **Nobody could see the system account's avatar and gallery.** The "the system account is visible to everyone" exception was introduced in four steps — the `users` SELECT policy, `is_author_visible()`, `visible_author_ids()`, the post photos storage policy — and it never reached either the avatars storage policy or the `profile_photos` SELECT policy. The system account is nobody's Connection, so both answered "no" to absolutely everyone. This surfaces through the theme toggle easter egg: it opens the Amicus profile, which draws the avatar and, on tap, the gallery. It would have fired silently — as a grey person icon, without a single error anywhere — at exactly the moment the account was given an avatar (at the time of the audit it had `avatar_path is null`, so the hole was latent). Both policies now ask the same `is_system_account()`. Migration `20260823130000`.
 
-  **Правки на пути редактирования и один незащищённый `setState`.** В `updatePost` запись текста стояла ПОСЛЕ `set_post_media()`, внутри `rows()`: таймаут на тексте выбрасывал исключение уже после того, как медиа переписались, поэтому `objects()` не выполнялся и удалённый файл оставался в бакете — а ретрай его уже не подчищал, потому что `set_post_media()` видел строки правильными и возвращал пустой список. Текст переставлен вперёд, так что единственный оператор, который наполняет `orphanedPaths`, теперь последний в `rows()`, и за успешной перезаписью медиа всегда следует своя уборка. Плюс `_pickMedia` в композере вызывал `setState` сразу после `await` системного пикера без проверки `mounted` — единственное такое место на экране, где все остальные `await` уже обёрнуты и снабжены комментариями именно про это; то же самое в `_addPhotos` на экране профиля.
+  **Fixes on the editing path and one unguarded `setState`.** In `updatePost` the text write came AFTER `set_post_media()`, inside `rows()`: a timeout on the text threw an exception after the media had already been rewritten, so `objects()` didn't run and the removed file stayed in the bucket — and a retry no longer cleaned it up, because `set_post_media()` saw the rows as correct and returned an empty list. The text was moved first, so the only statement that fills `orphanedPaths` is now the last one in `rows()`, and a successful media rewrite is always followed by its own cleanup. Plus `_pickMedia` in the composer called `setState` right after `await`ing the system picker without a `mounted` check — the only such place on a screen where all the other `await`s are already wrapped and commented about exactly this; the same in `_addPhotos` on the profile screen.
 
-  Проверено: `make verify` зелёный, 228 тестов (5 новых — на инварианты списков расширений, включая тот, на который опирается фолбэк `fileExtension` в `jpg`). Пять миграций применены на живую БД и записаны в `supabase_migrations.schema_migrations` (91 -> 96). Все правки RLS проверены симуляцией под `authenticated` с откатом: `create_post_with_media` — шесть сценариев (создание, ретрай тем же токеном без дублей, чужой префикс, пустой пост, 21 элемент, текст без медиа), видимость системного аккаунта — пять контрольных чисел, включая отсутствие регрессии на несвязанном пользователе. Уборка бакета выполнена вживую: 31 объект -> 26, 5 сирот удалены через storage-api после того, как были скачаны на диск, ни одна строка `post_media` не осталась висеть на удалённом файле. Отдельный урок без правки файлов: одна промежуточная проверка видимости показала «регрессию», которой не было — в контрольную выборку попал пользователь, оказавшийся Connection'ом, и запрос по объектам бакета шёл без фильтра по префиксу. Ошибка была в ожиданиях, а не в симуляции; проверено отдельным тестом, что RLS внутри `do $$ … $$` применяется так же, как верхнеуровневыми операторами.
+  Verified: `make verify` green, 228 tests (5 new — on the invariants of the extension lists, including the one the `fileExtension` fallback to `jpg` relies on). Five migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations` (91 -> 96). All RLS fixes were checked by simulation as `authenticated` with a rollback: `create_post_with_media` — six scenarios (creation, a retry with the same token without duplicates, a foreign prefix, an empty post, 21 items, text without media), system account visibility — five control numbers, including no regression for an unrelated user. The bucket cleanup was done live: 31 objects -> 26, 5 orphans deleted via the storage-api after being downloaded to disk, not a single `post_media` row left pointing at a deleted file. A separate lesson with no file changes: one intermediate visibility check showed a "regression" that wasn't there — the control sample included a user who turned out to be a Connection, and the query over bucket objects ran without a prefix filter. The error was in the expectations, not the simulation; a separate test confirmed that RLS inside `do $$ … $$` applies the same way as for top-level statements.
 
-- Восьмой полный аудит: 5 находок закрыто (0.16.8) — ревью проекта целиком, а не диффа: 96 миграций, edge-функция, весь Dart, Android- и CI-конфиг, сборочные скрипты и документация. Тесты были зелёными (228/228) и не поймали ни одной находки. Миграций не потребовалось ни одной: схема везде была права, ошибался клиент — поэтому отклоняли всё перечисленное именно те ограничения, которые в схеме уже стояли. По убыванию серьёзности.
+- Eighth full audit: 5 findings closed (0.16.8) — a review of the whole project, not of a diff: 96 migrations, the edge function, all of the Dart, the Android and CI config, the build scripts and the documentation. The tests were green (228/228) and caught none of the findings. Not a single migration was needed: the schema was right everywhere, the client was wrong — which is why everything listed was rejected by exactly the constraints already in the schema. In decreasing order of severity.
 
-  **Добавление фото профиля могло запереть себя навсегда.** `_addPhotos` инвалидировал провайдеры галереи только на успехе, а `.timeout()` перестаёт ждать, не отменяя запрос, — поэтому upsert, закоммитившийся уже после «не удалось добавить фото», оставлял `photosAsync.value` тем, чем он был ДО попытки. `addPhotos()` считал от этого списка `position`, так что следующее добавление целилось в занятые позиции и упиралось в `profile_photos_user_position_key`: арбитр upsert'а — `(user_id, storage_path)`, а пути у новых файлов свои, поэтому конфликт по позиции не гасился, а падал. Выхода с экрана при этом не было: «Переставить» отключается ниже двух фотографий, «Удалить» — на пустом списке, обе кнопки читают тот же устаревший список, а `ProfileScreen` живёт веткой `StatefulShellRoute`, то есть его autoDispose-провайдеры не умирают никогда. Лечилось только перезапуском приложения. Инвалидация переехала в `finally`.
+  **Adding a profile photo could lock itself up for good.** `_addPhotos` invalidated the gallery providers only on success, and `.timeout()` stops waiting without cancelling the request — so an upsert that committed after "Failed to add photos" left `photosAsync.value` as it was BEFORE the attempt. `addPhotos()` computed `position` from that list, so the next add targeted occupied positions and ran into `profile_photos_user_position_key`: the upsert's arbiter is `(user_id, storage_path)`, and the new files have their own paths, so the position conflict wasn't absorbed but failed. And there was no way out from the screen: "Reorder" is disabled below two photos, "Delete" on an empty list, both buttons read the same stale list, and `ProfileScreen` lives as a `StatefulShellRoute` branch, so its autoDispose providers never die. Only an app restart cured it. The invalidation moved into `finally`.
 
-  **Композер не проверял расширение видео.** Картинки получили свой allow-list в седьмом аудите, видео — нет, хотя `videoExtensions` существовал: он участвовал только в `_looksLikeVideo()` как классификатор на случай, когда пикер не сообщил mime. Storage берёт content-type из ИМЕНИ объекта, поэтому `.avi` отвергается на заливке и на каждом ретрае, приходит это как общее «не удалось опубликовать» и приходит ПОСЛЕ того, как клип целиком прочитали в память и отправили по сети. Клип без расширения в имени хуже: `fileExtension()` отдаёт свой дефолтный `jpg`, бакет принимает объект как `image/jpeg`, и в ленте остаётся слайд с `media_type = 'video'`, постером и кнопкой play, которая не проигрывает ничего. `data-model.md` при этом утверждал, что гейт на видео стоял с самого начала, а `media_extensions_test.dart` проверяет исключение `avi` в предположении, что его кто-то применяет; документация поправлена вместе с кодом.
+  **The composer didn't check the video extension.** Images got their allow-list in the seventh audit, video didn't, even though `videoExtensions` existed: it only took part in `_looksLikeVideo()` as a classifier for when the picker didn't report a mime type. Storage takes the content-type from the object's NAME, so `.avi` is rejected on upload and on every retry, it surfaces as a generic "Failed to publish", and it surfaces AFTER the whole clip has been read into memory and sent over the network. A clip with no extension in its name is worse: `fileExtension()` returns its default `jpg`, the bucket accepts the object as `image/jpeg`, and the feed is left with a slide with `media_type = 'video'`, a poster and a play button that plays nothing. Meanwhile `data-model.md` claimed the video gate had been in place from the very start, and `media_extensions_test.dart` checks the exclusion of `avi` on the assumption that someone applies it; the documentation was fixed together with the code.
 
-  **Удалённый пост оставался на экране во всех остальных списках.** Лента и профиль — два живых `PostListView` в `IndexedStack` шелла, плюс `FriendProfileScreen` сверху, а `_deletePost` убирал строку только из своего `_posts` и, в отличие от `_editPost`, не дёргал `feedRefreshTickProvider`. Карточка-призрак оставалась кликабельной: реакцию по ней RLS отбивает, а `_react` молча откатывает оптимистичный счётчик; комментарии открываются пустыми; повторное «Удалить» задевает ноль строк и считается успехом. Удаление было единственной мутацией ленты, не проходившей через тик.
+  **A deleted post stayed on screen in all the other lists.** The feed and the profile are two live `PostListView`s in the shell's `IndexedStack`, plus `FriendProfileScreen` on top, and `_deletePost` removed the row only from its own `_posts` and, unlike `_editPost`, didn't poke `feedRefreshTickProvider`. The ghost card stayed tappable: RLS rejects a reaction on it, and `_react` silently rolls back the optimistic counter; comments open empty; a second "Delete" affects zero rows and counts as success. Deletion was the only feed mutation that didn't go through the tick.
 
-  **Выход из экрана удаления фотографий оставлял родителю устаревший список.** Оба редактора галереи возвращают `true` только когда мутация дошла до конца, а `deletePhotos` идёт через `deleteRowsThenObjects` — сначала строки, — так что таймаут может оставить строки уже удалёнными, пока экран показывает ошибку и остаётся открытым. Возврат тогда приходит с `null`, `ProfileScreen` держит строки, которых больше нет, и перестановка запирается насовсем: `reorder_profile_photos()` требует ВЕСЬ набор, удалённые id отваливаются на join'е внутри, и функция отвечает `PT422` при каждой попытке. Оба места теперь перечитывают галерею безусловно, через один хелпер.
+  **Leaving the photo delete screen left the parent with a stale list.** Both gallery editors return `true` only when the mutation went all the way through, and `deletePhotos` goes through `deleteRowsThenObjects` — rows first — so a timeout can leave the rows already deleted while the screen shows an error and stays open. The return then comes back with `null`, `ProfileScreen` holds rows that no longer exist, and reordering locks up for good: `reorder_profile_photos()` requires the WHOLE set, the deleted ids drop out on the join inside, and the function answers `PT422` on every attempt. Both places now re-read the gallery unconditionally, through a single helper.
 
-  **Счётчик комментариев на карточке не менялся вообще никогда.** `CommentsScreen` открывался без `.then`, ничего не возвращал и тика не дёргал, так что человек писал комментарий, возвращался — и видел прежнее число; удаление своего комментария оставляло число завышенным. До первого pull-to-refresh. Теперь экран сообщает счётчик колбэком: закрывают его системной кнопкой «назад», у которой результата нет, а перехватывать этот жест через `PopScope` ради счётчика — вмешательство в то, что в этом проекте проверить нечем (см. «Грабли» в CLAUDE.md). Тик был бы неверен по цене: он перезагружает первую страницу КАЖДОГО открытого списка ради одного числа на одной карточке.
+  **The comment counter on the card never changed at all.** `CommentsScreen` was opened without `.then`, returned nothing and didn't poke the tick, so a person wrote a comment, came back — and saw the old number; deleting one's own comment left the number inflated. Until the first pull-to-refresh. Now the screen reports the counter via a callback: it's closed with the system "back" button, which has no result, and intercepting that gesture via `PopScope` for the sake of a counter means meddling with something this project has no way to verify (see "Pitfalls" in CLAUDE.md). The tick would be wrong on cost: it reloads the first page of EVERY open list for the sake of one number on one card.
 
-  Отдельно, и намеренно оставлено как есть: `reap-orphaned-media` зовёт `net.http_delete` с аргументом `body`, который есть только у свежего `pg_net`, а тела plpgsql при накате не проверяются — то есть несовпадение версий накатилось бы зелёным и потом молча падало бы каждую ночь. Стоит одного ручного `select public.reap_orphaned_media();`, чтобы закрыть вопрос.
+  Separately, and deliberately left as is: `reap-orphaned-media` calls `net.http_delete` with a `body` argument that only a recent `pg_net` has, and plpgsql bodies aren't checked at apply time — so a version mismatch would apply green and then silently fail every night. One manual `select public.reap_orphaned_media();` is enough to settle the question.
 
-  Проверено: 231 тест, 3 новых — удаление дёргает тик, число на карточке следует за тем, что загрузила ветка (заглушки исключены, ровно как их исключает `comment_summary()`), и экран удаления перечитывает галерею на обычном «назад». Две правки на стороне пикера не покрыты: обе сидят за `ImagePicker`, подделать который этому набору тестов нечем, а выдумывать абстракцию только ради теста выглядело хуже, чем сказать об этом здесь.
+  Verified: 231 tests, 3 new — deletion pokes the tick, the number on the card follows what the branch loaded (stubs excluded, exactly as `comment_summary()` excludes them), and the delete screen re-reads the gallery on a plain "back". Two picker-side fixes aren't covered: both sit behind `ImagePicker`, which this test suite has no way to fake, and inventing an abstraction just for the test seemed worse than saying so here.
 
-- Девятый полный аудит: 6 находок закрыто, одна отозвана (0.16.8) — снова ревью проекта целиком, а не диффа: 100 миграций, edge-функция, весь Dart, Android- и CI-конфиг, сборочные скрипты и документация. Тесты снова были зелёными (231/231) и снова не поймали ни одной находки. Версия не поднималась: работа доехала в ту же 0.16.8, что и седьмой с восьмым аудитом, — сборка 42 в Play ещё не выкладывалась.
+- Ninth full audit: 6 findings closed, one withdrawn (0.16.8) — again a review of the whole project, not a diff: 100 migrations, the edge function, all of the Dart, the Android and CI config, build scripts and documentation. Tests were green again (231/231) and again caught none of the findings. The version was not bumped: the work landed in the same 0.16.8 as the seventh and eighth audits — build 42 had not yet been rolled out to Play.
 
-  **Отозвана: `users.avatar_path` без привязки к собственному префиксу.** Находка была сформулирована по грантам из `20260820140000` и оказалась неверной: `20260822210000` уже сняла `update (avatar_path)` и сделала `sync_avatar_path_from_profile_photos()` `security definer`. Живая база это подтверждает — у `authenticated` на `users` остался UPDATE только на `name`. Ошибка в методе, а не в схеме: находка проверялась по файлу миграции, которая грант ВЫДАЛА, без проверки, не отменила ли его более поздняя. Политика успела быть изменена на живой базе и была возвращена к исходному виду `ALTER POLICY`; расхождения репозитория и БД после отката нет (101/101 по `schema_migrations`).
+  **Withdrawn: `users.avatar_path` not bound to the user's own prefix.** The finding was based on the grants from `20260820140000` and turned out to be wrong: `20260822210000` had already removed `update (avatar_path)` and made `sync_avatar_path_from_profile_photos()` `security definer`. The live database confirms it — on `users`, `authenticated` has UPDATE only on `name`. The mistake was in the method, not the schema: the finding was checked against the migration file that GRANTED the privilege, without checking whether a later one had revoked it. The policy had already been changed on the live database and was restored to its original form with `ALTER POLICY`; after the rollback there is no drift between the repository and the DB (101/101 in `schema_migrations`).
 
-  **Правка черновика после неудачной публикации публиковала второй пост.** `.timeout()` перестаёт ждать, не отменяя запрос, поэтому `create_post_with_media()` регулярно коммитится ПОСЛЕ того, как композер показал «не удалось опубликовать»: пост уже живой в ленте, пуш уже ушёл. Композер остаётся открытым с черновиком, человек правит опечатку и жмёт «Опубликовать» ещё раз — а токен идемпотентности был привязан к СОДЕРЖИМОМУ (`_pendingFingerprint`), потому что повтор того же токена сервер отвечал `do nothing` и правка иначе потерялась бы молча. Значит, правка уезжала под новым токеном, уникальный индекс `(author_id, client_token)` ни с чем не совпадал, и вставлялся второй пост со вторым пушем на каждого знакомого. Правило перенесено туда, где видно обе попытки: ветка конфликта теперь приводит пост к присланному состоянию — доводит текст и переписывает набор медиа целиком (не «доливает недостающие»: `on conflict do nothing` сохранял бы старую `position`, так что перестановка слайдов молча не применялась бы). Композер после этого чеканит токен один раз за сессию и про отпечатки не знает; в режиме правки тот же токен заодно перестал двигать префикс загрузки у легаси-постов между попытками. Build 41 эту функцию не зовёт вовсе (публикует старой тройкой запросов), так что установленным сборкам правка не видна. Миграция `20260824100000`.
+  **Editing a draft after a failed publish published a second post.** `.timeout()` stops waiting without cancelling the request, so `create_post_with_media()` regularly commits AFTER the composer has shown "failed to publish": the post is already live in the feed, the push has already gone out. The composer stays open with the draft, the person fixes a typo and taps "Publish" again — but the idempotency token was tied to the CONTENT (`_pendingFingerprint`), because the server answered a repeat of the same token with `do nothing`, and otherwise the edit would have been lost silently. So the edit went out under a new token, the unique index `(author_id, client_token)` matched nothing, and a second post was inserted, with a second push to every connection. The rule was moved to where both attempts are visible: the conflict branch now brings the post to the submitted state — it updates the text and rewrites the media set entirely (not "fills in what's missing": `on conflict do nothing` would keep the old `position`, so reordering slides would silently not apply). The composer now mints the token once per session and knows nothing about fingerprints; in edit mode the same token also stopped shifting the upload prefix of legacy posts between attempts. Build 41 does not call this function at all (it publishes with the old trio of requests), so installed builds don't see the change. Migration `20260824100000`.
 
-  **У `comments.text` не было нижней границы.** Сверху 5000 с `20260716120000`, снизу — ничего; единственная проверка на пустоту жила в `_send()`. `POST /rest/v1/comments` с `{"text":"   "}` проходил и политику, и CHECK, после чего строка рисовалась пустой у всех, кому виден пост, считалась в `comment_summary()` (он отбрасывает только тромбстоуны) и уносила с собой пуш автору поста. `20260822200000` закрывала ровно этот класс для `posts.text` и `users.name` и до комментариев не дошла. Условие — с дизъюнкцией по `deleted_at`, а не просто `btrim(text) <> ''`: заглушку `delete_own_comment()` делает пустой строкой, и там это не мусор, а само значение. Миграция `20260824110000`.
+  **`comments.text` had no lower bound.** The upper bound of 5000 has been there since `20260716120000`; the lower bound — nothing; the only emptiness check lived in `_send()`. `POST /rest/v1/comments` with `{"text":"   "}` passed both the policy and the CHECK, after which the row was rendered empty for everyone who could see the post, was counted in `comment_summary()` (it discards only tombstones) and took a push to the post's author along with it. `20260822200000` closed exactly this class for `posts.text` and `users.name` and never got to comments. The condition has a disjunction on `deleted_at`, not just `btrim(text) <> ''`: `delete_own_comment()` turns the placeholder into an empty string, and there it isn't junk but the value itself. Migration `20260824110000`.
 
-  **Правка поста не держала инвариант «текст или медиа» и по-прежнему была двумя транзакциями.** `create_post_with_media()` проверяет его с `20260823120000`, а путь редактирования — `PATCH posts {text}` плюс `rpc set_post_media` — не проверял ничем, кроме `if (text.isEmpty && _slots.isEmpty)` в композере. Всё, что ходит по тем же двум эндпоинтам мимо экрана, оставляло пустую карточку в ленте у каждого знакомого до следующего часового тика `purge-empty-posts`, который её не отклоняет, а удаляет пост автора у него из-под рук. Вкрутить проверку в саму `set_post_media()` нельзя: она видит только медиа, а текст к моменту вызова либо уже новый, либо ещё старый — смотря в каком порядке клиент шлёт две команды, и порядок «сначала текст» появился только в build 42, тогда как в поле стоит 41 (`min(app_build)`), который шлёт медиа первыми. Для него такая проверка сломала бы законную правку «убрать все фотографии и вместо них написать текст». Поэтому не проверка внутри старой функции, а новая точка входа `update_post_with_media(post_id, text, items)`, у которой обе половины на руках сразу; внутри она зовёт ту же `set_post_media()`, чтобы правило «какие пути осиротели» и префиксный чек остались в одном месте. Попутно закрылось то, что комментарий на `updatePost` уже называл своим именем: «What is still not atomic is the pair itself». `set_post_media()` остаётся выданной — по ней ходит build 41. Миграция `20260824120000`.
+  **Editing a post didn't hold the "text or media" invariant and was still two transactions.** `create_post_with_media()` has checked it since `20260823120000`, while the edit path — `PATCH posts {text}` plus `rpc set_post_media` — checked it with nothing but `if (text.isEmpty && _slots.isEmpty)` in the composer. Anything hitting the same two endpoints while bypassing the screen left an empty card in the feed of every connection until the next hourly tick of `purge-empty-posts`, which doesn't reject it but deletes the author's post out from under them. The check can't be bolted into `set_post_media()` itself: it sees only media, and by the time it's called the text is either already new or still old — depending on the order in which the client sends the two commands, and the "text first" order only appeared in build 42, whereas what's in the field is 41 (`min(app_build)`), which sends media first. For it, such a check would break the legitimate edit "remove all the photos and write text instead". So not a check inside the old function but a new entry point, `update_post_with_media(post_id, text, items)`, which has both halves in hand at once; internally it calls the same `set_post_media()`, so that the "which paths are orphaned" rule and the prefix check stay in one place. Along the way this closed what the comment on `updatePost` already called by name: "What is still not atomic is the pair itself". `set_post_media()` remains granted — build 41 uses it. Migration `20260824120000`.
 
-  **Добавление фото профиля считало `position` на клиенте.** Позиция бралась из закэшированного значения `_profilePhotosProvider`, а оно отстаёт ровно в тех случаях, ради которых заведена вся остальная терпимость к ретраям: предыдущий батч мог закоммититься уже после «не удалось добавить фото», плюс второе устройство. Отставший список целился в занятые позиции и упирался в `profile_photos_user_position_key`, а погасить это `upsert` не может — его арбитр `(user_id, storage_path)`, у новых файлов пути свои, так что конфликт по позиции не разрешается, а роняет весь батч. Восьмой аудит уже лечил последствия (инвалидация провайдеров и на ошибке тоже), но саму причину не трогал. Ту же форму `20260820150000` вычистила из ПЕРЕСТАНОВКИ, заведя `reorder_profile_photos()`; до добавления она не дошла. Теперь позицию раздаёт сервер — `append_profile_photos(items)`, из той же транзакции, в которую строки и лягут. Повторно присланные элементы отсеиваются ДО нумерации, а не гасятся `on conflict` после неё, иначе ретрай оставлял бы дыры в нумерации. Прямой INSERT остаётся выданным. Миграция `20260824130000`.
+  **Adding profile photos computed `position` on the client.** The position was taken from the cached value of `_profilePhotosProvider`, and that value lags in exactly the cases that all the rest of the retry tolerance exists for: the previous batch could have committed after "failed to add photos", plus a second device. A stale list targeted occupied positions and ran into `profile_photos_user_position_key`, and `upsert` can't absorb that — its arbiter is `(user_id, storage_path)`, new files have their own paths, so a position conflict isn't resolved but brings down the whole batch. The eighth audit already treated the consequences (invalidating the providers on error too) but didn't touch the cause itself. `20260820150000` purged the same shape from REORDERING by introducing `reorder_profile_photos()`; it never got to adding. Now the server assigns positions — `append_profile_photos(items)`, in the same transaction the rows go into. Resubmitted items are filtered out BEFORE numbering, rather than absorbed by `on conflict` after it, otherwise a retry would leave gaps in the numbering. Direct INSERT remains granted. Migration `20260824130000`.
 
-  **Неудачный лукап системных аккаунтов не запоминался, и лента платила за него на каждой странице.** `SystemAccounts.ids()` кэшировала только успех; фолбэк возвращался без записи в кэш. `fetchPage` ждёт этот ответ ПЕРЕД тем, как вообще отправить запрос постов, поэтому без сети лента платила полный `networkTimeout` здесь и ещё один на самом запросе — около 24 секунд до «не удалось загрузить» и кэшированной страницы, и те же 24 секунды заново на каждом pull-to-refresh и на каждой странице пагинации. Теперь запоминается и неудача — на минуту, а не на всю сессию: фолбэк компилируется в приложение, и сессия, начавшаяся без сети, не должна пользоваться им после ротации аккаунта. Заодно общий in-flight future, чтобы две одновременные страницы не открывали два round trip'а за одной и той же константой.
+  **A failed system-account lookup wasn't remembered, and the feed paid for it on every page.** `SystemAccounts.ids()` cached only success; the fallback was returned without being written to the cache. `fetchPage` waits for this answer BEFORE it even sends the posts request, so offline the feed paid a full `networkTimeout` here and another one on the request itself — about 24 seconds until "failed to load feed" and the cached page, and the same 24 seconds again on every pull-to-refresh and every pagination page. Now failure is remembered too — for a minute, not for the whole session: the fallback is compiled into the app, and a session that started offline shouldn't keep using it after the account is rotated. Also a shared in-flight future, so that two concurrent pages don't open two round trips for the same constant.
 
-  **Флаг занятости у обоих пикеров выставлялся ПОСЛЕ пикера.** Пока системный пикер поднимает свою activity, кнопка «Добавить» оставалась включённой — её `onPressed` смотрит на `_isPicking`/`_isAddingPhotos` и на длину списка, и то и другое доpick-овое. Второй тап открывал второй пикер, оба батча резались через `take(remaining)` по одному и тому же `remaining`, посчитанному до первого выбора, и вместе могли перевалить за лимит: публикация после этого падала на серверном `post_media_limit_exceeded`, а композер умел показать только общее «не удалось опубликовать». Флаг переехал вперёд, и вместе с ним появилась обработка броска из самого пикера — раньше он был безвредным (флаг ещё не выставлен), а теперь запирал бы кнопку до конца сессии; попутно это перестало быть необработанной асинхронной ошибкой, потому что оба метода зовут как `VoidCallback`.
+  **Both pickers set their busy flag AFTER the picker.** While the system picker brings up its activity, the "Add" button stayed enabled — its `onPressed` looks at `_isPicking`/`_isAddingPhotos` and at the list length, and both are pre-pick. A second tap opened a second picker, both batches were trimmed via `take(remaining)` with the same `remaining`, computed before the first selection, and together could exceed the limit: publishing then failed on the server's `post_media_limit_exceeded`, and the composer could only show the generic "failed to publish". The flag moved earlier, and with it came handling of a throw from the picker itself — previously that was harmless (the flag wasn't set yet), but now it would lock the button for the rest of the session; along the way this stopped being an unhandled async error, because both methods are called as a `VoidCallback`.
 
-  **Права на запись, под которыми нет ни одной политики.** Сверка «какие команды разрешены грантом» против «для каких команд есть политика» дала пять таблиц: `comments` UPDATE, `post_media` UPDATE, `profile_photos` UPDATE, `connections` INSERT+UPDATE, `invite_links` INSERT+UPDATE. Везде это дефолтный табличный грант Supabase, переживший то, что его отменяло, а отсутствие UPDATE-политики у первых трёх — объявленное решение (`docs/data-model.md`). Сегодня недостижимо: RLS включена, `authenticated` не владелец, команда без политики отклоняется всегда — поэтому и снятие ничего сломать не может, включая установленные сборки. Снято именно потому, что недостижимо сейчас: день, когда на такую таблицу заведут UPDATE-политику ради одной колонки, грант молча раскроет остальные — `comments.author_id`/`text` (подмена авторства и текста задним числом), `post_media.storage_path` (обход префиксного чека, который живёт только в INSERT-политике), `connections.user_a_id`, `invite_links.is_used`. Тот же приём, что у `20260822210000` и `20260822240000`. Таблицы с политикой `for all` (`muted_users`, `blocked_users`, `favorite_users`, `device_tokens`, `notification_preferences`) и `reactions` со своей UPDATE-политикой не тронуты — там UPDATE достижим и нужен под клиентские `upsert`. В миграцию вшита контрольная проверка: после наката пар «грант без политики» остаться не должно. Миграция `20260824140000`.
+  **Write privileges with no policy under them.** Cross-checking "which commands a grant allows" against "which commands have a policy" turned up five tables: `comments` UPDATE, `post_media` UPDATE, `profile_photos` UPDATE, `connections` INSERT+UPDATE, `invite_links` INSERT+UPDATE. In every case it's Supabase's default table grant that outlived whatever revoked it, and the absence of an UPDATE policy on the first three is a stated decision (`docs/data-model.md`). Today it's unreachable: RLS is enabled, `authenticated` isn't the owner, a command without a policy is always rejected — which is also why revoking can't break anything, installed builds included. Revoked precisely because it's unreachable now: the day someone adds an UPDATE policy on such a table for the sake of a single column, the grant will silently expose the rest — `comments.author_id`/`text` (retroactively spoofing authorship and text), `post_media.storage_path` (bypassing the prefix check, which lives only in the INSERT policy), `connections.user_a_id`, `invite_links.is_used`. Same technique as `20260822210000` and `20260822240000`. Tables with a `for all` policy (`muted_users`, `blocked_users`, `favorite_users`, `device_tokens`, `notification_preferences`) and `reactions` with its own UPDATE policy were left alone — there UPDATE is reachable and needed for client `upsert`s. The migration has a built-in control check: after it's applied, no "grant without policy" pairs may remain. Migration `20260824140000`.
 
-  Проверено: `make verify` зелёный, 231 тест. Пять миграций применены на живую БД и записаны в `supabase_migrations.schema_migrations` (96 -> 101), расхождений между репозиторием и БД нет. Все правки проверены симуляцией под `authenticated` в откатываемой транзакции, и сначала воспроизводилась дыра: пустой комментарий принимался до наката и отвечает `23514` после, при живом тромбстоуне и работающем `delete_own_comment()` на ветке с ответами; ретрай с правкой даёт один пост с новым текстом, новым набором медиа и правильными позициями, ретрай без правки — no-op; `update_post_with_media()` проверен шестью сценариями (обычная правка с возвратом осиротевших путей включая постер видео, опустошение поста `PT422`, пробелы вместо текста `PT422`, только медиа без текста — законно, чужой пост `PT404`, чужой префикс `PT422`); ретрай добавления фото даёт плотную нумерацию без дублей и работающий триггер синка аватарки. После снятия грантов прогнан смоук по всем живым путям записи — комментарий, удаление комментария через RPC, создание и ротация инвайта, добавление и удаление фото профиля, публикация и правка поста, upsert настроек, upsert device_tokens, мьют — все проходят, а четыре ставших невозможными UPDATE отвечают `42501` уже на уровне привилегии, а не RLS. Тело `create_post_with_media()` перед правкой сверено с `prosrc` живой базы (см. «Грабли» в CLAUDE.md про `create or replace`), после правки проверено на признаки старого текста. На устройстве ничего не проверялось — телефон не подключён.
+  Verified: `make verify` green, 231 tests. Five migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations` (96 -> 101), no drift between the repository and the DB. All changes were verified by simulation as `authenticated` in a rolled-back transaction, reproducing the hole first: an empty comment was accepted before the migration and returns `23514` after it, with tombstones intact and `delete_own_comment()` working on a thread with replies; a retry with an edit yields one post with the new text, the new media set and correct positions, a retry without an edit is a no-op; `update_post_with_media()` was checked with six scenarios (a regular edit returning orphaned paths including a video poster, emptying the post `PT422`, whitespace instead of text `PT422`, media only with no text — legitimate, someone else's post `PT404`, someone else's prefix `PT422`); a retry of adding photos yields dense numbering with no duplicates and a working avatar sync trigger. After the grants were revoked, a smoke test ran over all live write paths — comment, deleting a comment via RPC, creating and rotating an invite, adding and deleting profile photos, publishing and editing a post, settings upsert, device_tokens upsert, mute — all pass, and the four UPDATEs that became impossible return `42501` already at the privilege level, not at RLS. The body of `create_post_with_media()` was checked against the live database's `prosrc` before the edit (see "Pitfalls" in CLAUDE.md about `create or replace`), and after the edit it was checked for traces of the old text. Nothing was tested on a device — the phone isn't connected.
 
-- Десятый полный аудит: 8 находок закрыто, одна отозвана (0.16.8) — из закрытых семь пришли из ревью, восьмая нашлась под отозванной при сверке с живой схемой. Снова ревью проекта целиком, а не диффа: 103 миграции, edge-функция, весь Dart, Android- и CI-конфиг, сборочные скрипты, оба ARB. Каждая находка перед правкой сверена с ЖИВОЙ схемой через Management API, а не с миграцией, которая её завела, — и первая же от этой сверки отвалилась.
+- Tenth full audit: 8 findings closed, one withdrawn (0.16.8) — of the closed ones, seven came from the review, and the eighth was found underneath the withdrawn one while cross-checking against the live schema. Again a review of the whole project, not a diff: 103 migrations, the edge function, all of the Dart, the Android and CI config, build scripts, both ARBs. Before fixing, each finding was checked against the LIVE schema via the Management API, not against the migration that introduced it — and the very first one fell away in that check.
 
-  **Отозвана: прямой DELETE комментария сносил бы каскадом чужие ответы.** Находка была выведена из `20260710113710`, которая завела DELETE-политику на `comments`, и из `on delete cascade` на `parent_comment_id`. Неверна: `20260725120000` эту политику сняла — ровно по той причине, что в находке и описана, и прямым текстом об этом в комментарии. `pg_policy` на живой схеме отдаёт для `comments` только INSERT и SELECT, то есть DELETE отклоняется всегда. Тот же класс ошибки, что и отзыв в девятом аудите: миграции — журнал намерений, а не состояние.
+  **Withdrawn: a direct comment DELETE would cascade-delete other people's replies.** The finding was derived from `20260710113710`, which introduced a DELETE policy on `comments`, and from `on delete cascade` on `parent_comment_id`. Wrong: `20260725120000` dropped that policy — for exactly the reason described in the finding, and says so in plain words in its comment. `pg_policy` on the live schema returns only INSERT and SELECT for `comments`, i.e. DELETE is always rejected. The same class of mistake as the withdrawal in the ninth audit: migrations are a journal of intentions, not state.
 
-  **Слепое пятно самой проверки «грант без политики».** Зато под отозванной находкой обнаружилось настоящее: контрольный блок из `20260824140000` сверяет гранты с политиками по `information_schema.column_privileges` — правильный источник для INSERT и UPDATE, которые бывают поколоночными, и слепой на DELETE, потому что DELETE в стандарте привилегия уровня таблицы и в `column_privileges` не появляется НИКОГДА. Вся команда прошла мимо проверки, написанной ровно против такого. За ней стояли четыре мёртвых гранта: `comments`, `connections`, `invite_links`, `users`. Сегодня они ничего не открывают (без политики RLS отклоняет всегда), сняты ради того, чтобы завтрашняя политика не включила их молча; блок дополнен `role_table_grants` и теперь покрывает все три команды. Миграция `20260825100000_close_delete_grants_blind_spot.sql`.
+  **A blind spot in the "grant without policy" check itself.** Underneath the withdrawn finding, though, a real one turned up: the control block from `20260824140000` matches grants against policies via `information_schema.column_privileges` — the right source for INSERT and UPDATE, which can be column-level, and blind to DELETE, because in the standard DELETE is a table-level privilege and NEVER appears in `column_privileges`. An entire command slipped past a check written precisely against this. Behind it stood four dead grants: `comments`, `connections`, `invite_links`, `users`. Today they open nothing (without a policy, RLS always rejects); they were revoked so that tomorrow's policy doesn't silently switch them on; the block now also consults `role_table_grants` and covers all three commands. Migration `20260825100000_close_delete_grants_blind_spot.sql`.
 
-  **Перезапись поста тем же токеном роняла медиа в бакет без ссылок.** С `20260824100000` повтор `client_token` не no-op, а перезапись: набор `post_media` сносится и вставляется присланный. Отдать наружу список выбывших она забыла, а `createPost` возвращает `void` и ничего не чистил. Сценарий штатный, а не редкий — тот самый, ради которого переписываемый токен и заводили: `.timeout()` перестаёт ждать не отменяя, публикация коммитится уже после «не удалось опубликовать», автор убирает фотографию и жмёт «Опубликовать» ещё раз. `create_post_with_media()` теперь возвращает `table (storage_path text)`, как `update_post_with_media()`, а клиент прогоняет уборку через `deleteRowsThenObjects`. `reap_orphaned_media()` тут последний рубеж, а не первый: сутки выдержки и сотня объектов за запуск — не тот инструмент для клипа на 100 МБ, убранного из черновика секунду назад. Миграция `20260825110000_return_orphaned_media_from_create_post.sql`. При симуляции всплыла ошибка в самой миграции: `returns table (storage_path text)` заводит plpgsql-переменную с именем колонки, и `on conflict (post_id, storage_path)` падает с 42702 «ambiguous» — цель конфликта обязана быть голым именем и квалифицировать её нельзя. Лечится `#variable_conflict use_column`; `set_post_media()` с той же сигнатурой жив только потому, что нигде не пишет `storage_path` без префикса таблицы.
+  **Rewriting a post with the same token left media in the bucket with no references.** Since `20260824100000`, a repeated `client_token` is not a no-op but a rewrite: the `post_media` set is wiped and the submitted one is inserted. It forgot to return the list of what dropped out, and `createPost` returns `void` and cleaned up nothing. The scenario is routine, not rare — the very one the rewritable token was introduced for: `.timeout()` stops waiting without cancelling, the publish commits after "failed to publish", the author removes a photo and taps "Publish" again. `create_post_with_media()` now returns `table (storage_path text)`, like `update_post_with_media()`, and the client runs cleanup through `deleteRowsThenObjects`. `reap_orphaned_media()` is the last line of defense here, not the first: a day's grace period and a hundred objects per run is not the tool for a 100 MB clip removed from a draft a second ago. Migration `20260825110000_return_orphaned_media_from_create_post.sql`. Simulation surfaced a bug in the migration itself: `returns table (storage_path text)` introduces a plpgsql variable named after the column, and `on conflict (post_id, storage_path)` fails with 42702 "ambiguous" — the conflict target must be a bare name and can't be qualified. Fixed with `#variable_conflict use_column`; `set_post_media()`, with the same signature, works only because it never writes `storage_path` without a table prefix.
 
-  **Откат реакции восстанавливал снимок, снятый до нажатия.** `_react()` при ошибке писал в список захваченный `post`, а не обратную разницу. Два тапа подряд на плохой связи — а `.timeout()` делает «запрос упал» и «запрос долетел» неразличимыми отсюда, так что это обычное дело: 👍, потом 👎, у 👍 таймаут — и откат ставил состояние ДО 👍, то есть «реакции нет», поверх дизлайка, который сервер держал и который человек только что видел. До первого pull-to-refresh. Теперь откат — переход, применённый к тому, что на экране сейчас, и только если этот запрос всё ещё самый свежий для поста; целью отката служит последняя ПОДТВЕРЖДЁННАЯ сервером реакция, поэтому два подряд упавших тапа возвращают карточку на исходное, а не на состояние между ними. Два виджет-теста, оба проверены на падение против старого кода.
+  **Reverting a reaction restored a snapshot taken before the tap.** On error, `_react()` wrote the captured `post` into the list, not the inverse delta. Two taps in a row on a bad connection — and `.timeout()` makes "the request failed" and "the request got through" indistinguishable from here, so this is a common case: 👍, then 👎, the 👍 times out — and the revert set the state from BEFORE 👍, i.e. "no reaction", over the dislike that the server held and the person had just seen. Until the next pull-to-refresh. Now the revert is a transition applied to what's on screen now, and only if this request is still the latest one for the post; the revert target is the last reaction CONFIRMED by the server, so two failed taps in a row return the card to its original state, not to the state between them. Two widget tests, both verified to fail against the old code.
 
-  **Все выбранные фото профиля читались в память разом.** `_addPhotos` собирал `items` через `await file.readAsBytes()` на каждый файл, и весь батч — до 80 штук при `maxWidth: 1600` — держался резидентно всю последовательную загрузку, поверх копии, которую `MultipartFile.fromBytes` делает для файла в полёте. Та же резидентность, ради которой в композере видео живёт как `MediaFile(path)`. `PendingPhoto` теперь несёт путь, загрузка идёт через `uploadTolerantFile`: файл читается, когда доходит его очередь, и отпускается.
+  **All selected profile photos were read into memory at once.** `_addPhotos` assembled `items` via `await file.readAsBytes()` for each file, and the whole batch — up to 80 at `maxWidth: 1600` — stayed resident throughout the sequential upload, on top of the copy that `MultipartFile.fromBytes` makes for the file in flight. The same residency that is the reason video in the composer lives as `MediaFile(path)`. `PendingPhoto` now carries a path, and the upload goes through `uploadTolerantFile`: a file is read when its turn comes, and then released.
 
-  **Инвайт-код сгорал, даже когда связь уже была.** Вставка `connections` идёт через `on conflict do nothing`, а `is_used = true` ставился следом безусловно, так что предъявление кода тем, кто с владельцем и так на связи, гасило код впустую — при этом экран рапортовал успех, и владелец узнавал о пропаже, только когда решал отправить код по назначению. Попасть туда просто: повторный тап «Активировать» после таймаута — штатное поведение. Теперь код жжётся только если вставка действительно завела строку (`get diagnostics ... = row_count`). Разные исходы наружу намеренно не различаются: «вы теперь на связи с X» верно в обоих, а отдельный код ответил бы предъявителю на вопрос про чужой граф связей. Миграция `20260825120000_keep_invite_code_when_already_connected.sql`.
+  **An invite code got burned even when the connection already existed.** The `connections` insert goes through `on conflict do nothing`, while `is_used = true` was set right after it unconditionally, so a code presented by someone already connected with the owner burned the code for nothing — meanwhile the screen reported success, and the owner found out the code was gone only when they decided to send it to its intended recipient. It's easy to end up there: a repeated tap on "Activate" after a timeout is normal behaviour. Now the code is burned only if the insert actually created a row (`get diagnostics ... = row_count`). The different outcomes are deliberately not distinguished to the outside: "you are now connected with X" is true in both, and a distinct code would answer the presenter's question about someone else's connection graph. Migration `20260825120000_keep_invite_code_when_already_connected.sql`.
 
-  **Три мёртвых поля.** `ProfilePhoto.position` (позиции раздаёт сервер с `20260824130000`, поле никто не читал, но оно приглашало следующего читателя решить, что порядок клиентский), `ActivatedConnection.ownerId` (парсился из ответа RPC, показывался только `ownerName`) и `BlockedUser.blockedAt` (гонялся через `parseTimestamp` на каждой строке, экран рисует аватар, имя и кнопку). Удалены вместе с колонками, которые ради них выбирались.
+  **Three dead fields.** `ProfilePhoto.position` (the server has assigned positions since `20260824130000`; nobody read the field, but it invited the next reader to conclude that the order is decided on the client), `ActivatedConnection.ownerId` (parsed from the RPC response, while only `ownerName` was shown) and `BlockedUser.blockedAt` (run through `parseTimestamp` on every row, while the screen draws an avatar, a name and a button). Removed together with the columns that were selected for their sake.
 
-  Проверено: `make verify` зелёный, 233 теста (231 + два новых на гонку реакций). Три миграции применены на живую БД и записаны в `supabase_migrations.schema_migrations` (101 -> 104), расхождений между репозиторием и БД нет. Обе SQL-правки проверены симуляцией под `authenticated` в откатываемой транзакции: перезапись поста с убранным видео вернула два пути (клип и его постер) и оставила один `post_media` и один `posts`; инвайт-код у уже связанной пары остался живым, у несвязанной — сгорел и завёл связь. Версия не бампалась.
+  Verified: `make verify` green, 233 tests (231 + two new ones for the reaction race). Three migrations applied to the live DB and recorded in `supabase_migrations.schema_migrations` (101 -> 104), no drift between the repository and the DB. Both SQL changes were verified by simulation as `authenticated` in a rolled-back transaction: rewriting a post with a removed video returned two paths (the clip and its poster) and left one `post_media` and one `posts`; the invite code of an already connected pair stayed alive, while for an unconnected pair it was burned and created the connection. The version was not bumped.
 
-- Консолидация истории миграций в baseline (0.16.9) — 104 файла
-  (`20260707221946`…`20260825120000`) свёрнуты в один
-  `20260826000000_baseline_schema.sql`, описывающий не путь, а конечное
-  состояние схемы. Ревью и разработка больше не требуют читать десятки
-  промежуточных миграций, чтобы понять, что сейчас в базе.
+- Consolidation of the migration history into a baseline (0.16.9) — 104 files
+  (`20260707221946`…`20260825120000`) squashed into a single
+  `20260826000000_baseline_schema.sql` that describes the end state of the
+  schema rather than the path to it. Review and development no longer require
+  reading dozens of intermediate migrations to understand what is in the
+  database right now.
 
-  **Источником истины была живая схема, а не миграции.** Содержимое baseline
-  выведено из `pg_catalog` через Management API — по правилу из «Граблей»
-  CLAUDE.md: миграция — журнал намерений, а не состояние, и в проекте такого
-  возраста нужная строка часто отменена более поздней. Разъездов между
-  репозиторием и базой при этом не нашлось: все 104 миграции проигрались с
-  нуля на пустой PostgreSQL и дали ровно то, что стоит в production, —
-  единственные расхождения платформенные (`ensure_rls`/`rls_auto_enable` и
-  четыре триггера на `storage.objects`/`storage.buckets`, которые заводит сам
-  Supabase, а не проект).
+  **The source of truth was the live schema, not the migrations.** The
+  baseline's content was derived from `pg_catalog` via the Management API —
+  following the rule from the "Pitfalls" in CLAUDE.md: a migration is a
+  journal of intentions, not state, and in a project of this age the line you
+  need has often been undone by a later one. No drift between the repository
+  and the database turned up along the way: all 104 migrations replayed from
+  scratch on an empty PostgreSQL produced exactly what is in production — the
+  only differences are platform ones (`ensure_rls`/`rls_auto_enable` and four
+  triggers on `storage.objects`/`storage.buckets` that Supabase itself creates,
+  not the project).
 
-  **Baseline проверен на чистой базе, а не на глаз.** Применён на пустую
-  PostgreSQL 18 c эмуляцией платформенных ролей/схем и сверен с production
-  двумя независимыми способами: по `pg_catalog` (колонки, ограничения,
-  индексы, тела функций, триггеры, RLS-политики, гранты, дефолтные
-  привилегии, бакет, задания cron) и по `information_schema` (`columns`,
-  `table_constraints`, `check_constraints`, `referential_constraints`,
-  `role_table_grants`, `column_privileges`, `routines`, `parameters`,
-  `triggers`). Расхождений, кроме перечисленных платформенных, нет.
-  Отдельно прогнан набор поведенческих проверок под `authenticated` и `anon`
-  (видимость ленты с mute/block/системным аккаунтом, отказы на TRUNCATE,
-  подделку `author_id`/`created_at`, запись `avatar_path`, чужие
-  storage-префиксы, `dislikes_disabled` на обоих путях записи реакции, пин
-  идентичности реакции): вывод на baseline и на проигранной истории
-  совпал строка в строку.
+  **The baseline was verified on a clean database, not by eye.** It was applied
+  to an empty PostgreSQL 18 with emulated platform roles/schemas and compared
+  against production in two independent ways: via `pg_catalog` (columns,
+  constraints, indexes, function bodies, triggers, RLS policies, grants,
+  default privileges, the bucket, cron jobs) and via `information_schema`
+  (`columns`, `table_constraints`, `check_constraints`,
+  `referential_constraints`, `role_table_grants`, `column_privileges`,
+  `routines`, `parameters`, `triggers`). No differences other than the platform
+  ones listed. Separately, a set of behavioural checks was run as
+  `authenticated` and `anon` (feed visibility with mute/block/the system
+  account, rejections of TRUNCATE, of forging `author_id`/`created_at`, of
+  writing `avatar_path`, of other users' storage prefixes, `dislikes_disabled`
+  on both reaction write paths, the reaction identity pin): the output on the
+  baseline and on the replayed history matched line for line.
 
-  **Единственное намеренное расхождение — номера колонок `posts`.** В проде
-  на `attnum` 4 лежит могилка от `image_path`, который `20260819220000`
-  перенесла в `post_media` и дропнула; на чистой базе дырки нет, поэтому
-  `created_at`/`client_token` там 4 и 5 вместо 5 и 6. Наружу не видно ничем:
-  относительный порядок тот же, PostgREST отдаёт объекты, а не кортежи.
-  Воспроизводить дырку значило бы завести колонку только затем, чтобы её тут
-  же дропнуть, — ровно тот исторический мусор, ради избавления от которого
-  всё и затевалось.
+  **The only intentional difference is the column numbers of `posts`.** In
+  production, `attnum` 4 holds the tombstone of `image_path`, which
+  `20260819220000` moved into `post_media` and dropped; on a clean database
+  there is no gap, so `created_at`/`client_token` are 4 and 5 there instead of
+  5 and 6. Nothing makes this visible from outside: the relative order is the
+  same, and PostgREST returns objects, not tuples. Reproducing the gap would
+  have meant creating a column only to drop it right away — exactly the
+  historical junk that getting rid of was the whole point.
 
-  **Дефолтные привилегии `anon` — закрыто.** Единственная находка аудита.
-  `alter default privileges` для роли `postgres` в схеме `public` продолжал
-  выдавать `anon` полный набор прав на таблицы, `EXECUTE` на функции и
-  `SELECT/UPDATE/USAGE` на последовательности: у существующих объектов права
-  вычищены поимённо (`20260818140000`, `20260821120000`), но сам дефолт
-  остался, и следующая созданная таблица получала бы их обратно. Для
-  `authenticated` эту половину закрыла `20260822240000`, для `anon` — нет.
-  Главное тут снова TRUNCATE: на него RLS не распространяется в принципе, так
-  что новая таблица без единой политики всё равно очищалась бы анонимом; не
-  менее важен `EXECUTE` — каждая функция в `public` есть эндпоинт PostgREST.
-  Хвост той же истории: у десяти триггерных функций `EXECUTE` для `anon` так
-  и висел с дефолта — прошлые миграции снимали гранты поимённо и триггерные
-  пропускали. Сработать он не мог (триггерная функция вызывается машинерией
-  триггера, а не по правам вызывающего), но снят, иначе дефолт и живая схема
-  разъезжаются. После правки у `anon` в `public` не осталось ничего, кроме
-  платформенной `rls_auto_enable`.
+  **Default privileges for `anon` — closed.** The audit's only finding.
+  `alter default privileges` for the `postgres` role in the `public` schema
+  kept granting `anon` the full set of table privileges, `EXECUTE` on
+  functions and `SELECT/UPDATE/USAGE` on sequences: privileges on existing
+  objects had been revoked one by one (`20260818140000`, `20260821120000`),
+  but the default itself remained, and the next table created would have
+  gotten them back. For `authenticated` this half was closed by
+  `20260822240000`, for `anon` it wasn't. The main issue here is TRUNCATE
+  again: RLS doesn't apply to it at all, so a new table without a single
+  policy could still be wiped by an anonymous user; just as important is
+  `EXECUTE` — every function in `public` is a PostgREST endpoint. A tail of
+  the same story: ten trigger functions still had `EXECUTE` for `anon` from
+  the default — past migrations revoked grants by name and skipped the
+  trigger ones. It couldn't have fired (a trigger function is invoked by the
+  trigger machinery, not with the caller's privileges), but it was revoked,
+  otherwise the default and the live schema drift apart. After the fix,
+  `anon` has nothing left in `public` except the platform's
+  `rls_auto_enable`.
 
-  **Историю не уничтожали.** Прежние 104 файла лежат в теге
-  `pre-baseline-migrations` — на них по номерам ссылаются 259 мест в
-  `app/lib`, `docs/` и в самом baseline:
-  `git show pre-baseline-migrations:supabase/migrations/<версия>_*.sql`.
-  Плюс тарбол и дамп `supabase_migrations.schema_migrations` с готовым
-  restore-скриптом вне репозитория.
+  **History was not destroyed.** The previous 104 files live in the tag
+  `pre-baseline-migrations` — 259 places in `app/lib`, `docs/` and the
+  baseline itself refer to them by number:
+  `git show pre-baseline-migrations:supabase/migrations/<version>_*.sql`.
+  Plus a tarball and a dump of `supabase_migrations.schema_migrations` with a
+  ready-made restore script outside the repository.
 
-  **Служебная таблица CLI приведена в соответствие штатным механизмом.**
-  104 строки помечены `reverted`, baseline — `applied`, обе операции через
-  `supabase migration repair`, а не прямым SQL. До: 104 remote-only записи и
-  один local-only файл, `db push --dry-run` предлагал накатить baseline на
-  живую базу. После: `migration list` показывает одну строку
-  `20260826000000` с обеих сторон, `db push --dry-run` — «Remote database is
-  up to date». Схема и данные не менялись: контрольная сумма схемы
-  (`6a8c1b32…`, 252 объекта) и счётчики всех таблиц до и после совпадают,
-  шесть заданий pg_cron активны.
+  **The CLI's bookkeeping table was brought in line using the standard
+  mechanism.** 104 rows marked `reverted`, the baseline `applied`, both
+  operations via `supabase migration repair`, not direct SQL. Before: 104
+  remote-only entries and one local-only file, and `db push --dry-run` offered
+  to apply the baseline to the live database. After: `migration list` shows a
+  single row `20260826000000` on both sides, and `db push --dry-run` says
+  "Remote database is up to date". Schema and data were unchanged: the schema
+  checksum (`6a8c1b32…`, 252 objects) and the row counts of all tables match
+  before and after, and the six pg_cron jobs are active.
 
-  Проверено: `make verify` зелёный, 233 теста.
+  Verified: `make verify` green, 233 tests.
 
-- Одиннадцатый полный аудит (0.16.9) — ревью всего проекта, а не диффа:
-  baseline-схема целиком, edge function, весь Dart, CI/деплой, манифест, оба
-  ARB. `flutter analyze` чист, 233 теста зелёные и **ни одной из находок не
-  поймали** — как и в прошлые десять раз. Каждая серверная находка сверена с
-  ЖИВОЙ схемой через Management API до правки: тела всех четырёх
-  пересоздаваемых функций совпали с baseline побайтово, так что источником
-  для `create or replace` был он, а не память. Миграция
-  `20260826120000_close_eleventh_audit_findings.sql`. Версия намеренно не
-  бампалась — решает это пользователь.
+- Eleventh full audit (0.16.9) — a review of the whole project, not a diff:
+  the entire baseline schema, the edge function, all of the Dart, CI/deploy,
+  the manifest, both ARBs. `flutter analyze` is clean, 233 tests are green and
+  **caught none of the findings** — just like the previous ten times. Each
+  server-side finding was checked against the LIVE schema via the Management
+  API before fixing: the bodies of all four recreated functions matched the
+  baseline byte for byte, so the source for `create or replace` was the
+  baseline, not memory. Migration
+  `20260826120000_close_eleventh_audit_findings.sql`. The version was
+  deliberately not bumped — that's the user's call.
 
-  Дыр уровня «чужая лента» нет. Правило видимости, `security definer` +
-  `set search_path`, поколоночные гранты, контрольный блок в конце схемы,
-  таймингобезопасное сравнение секрета в `send-push`, порядок «строки →
-  объекты», epoch/seq-защиты в ленте, ключи `FeedCache` по зрителю,
-  `allowBackup=false`, пиннинг GitHub Actions по SHA и отказ от
-  `pull_request_target` — всё на месте и проверено.
+  No "someone else's feed"-level holes. The visibility rule, `security definer`
+  + `set search_path`, column-level grants, the control block at the end of
+  the schema, the timing-safe secret comparison in `send-push`, the "rows →
+  objects" order, the epoch/seq guards in the feed, per-viewer `FeedCache`
+  keys, `allowBackup=false`, pinning GitHub Actions by SHA and avoiding
+  `pull_request_target` — all in place and verified.
 
-  Закрыто одиннадцать находок:
+  Eleven findings closed:
 
-  - **Брошенная строка `device_tokens` уводила чужие пуши.** Право на
-    FCM-токен снимал только `unregisterDevice()` на выходе, а он best-effort
-    и обёрнут в пустой catch (иначе нельзя: выйти надо уметь и без сети).
-    Выход без сети — или уже провернувшаяся ротация, из-за которой
-    `getToken()` возвращает не ту строку, что регистрировали, — оставлял её
-    навсегда, и следующий аккаунт на том же телефоне получал уведомления
-    предыдущего: имена комментаторов, дайджесты. Само не чинилось ничем:
-    `send-push` сносит токен только по ответу FCM `UNREGISTERED`, а токен
-    живой; повторить снятие клиент не может, после выхода сессии нет. Правило
-    переехало на сервер: BEFORE INSERT триггер `claim_device_token()`
-    (`security definer` — строка чужая) отдаёт токен тому, кто
-    зарегистрировался последним. Заодно `pin_device_token_timestamps()` стал
-    возвращать на место и саму пару `(user_id, fcm_token)`: грант на UPDATE
-    выдан на всю таблицу, политика проверяет только `user_id`, и без пина
-    строку можно было перевести на чужой токен, не нарушив ни одной политики.
-    На живых данных общих токенов не было — находка латентная, не активная
-    утечка.
-  - **Двойной тап по видео оставлял неубираемый плеер.** У `_play()` не было
-    защиты от повторного входа: пока `initialize()` идёт (на медленной сети —
-    секунды), `_controller` ещё null, постер и активная кнопка play на
-    экране. Второй тап создавал второй контроллер, `setState` первого рисовал
-    его, `setState` второго затирал поле — и на первый не оставалось ни одной
-    ссылки. Его никто не диспозил: `didUpdateWidget` смотрит на смену
-    `item.id`, `dispose` — на поле. Нативный плеер продолжал декодировать и
-    играть звук под вторым до убийства приложения. Добавлен флаг `_isPreparing`
-    и сверка `item.id` до/после `await` — заодно закрыт случай, когда слайд
-    сменился, пока контроллер готовился.
-  - **`FeedCache.load()` глушила сообщение об ошибке ленты.**
-    `SharedPreferences.getInstance()` стоял вне `try`, а этот future ждут в
-    двух местах — и во втором прямо ВНУТРИ `catch` у `_loadMore`, до строки,
-    которая ставит `_errorMessage`. Отказ хранилища давал необработанную
-    асинхронную ошибку из `_primeFromCache` и, что хуже, первый холодный
-    запуск без сети показывал «постов пока нет» вместо «не удалось загрузить
-    ленту» — сообщение, прямо противоположное происходящему. Соседний
-    `save()` от этого был защищён, `load()` — нет.
-  - **Мёртвый грант публиковал `/rpc/is_author_visible`.** Все четыре вызова
-    функции лежат внутри `security definer`-функций, то есть исполняются от
-    владельца, а ни в одной политике её нет (проверено запросом к `pg_policy`
-    на живой схеме, 0 совпадений). Дырой не была — единственный аргумент про
-    самого вызывающего, — но публиковать наружу ручку, которой никто не
-    пользуется, незачем. `revoke`.
-  - **`set_post_media()` падала на дубликате пути, а парная ей
-    `create_post_with_media()` — нет.** Две функции, пишущие в одну таблицу по
-    одному уникальному ключу, вели себя по-разному: один и тот же
-    `storage_path`, пришедший в `p_items` дважды, на публикации отбрасывался
-    молча, а на редактировании падал сырым 23505, который клиент показывает
-    как общее «не удалось сохранить изменения». Добавлен
-    `on conflict (post_id, storage_path) do nothing` — и вместе с ним
-    обязательная `#variable_conflict use_column`: `returns table
-    (storage_path text)` заводит OUT-параметр с этим именем, а цель конфликта
-    обязана быть голым именем колонки, иначе 42702. Ровно то, о чём
-    предупреждал комментарий в `create_post_with_media()`.
-  - **`reorder_profile_photos()` пропускала массив с повторами.** Проверка
-    сверяла только длины: для галереи `{a, b}` набор `[a, a]` даёт на join'е
-    две строки, длины сходятся 2 = 2 = 2, `PT422` не срабатывает. Дальше
-    `delete` сносил обе фотографии, а INSERT падал на
-    `profile_photos_user_storage_path_key`. Транзакция откатывалась, данные
-    оставались целы, но вместо внятного «набор не совпадает с вашей галереей»
-    человек получал общую ошибку. Повторы отсекаются `count(distinct)` до
-    чтения таблицы — через `array_length` их не поймать, длина как раз и
-    совпадает.
-  - **`create_invite_link()` проигрывала гонку сама себе.** Read-then-insert
-    без блокировки: два одновременных вызова одного владельца — ровно тот
-    ретрай после таймаута, ради которого функция и написана идемпотентной,
-    потому что `.timeout()` перестаёт ждать, не отменяя запрос, — оба не
-    находили живого кода, оба доходили до INSERT, второй падал с 23505.
-    Клиент показывал «непредвиденная ошибка», хотя код был выпущен. Теперь
-    `on conflict (owner_id) where not is_used do nothing` (предикат
-    обязателен, индекс частичный) и `row_count` под ним: проигравший отдаёт
-    код победителя.
-  - **Чистка бакета при удалении аккаунта уходила одним неограниченным
-    запросом.** Единственное место, где список путей не имеет потолка (у
-    поста — 20 медиа с постерами, у галереи — 80, а тут вся медиатека
-    аккаунта: 50 постов — уже несколько сотен путей в одном теле запроса).
-    Слишком большой запрос отклоняется целиком, а половина эта best-effort по
-    устройству — отказ проглатывается, и не удаляется НИЧЕГО. Разбито на
-    батчи по 100.
-  - **`fetchComments` не имел потолка** — единственный запрос в приложении
-    без него, при том что лента прямо над ним ходит keyset-пагинацией. Пост с
-    тысячами комментариев не укладывался в `networkTimeout`, и экран
-    показывал «не удалось загрузить комментарии» на каждой попытке: не
-    медленная загрузка, а тупик. Лимит 500 (+1 строка, чтобы узнать про
-    обрезку без второго запроса), сноска в конце списка и — важное — при
-    обрезке не дёргается `onCountChanged`: длина обрезанного списка это
-    потолок, а не количество, и подставить её значило бы уронить счётчик на
-    карточке с настоящего числа до 500. Режется хвост, а не голова:
-    комментарии идут от старых к новым, и обрезка хвоста может оторвать ответ
-    от корня (такой `threadComments()` и так прячет), но никогда корень от
-    ответов.
-  - **Дайджест делал O(N) запросов внутри транзакции вставки поста.** Ветка
-    была циклом по всем Connection автора, и на каждого выполнялся отдельный
-    `count(*)` по `posts × connections` — в AFTER INSERT-триггере, где любая
-    ошибка откатывает сам пост, а задержка публикации растёт линейно с числом
-    знакомых. Переписано в один `insert ... select` с `materialized`-CTE
-    (без них планировщик волен заинлайнить CTE и посчитать дорогой lateral
-    для каждого знакомого, включая отсеянных, — то есть ровно то, от чего
-    правка избавляется). Это та самая функция, которую дважды пересоздавали
-    из дореформенного текста, и оба раза публиковать не мог никто, поэтому
-    эквивалентность проверена **A/B-тестом на живых данных**: один и тот же
-    пост опубликован старой и новой версией в откатываемых транзакциях,
-    строки `notification_outbox` совпали побайтово — пять дайджестов со
-    счётчиками 8/12/12/8/7 и один `new_post`.
-  - **Уборщик бакета не успевал за мусором.** `orphaned_media_paths()`
-    ограничена `limit 100`, а джоб ходил раз в сутки — потолок 100 объектов
-    **в день** при том, что один брошенный черновик оставляет до 40.
-    `reap-orphaned-media` переведён на ежечасно: 2400 в день тем же батчем,
-    без роста размера запроса к Storage.
+  - **An abandoned `device_tokens` row diverted other people's pushes.** The
+    claim on an FCM token was released only by `unregisterDevice()` on sign-out,
+    and that is best-effort and wrapped in an empty catch (it can't be
+    otherwise: signing out must work offline too). Signing out offline — or a
+    rotation that has already happened, which makes `getToken()` return a
+    different string than the one registered — left the row behind forever,
+    and the next account on the same phone got the previous one's
+    notifications: commenter names, digests. Nothing fixed it on its own:
+    `send-push` removes a token only on an FCM `UNREGISTERED` response, and the
+    token is alive; the client can't retry the removal, since after sign-out
+    there is no session. The rule moved to the server: a BEFORE INSERT trigger
+    `claim_device_token()` (`security definer` — the row belongs to someone
+    else) gives the token to whoever registered it last. Along the way,
+    `pin_device_token_timestamps()` now also restores the
+    `(user_id, fcm_token)` pair itself: the UPDATE grant covers the whole
+    table, the policy checks only `user_id`, and without the pin a row could be
+    switched to someone else's token without violating a single policy. There
+    were no shared tokens in the live data — the finding is latent, not an
+    active leak.
+  - **A double tap on a video left a player that couldn't be cleaned up.**
+    `_play()` had no re-entry guard: while `initialize()` is running (seconds,
+    on a slow network), `_controller` is still null, and the poster and an
+    active play button are on screen. The second tap created a second
+    controller, the first one's `setState` rendered it, the second one's
+    `setState` overwrote the field — and not a single reference to the first
+    was left. Nobody disposed it: `didUpdateWidget` watches for a change of
+    `item.id`, `dispose` looks at the field. The native player kept decoding
+    and playing sound under the second one until the app was killed. Added an
+    `_isPreparing` flag and an `item.id` check before/after the `await` — which
+    also closes the case where the slide changed while the controller was
+    being prepared.
+  - **`FeedCache.load()` swallowed the feed error message.**
+    `SharedPreferences.getInstance()` sat outside the `try`, and this future is
+    awaited in two places — the second one right INSIDE the `catch` in
+    `_loadMore`, before the line that sets `_errorMessage`. A storage failure
+    produced an unhandled async error from `_primeFromCache` and, worse, the
+    first cold start offline showed "no posts yet" instead of "failed to load
+    feed" — a message saying the exact opposite of what was happening. The
+    neighbouring `save()` was protected against this, `load()` wasn't.
+  - **A dead grant exposed `/rpc/is_author_visible`.** All four calls to the
+    function sit inside `security definer` functions, i.e. they run as the
+    owner, and it appears in no policy (verified with a query to `pg_policy`
+    on the live schema, 0 matches). It wasn't a hole — its only argument is
+    about the caller themselves — but there's no reason to expose an endpoint
+    nobody uses. `revoke`.
+  - **`set_post_media()` failed on a duplicate path, while its counterpart
+    `create_post_with_media()` didn't.** Two functions writing to the same
+    table by the same unique key behaved differently: the same `storage_path`
+    arriving in `p_items` twice was silently dropped on publish but failed on
+    edit with a raw 23505, which the client shows as the generic "failed to
+    save changes". Added `on conflict (post_id, storage_path) do nothing` — and
+    with it the mandatory `#variable_conflict use_column`: `returns table
+    (storage_path text)` introduces an OUT parameter with that name, and the
+    conflict target must be a bare column name, otherwise 42702. Exactly what
+    the comment in `create_post_with_media()` warned about.
+  - **`reorder_profile_photos()` let an array with repeats through.** The
+    check compared only lengths: for a gallery `{a, b}`, the set `[a, a]`
+    yields two rows on the join, the lengths match 2 = 2 = 2, `PT422` doesn't
+    fire. Then `delete` wiped both photos, and the INSERT failed on
+    `profile_photos_user_storage_path_key`. The transaction rolled back, the
+    data stayed intact, but instead of a clear "the set doesn't match your
+    gallery" the person got a generic error. Repeats are now rejected with
+    `count(distinct)` before the table is read — `array_length` can't catch
+    them, since the length is exactly what matches.
+  - **`create_invite_link()` lost a race against itself.** Read-then-insert
+    without a lock: two concurrent calls from the same owner — exactly the
+    retry after a timeout that the function was written idempotent for,
+    because `.timeout()` stops waiting without cancelling the request — both
+    found no live code, both reached the INSERT, and the second failed with
+    23505. The client showed "unexpected error", even though the code had been
+    issued. Now it's `on conflict (owner_id) where not is_used do nothing`
+    (the predicate is required, the index is partial) with `row_count` under
+    it: the loser returns the winner's code.
+  - **Bucket cleanup on account deletion went out as a single unbounded
+    request.** The only place where the list of paths has no ceiling (a post
+    has 20 media with posters, a gallery 80, but here it's the account's
+    entire media library: 50 posts already mean several hundred paths in one
+    request body). A request that's too large is rejected as a whole, and this
+    half is best-effort by design — the failure is swallowed, and NOTHING gets
+    deleted. Split into batches of 100.
+  - **`fetchComments` had no ceiling** — the only query in the app without
+    one, even though the feed right above it uses keyset pagination. A post
+    with thousands of comments didn't fit into `networkTimeout`, and the
+    screen showed "failed to load comments" on every attempt: not a slow load
+    but a dead end. A limit of 500 (+1 row, to learn about truncation without
+    a second query), a footnote at the end of the list and — importantly —
+    `onCountChanged` isn't fired when truncated: the length of a truncated list
+    is a ceiling, not a count, and passing it on would drop the counter on
+    the card from the real number to 500. The tail is cut, not the head:
+    comments go from oldest to newest, and cutting the tail can separate a
+    reply from its root (`threadComments()` hides such replies anyway), but
+    never a root from its replies.
+  - **The digest ran O(N) queries inside the post-insert transaction.** The
+    branch was a loop over all of the author's connections, and for each one a
+    separate `count(*)` over `posts × connections` was run — in an AFTER
+    INSERT trigger, where any error rolls back the post itself and publishing
+    latency grows linearly with the number of connections. Rewritten as a
+    single `insert ... select` with `materialized` CTEs (without them the
+    planner is free to inline the CTE and compute the expensive lateral for
+    every connection, including those filtered out — i.e. exactly what the
+    fix gets rid of). This is the very function that was twice recreated from
+    pre-reform text, and both times nobody could publish, so equivalence was
+    verified **with an A/B test on live data**: the same post was published
+    by the old and the new version in rolled-back transactions, and the
+    `notification_outbox` rows matched byte for byte — five digests with
+    counters 8/12/12/8/7 and one `new_post`.
+  - **The bucket reaper couldn't keep up with the garbage.**
+    `orphaned_media_paths()` is capped by `limit 100`, and the job ran once a
+    day — a ceiling of 100 objects **per day**, while a single abandoned draft
+    leaves up to 40. `reap-orphaned-media` was switched to hourly: 2400 a day
+    with the same batch, with no increase in the size of the request to
+    Storage.
 
-  Проверено после наката: `prosrc` всех изменённых функций сверен с файлом
-  миграции (совпадает), контрольный блок baseline пройден, порядок триггеров
-  на `device_tokens` — `claim` перед `enforce_limit`, шесть заданий pg_cron
-  активны, `schema_migrations` — две строки. `make verify` зелёный, 235
-  тестов.
+  Verified after applying: the `prosrc` of every changed function was compared
+  with the migration file (matches), the baseline control block passed, the
+  trigger order on `device_tokens` is `claim` before `enforce_limit`, the six
+  pg_cron jobs are active, `schema_migrations` has two rows. `make verify`
+  green, 235 tests.
 
-- Третье значение `connections.method` (0.17.0) — `manual` для строк, заведённых
-  руками через Management API. `qr_code` в CHECK'е — задел под будущую фичу
-  (сканирование QR как второй способ знакомства), а не реализованный путь:
-  единственное место, которое пишет в `connections`, — `activate_invite_link()`,
-  и она всегда ставит `invite_link`. Ручные вставки подписывались `qr_code`,
-  то есть выглядели так, будто прошли по несуществующему пути; теперь у них
-  своё значение, а `qr_code` остаётся свободным до самой фичи. Миграция
+- A third value for `connections.method` (0.17.0) — `manual`, for rows created
+  by hand via the Management API. `qr_code` in the CHECK is groundwork for a
+  future feature (scanning a QR code as a second way to connect), not an
+  implemented path: the only place that writes to `connections` is
+  `activate_invite_link()`, and it always sets `invite_link`. Manual inserts
+  were labelled `qr_code`, i.e. they looked as if they had gone through a
+  non-existent path; now they have their own value, and `qr_code` stays free
+  until the feature itself. Migration
   `20260826130000_add_manual_connection_method.sql`.
 
-- Комнаты, этап 1: комната и её лента (0.17.0) — отдельная лента для тех,
-  кого позвали, изолированная от всех остальных. Схема —
-  `20260826180000_rooms.sql`, описание — «Комнаты» в
+- Rooms, Stage 1: a room and its feed (0.17.0) — a separate feed for the
+  people who were invited, isolated from everyone else. Schema:
+  `20260826180000_rooms.sql`; description: "Rooms" in
   [docs/data-model.md](docs/data-model.md).
 
-  **Боттом-бар переехал**: подписи убраны (пять подписей на телефоне либо
-  переносятся, либо ужимаются до нечитаемого — `label` при этом остался в
-  дереве, его читает скринридер и показывает долгий тап), кнопки «знакомства»
-  и «новый пост» поменялись местами, а посередине встали комнаты:
-  лента · новый пост · комнаты · знакомства · профиль.
+  **The bottom bar was rearranged**: labels removed (five labels on a phone
+  either wrap or shrink to unreadable — the `label` stays in the tree, where
+  the screen reader reads it and a long press shows it), the "connections"
+  and "new post" buttons swapped places, and rooms took the middle slot:
+  feed · new post · rooms · connections · profile.
 
-  **У комнаты нет `creator_id`.** Владелец — участник с наименьшим `seq`,
-  поэтому «создатель ушёл — права у старейшего из оставшихся» выполняется
-  само: удаление строки в `room_members` и есть передача прав. Хранимая
-  колонка потребовала бы триггера на каждый выход и рассинхронизировалась бы
-  ровно там, где его забыли позвать.
+  **A room has no `creator_id`.** The owner is the member with the lowest
+  `seq`, so "the creator left — the oldest remaining member gets the rights"
+  happens by itself: deleting the row in `room_members` is the transfer of
+  rights. A stored column would need a trigger on every leave and would fall
+  out of sync exactly where someone forgot to call it.
 
-  **Комната на двоих — не маленькая группа, а другая сущность.** Имени у неё
-  нет вовсе (`rooms_direct_shape` требует `name is null`): каждая сторона
-  видит имя второго, и собирает его клиент. Третьего добавить нельзя, уход
-  любой из сторон уносит комнату у обоих. Пара на комнату ровно одна —
-  `direct_a`/`direct_b` под уникальным частичным индексом, — и это же делает
-  создание идемпотентным: повторное «написать» тому же человеку открывает
-  существующую комнату, а не заводит вторую.
+  **A two-person room is not a small group but a different entity.** It has
+  no name at all (`rooms_direct_shape` requires `name is null`): each side
+  sees the other person's name, and the client assembles it. A third person
+  can't be added, and either side leaving takes the room away from both.
+  There is exactly one pair per room — `direct_a`/`direct_b` under a unique
+  partial index — and that same index makes creation idempotent: "message"
+  the same person again and the existing room opens instead of a second one
+  being created.
 
-  **Мультипостинг.** Пост уходит в общую ленту, в несколько комнат сразу или
-  только в комнату — тогда он не виден нигде больше, включая стену профиля
-  автора. Адресаты приезжают той же транзакцией, что и сам пост
-  (`create_post_with_media()` получила `p_room_ids`/`p_in_general_feed` со
-  значениями по умолчанию, так что уже выложенные клиенты продолжают
-  публиковать в общую ленту). Старая перегрузка функции при этом **дропнута**,
-  а не оставлена рядом: две перегрузки сделали бы вызов с тремя именованными
-  параметрами неоднозначным для PostgREST — то есть сломали бы публикацию
-  сразу у всех.
+  **Multi-posting.** A post goes to the general feed, to several rooms at
+  once, or only to a room — in which case it is visible nowhere else,
+  including the author's profile wall. The recipients arrive in the same
+  transaction as the post itself (`create_post_with_media()` gained
+  `p_room_ids`/`p_in_general_feed` with default values, so already shipped
+  clients keep publishing to the general feed). The old overload of the
+  function was **dropped** rather than kept alongside: two overloads would
+  have made a call with three named parameters ambiguous for PostgREST — that
+  is, they would have broken publishing for everyone at once.
 
-  **Правило видимости поста стало двухветвенным** — «пост общей ленты, автор
-  видим» ИЛИ «пост лежит в моей комнате», — и вслед за ним потянулось всё, что
-  от видимости поста зависит. `post_media` переведена на вложенный
-  `exists (select 1 from posts …)` (RLS применяется и к подзапросу внутри
-  политики, так что «пост видно» получается само) — копий правила стало
-  меньше, а не больше: теперь их две, политика `posts` и `is_post_visible()`.
+  **The post visibility rule became two-branched** — "a general-feed post
+  whose author is visible" OR "the post is in my room" — and everything that
+  depends on post visibility followed. `post_media` was switched to a nested
+  `exists (select 1 from posts …)` (RLS also applies to a subquery inside a
+  policy, so "the post is visible" comes for free) — there are now fewer
+  copies of the rule, not more: two of them, the `posts` policy and
+  `is_post_visible()`.
 
-  **Участники комнаты не обязаны быть Connections друг другу** — их собрал
-  владелец из своих знакомых. Одной видимости поста поэтому мало:
-  `shares_room_with_caller()` добавлена в политику `users` (иначе пост в
-  ленте комнаты был бы без имени автора), в storage-политику аватарок и, с
-  `is_comment_author_room_peer()`, в обе ветви видимости комментариев; фото
-  постов идут от пути к посту через `media_path_in_my_rooms()`. Mute и блок
-  внутри комнаты не действуют осознанно; единственное, что блок ещё делает, —
-  не даёт собрать комнату с тем, с кем он есть.
+  **Room members don't have to be Connections of each other** — the owner
+  gathered them from their own connections. So post visibility alone isn't
+  enough: `shares_room_with_caller()` was added to the `users` policy
+  (otherwise a post in the room feed would have no author name), to the
+  avatar storage policy and, together with `is_comment_author_room_peer()`, to
+  both branches of comment visibility; post photos go from the path to the
+  post via `media_path_in_my_rooms()`. Mute and block deliberately have no
+  effect inside a room; the only thing a block still does is prevent creating
+  a room with the person it's with.
 
-  **Уведомлений о постах в комнате пока нет вовсе**:
-  `enqueue_post_notifications()` выходит раньше всего при
-  `not new.in_general_feed` и тем же фильтром считает дайджест — иначе пуш
-  «у Пети новый пост» рассказывал бы о посте тому, кому его не покажут. Пуши
-  для комнат приедут вместе с чатом (этап 2, см.
-  [docs/future-development.md](docs/future-development.md)).
+  **There are no notifications about room posts at all yet**:
+  `enqueue_post_notifications()` exits first thing on
+  `not new.in_general_feed` and counts the digest with the same filter —
+  otherwise the push "Petya has a new post" would tell someone about a post
+  they won't be shown. Room pushes will come together with the chat (Stage 2,
+  see [docs/future-development.md](docs/future-development.md)).
 
-  **Симуляция сразу после наката нашла дыру в storage — закрыта
-  `20260826190000`.** Путь объекта (`posts/<author_id>/…`) знает только автора,
-  и до комнат этого хватало: все посты автора жили в общей ленте, так что
-  «видно автора» означало «видно и его файлы». С комнатами это перестало быть
-  правдой — знакомый автора, в комнату не позванный, открывал файл фотографии
-  поста, адресованного только в комнату (строку `post_media` и сам пост ему при
-  этом не показывали). Политика переведена с автора на ПОСТ:
-  `post_media_path_visible()` спрашивает `is_post_visible()`, то есть то же
-  единственное правило. Ветвь автора осталась первой и строки в `post_media`
-  намеренно не требует — клиент заливает файлы до того, как появляется пост.
-  Заведённая накануне `media_path_in_my_rooms()` этим поглощена целиком и
-  дропнута, чтобы не осталась второй, более узкой копией того же вопроса.
+  **A simulation right after the rollout found a hole in storage — closed by
+  `20260826190000`.** The object path (`posts/<author_id>/…`) only knows the
+  author, and before rooms that was enough: all of an author's posts lived in
+  the general feed, so "the author is visible" meant "their files are visible
+  too". With rooms that stopped being true — a connection of the author who
+  wasn't invited to the room could open the photo file of a post addressed
+  only to the room (while the `post_media` row and the post itself were
+  hidden from them). The policy was switched from the author to the POST:
+  `post_media_path_visible()` asks `is_post_visible()`, i.e. the same single
+  rule. The author branch stays first and deliberately doesn't require a row
+  in `post_media` — the client uploads files before the post exists.
+  `media_path_in_my_rooms()`, added the day before, is fully absorbed by this
+  and dropped, so it doesn't linger as a second, narrower copy of the same
+  question.
 
-  Проверено: `make verify` зелёный, 246 тестов (235 + одиннадцать новых на
-  имя комнаты, разбор строки `my_rooms()` и адресаты в композере). Тела всех
-  четырёх пересоздаваемых функций перед правкой сверены с живой схемой по md5
-  и совпали. Обе миграции применены на живую БД и записаны в
-  `supabase_migrations.schema_migrations` (3 строки -> 5). RLS проверена
-  симуляцией под `authenticated` в откатываемых транзакциях, 26 проверок:
-  изоляция ленты комнаты (участник видит, знакомый автора вне комнаты — нет:
-  ни поста, ни комментария, ни счётчиков реакций, ни комнаты, ни состава),
-  видимость соседа по комнате, который не Connection (профиль и его
-  комментарии видны), пост «только в комнату» не порождает ни `new_post`, ни
-  `digest` (единственная строка outbox — `post_comment` автору, и пост ему
-  виден), обычный пост уведомления рождает по-прежнему, владение (создатель —
-  владелец, участник не переименовывает и не исключает, уход владельца
-  оставляет комнату и передаёт права старейшему, последний вышедший уносит
-  комнату), парная комната (одна на пару, повторное создание возвращает ту же,
-  третьего не добавить, не переименовать, уход одной стороны уносит её у
-  обоих), storage до и после правки.
+  Verified: `make verify` green, 246 tests (235 + eleven new ones for the
+  room name, parsing a `my_rooms()` row and recipients in the composer). The
+  bodies of all four recreated functions were checked against the live
+  schema by md5 before the edit and matched. Both migrations were applied to
+  the live DB and recorded in `supabase_migrations.schema_migrations`
+  (3 rows -> 5). RLS was verified by simulation under `authenticated` in
+  rolled-back transactions, 26 checks: room feed isolation (a member sees it,
+  a connection of the author outside the room doesn't: not the post, not a
+  comment, not reaction counters, not the room, not its members), visibility
+  of a roommate who is not a Connection (their profile and comments are
+  visible), a "room-only" post produces neither `new_post` nor `digest` (the
+  only outbox row is `post_comment` to the author, and the post is visible to
+  them), a regular post still produces notifications, ownership (the creator
+  is the owner, a member can't rename or remove anyone, the owner leaving
+  keeps the room and passes rights to the oldest member, the last one to
+  leave takes the room away), the two-person room (one per pair, creating
+  again returns the same one, a third person can't be added, it can't be
+  renamed, one side leaving takes it away from both), storage before and
+  after the fix.
 
-- Комнаты, этап 2: чат (0.17.0) — вторая половина комнаты. Схема —
-  `20260826200000_room_chat.sql`, описание — «Чат комнаты» и «Уведомления
-  комнат» в [docs/data-model.md](docs/data-model.md).
+- Rooms, Stage 2: chat (0.17.0) — the second half of a room. Schema:
+  `20260826200000_room_chat.sql`; description: "Room chat" and "Room
+  notifications" in [docs/data-model.md](docs/data-model.md).
 
-  Сообщения приходят сами: `room_messages` добавлена в публикацию
-  `supabase_realtime` — **первое использование realtime в проекте**. Postgres
-  Changes проверяет SELECT-политику подписчика построчно, поэтому чужие
-  комнаты через подписку не текут: правило то же, что у обычного чтения, и
-  второй копии видимости у чата нет вовсе — сообщение видно тому, кто в
-  комнате.
+  Messages arrive on their own: `room_messages` was added to the
+  `supabase_realtime` publication — **the first use of realtime in the
+  project**. Postgres Changes checks the subscriber's SELECT policy row by
+  row, so other people's rooms don't leak through the subscription: the rule
+  is the same as for a normal read, and the chat has no second copy of the
+  visibility rule at all — a message is visible to whoever is in the room.
 
-  **Удаление своего сообщения — заглушка, а не `delete`,** и причина не только
-  в единообразии с комментариями: realtime отдаёт DELETE без содержимого
-  строки (replica identity default — только ключ), проверить по нему RLS
-  нечем, а UPDATE приезжает целой строкой и фильтруется политикой как обычное
-  чтение. UPDATE- и DELETE-политик у таблицы нет вовсе: единственный путь —
-  `delete_own_room_message()`. Политика на UPDATE не умеет ограничить, КАКИЕ
-  колонки меняются, и открыла бы правку своей строки целиком — включая
-  `created_at`, по которому считаются непрочитанные.
+  **Deleting your own message is a placeholder, not a `delete`,** and not
+  only for consistency with comments: realtime delivers a DELETE without the
+  row's contents (replica identity default — only the key), so there's
+  nothing to check RLS against, whereas an UPDATE arrives as a whole row and
+  is filtered by the policy like a normal read. The table has no UPDATE or
+  DELETE policies at all: the only way is `delete_own_room_message()`. An
+  UPDATE policy can't restrict WHICH columns change and would open the whole
+  row to editing — including `created_at`, which unread counts are based on.
 
-  **Непрочитанные — колонка `last_read_at` на строке участника**, а не
-  отдельная таблица: та повторяла бы `(room_id, user_id)` один в один. Она же
-  глушит пуши: экран отмечает прочитанным каждое входящее сообщение, поэтому
-  «прочитано меньше минуты назад» означает «человек сейчас в этом чате», и
-  уведомление не заводится. Второй предохранитель — очередь схлопывается: пока
-  предыдущий пуш из этой комнаты не ушёл, второй не появляется, иначе оживший
-  чат превращается в сорок одинаковых уведомлений, приходящих разом.
+  **Unread is a `last_read_at` column on the member row**, not a separate
+  table: that would duplicate `(room_id, user_id)` one-to-one. It also
+  suppresses pushes: the screen marks every incoming message as read, so
+  "read less than a minute ago" means "the person is in this chat right now",
+  and no notification is created. The second safeguard is that the queue
+  collapses: while the previous push from this room hasn't gone out, a second
+  one doesn't appear — otherwise a chat that comes alive turns into forty
+  identical notifications arriving at once.
 
-  **Пост в комнату наконец уведомляет — участников и никого больше.** Триггер
-  висит на `post_rooms`, а не на `posts`: в момент вставки поста адресатов ещё
-  нет, они приезжают следующим оператором той же транзакции. Предохранитель
-  здесь другой: одно уведомление на пост на человека ЛЮБОГО вида — иначе
-  участник, который вдобавок держит автора в избранном, получил бы и
-  `new_post`, и `room_post` об одном и том же.
+  **A post to a room finally notifies — the members and nobody else.** The
+  trigger sits on `post_rooms`, not on `posts`: when the post is inserted
+  there are no recipients yet; they arrive with the next statement of the
+  same transaction. The safeguard here is different: one notification per
+  post per person of ANY kind — otherwise a member who also has the author in
+  favorites would get both `new_post` and `room_post` about the same thing.
 
-  Названия комнаты в тексте пуша нет намеренно: оно у каждого своё (у комнаты
-  без названия — перечисление участников), собирает его клиент, и вторая копия
-  этого правила на сервере разошлась бы с первой при первом же переименовании.
+  The room name is deliberately absent from the push text: it's different
+  for everyone (for a room without a name it's a list of members), the client
+  assembles it, and a second copy of this rule on the server would diverge
+  from the first at the very first rename.
 
-  `my_rooms()` пересоздана через `drop`+`create` — у `create or replace` нет
-  права менять OUT-колонки, — и отдаёт теперь последнее сообщение и число
-  непрочитанных: список комнат он же список чатов. Грант после дропа выдан
-  заново, ровно как у `create_post_with_media()` этажом раньше.
+  `my_rooms()` was recreated via `drop`+`create` — `create or replace` isn't
+  allowed to change OUT columns — and now returns the last message and the
+  unread count: the room list doubles as the chat list. The grant was issued
+  again after the drop, exactly as for `create_post_with_media()` one step
+  earlier.
 
-  В боттом-баре ничего не поменялось, а в строке комнаты появилась вторая
-  кнопка — чат, со счётчиком непрочитанных; та же кнопка есть в шапке ленты
-  комнаты, чтобы переключаться между половинами не через «назад». В настройках
-  уведомлений два новых переключателя: сообщения и посты в комнатах —
-  раздельно, потому что сообщения приходят часто, а посты редко.
+  Nothing changed in the bottom bar, but the room row got a second button —
+  chat, with an unread counter; the same button is in the room feed header,
+  so you can switch between the halves without going "back". Notification
+  settings have two new toggles: room messages and room posts — separately,
+  because messages come often and posts rarely.
 
-  Проверено: `make verify` зелёный, 260 тестов (246 + четырнадцать новых на
-  разбор сообщения, чат-половину `my_rooms()` и экран чата — отправка,
-  пустое сообщение, ошибка отправки, заглушка удалённого, приход по realtime,
-  эхо собственного сообщения, отписка при уходе с экрана).
+  Verified: `make verify` green, 260 tests (246 + fourteen new ones for
+  message parsing, the chat half of `my_rooms()` and the chat screen —
+  sending, an empty message, a send error, the deleted placeholder, arrival
+  via realtime, the echo of your own message, unsubscribing when leaving the
+  screen).
 
-- Комнаты: аватарка группы и правки по итогам проверки на устройстве (0.17.0).
-  Схема — `20260826210000_room_avatar.sql`.
+- Rooms: group avatar and fixes after on-device testing (0.17.0).
+  Schema: `20260826210000_room_avatar.sql`.
 
-  **Отправка сообщения не работала вовсе** — `upsert` не мог сработать ни
-  разу, и по двум независимым причинам. `on_conflict=author_id,client_token`
-  просит вывести индекс, а индекс под ним частичный
-  (`where client_token is not null`): вывод по частичному индексу требует
-  повторить его предикат, чего PostgREST послать не умеет, — сервер отвечает
-  42P10. У `posts` и `comments` тот же приём работает ровно потому, что их
-  индексы не частичные; скопирован был приём, но не это условие. Вдобавок
-  `upsert` разворачивается в `DO UPDATE`, а у `room_messages` намеренно нет ни
-  UPDATE-гранта, ни UPDATE-политики. Починено на клиенте, а не грантом:
-  обычный `insert`, а дубликат обрабатывается там, где проявляется, — 23505 от
-  уникального индекса означает «эта отправка уже дошла», и строка, с которой
-  она столкнулась, и есть ответ. Ограничения на сервере остались прежними.
+  **Sending a message didn't work at all** — the `upsert` could never
+  succeed, for two independent reasons. `on_conflict=author_id,client_token`
+  asks to infer an index, but the index behind it is partial
+  (`where client_token is not null`): inference from a partial index
+  requires repeating its predicate, which PostgREST can't send — the server
+  answers 42P10. On `posts` and `comments` the same technique works precisely
+  because their indexes aren't partial; the technique was copied, but not
+  that condition. On top of that, `upsert` expands to `DO UPDATE`, and
+  `room_messages` deliberately has neither an UPDATE grant nor an UPDATE
+  policy. Fixed on the client, not with a grant: a plain `insert`, with the
+  duplicate handled where it shows up — a 23505 from the unique index means
+  "this send already went through", and the row it collided with is the
+  answer. The server-side restrictions stayed as they were.
 
-  **Аватарка у групповой комнаты**, ставит владелец. Право считается не
-  сравнением с `auth.uid()`, а вопросом «владею ли я этой комнатой»
-  (`owns_room()` — однонаправленная обёртка над `room_owner_id()`, которая
-  сама отвечает про любую комнату и потому клиенту не выдана). CHECK на
-  колонке держит два инварианта сразу: у парной комнаты аватарки нет вовсе, и
-  путь всегда под префиксом своей комнаты — без второго владелец одной комнаты
-  мог бы записать себе путь к файлу чужой.
+  **A group room has an avatar**, set by the owner. The permission is
+  computed not by comparing with `auth.uid()` but by asking "do I own this
+  room" (`owns_room()` — a one-directional wrapper over `room_owner_id()`,
+  which itself answers about any room and is therefore not granted to the
+  client). A CHECK on the column holds two invariants at once: a two-person
+  room has no avatar at all, and the path is always under its own room's
+  prefix — without the second, the owner of one room could write themselves
+  a path to another room's file.
 
-  **Групповая комната не одалживает лицо участника.** Заимствованная аватарка
-  читалась как «это тот человек»: строка выглядела как он, тап открывал его
-  профиль — хотя выбран он был только тем, что вступил раньше остальных.
-  Теперь у группы без своей картинки нейтральный значок, а тап ведёт в детали
-  комнаты; лицо участника осталось у комнаты на двоих, которой этот человек и
-  является.
+  **A group room doesn't borrow a member's face.** A borrowed avatar read as
+  "this is that person": the row looked like them, a tap opened their
+  profile — even though they were chosen only because they joined before
+  everyone else. Now a group without its own picture has a neutral icon, and
+  a tap leads to the room details; a member's face stays on the two-person
+  room, which that person effectively is.
 
-  **Владельца не видно в комнате на двоих.** В схеме он есть всегда (это
-  минимальный `seq`), но делать ему там нечего — ни добавить, ни исключить, ни
-  переименовать, — и метка рядом с одним из двух имён только вызывала бы
-  вопрос, почему она там.
+  **The owner isn't shown in a two-person room.** In the schema there always
+  is one (the minimal `seq`), but there's nothing for them to do there — no
+  adding, removing or renaming — and a label next to one of the two names
+  would only raise the question of why it's there.
 
-  Проверено: `make verify` зелёный, 273 теста. Миграция применена на живую БД и
-  записана в `schema_migrations` (7 строк). RLS проверена симуляцией, 13
-  проверок: владелец ставит и заменяет аватарку (замена возвращает старый путь
-  на снос), чужой префикс и парная комната отвергаются, участник её не меняет,
-  но видит и открывает файл, посторонний не видит ни комнату, ни файл, залить
-  в папку комнаты может только владелец.
+  Verified: `make verify` green, 273 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations` (7 rows). RLS was verified by
+  simulation, 13 checks: the owner sets and replaces the avatar (replacement
+  returns the old path for removal), another room's prefix and a two-person
+  room are rejected, a member can't change it but sees and opens the file, an
+  outsider sees neither the room nor the file, and only the owner can upload
+  into the room's folder.
 
-- Отдельный вид уведомления для важного обновления (0.17.0) — kind
-  `app_update_important` и параметр `p_important` у
-  `enqueue_app_update_notifications()`. Миграция
+- A separate notification kind for an important update (0.17.0) — kind
+  `app_update_important` and the `p_important` parameter of
+  `enqueue_app_update_notifications()`. Migration
   `20260826220000_important_app_update_notice.sql`.
 
-  Текст обычного `app_update` не переписан намеренно: он уходит на каждую
-  заметную выкладку, и если сделать его настойчивым, к третьему разу
-  настойчивость перестанет что-либо значить. Новый вид — для выкладок, без
-  которых старый клиент показывает не то; 0.17.0 ровно такая: клиент build 43
-  и старше не фильтрует `posts.in_general_feed` и показывает пост,
-  адресованный ТОЛЬКО в комнату, ещё и в общей ленте (данные при этом не
-  текут — RLS пускает к нему лишь участников комнаты).
+  The text of the regular `app_update` was deliberately not rewritten: it
+  goes out on every notable release, and if it were made insistent, by the
+  third time the insistence would stop meaning anything. The new kind is for
+  releases without which an old client shows the wrong thing; 0.17.0 is
+  exactly that: clients on build 43 and older don't filter
+  `posts.in_general_feed` and show a post addressed ONLY to a room in the
+  general feed as well (no data leaks, though — RLS only lets room members
+  reach it).
 
-  Защита от повтора смотрит на оба вида сразу: про одну и ту же сборку
-  человеку не должно прийти двух уведомлений — ни одинаковых, ни «обычное, а
-  следом настойчивое». Тексты, как всегда, живут в Edge Function, и это две
-  правки в паре: `kind` в CHECK и `TEXTS` в `send-push`, иначе строка в
-  очереди молча пропускается.
+  Deduplication looks at both kinds at once: a person must not get two
+  notifications about the same build — neither identical ones nor "a regular
+  one followed by an insistent one". The texts, as always, live in the Edge
+  Function, and these are two paired edits: the `kind` in the CHECK and
+  `TEXTS` in `send-push`, otherwise the queue row is silently skipped.
 
-  Разослано после выкладки 0.17.0: очередь 3 получателя (все, у кого нет ни
-  одного устройства на build 44), доставлено 3 из 3.
+  Sent after the 0.17.0 release: a queue of 3 recipients (everyone without a
+  single device on build 44), 3 of 3 delivered.
 
-- Прочитано/доставлено у каждого сообщения (0.17.2) — закрывает пункт из
-  future-development.md, отдельной таблицы под статус сообщения не заводит.
-  Миграция `20260827100000_room_message_receipts.sql`.
+- Read/delivered on every message (0.17.2) — closes an item from
+  future-development.md without adding a separate table for message status.
+  Migration `20260827100000_room_message_receipts.sql`.
 
-  Рядом с `last_read_at` на строке `room_members` заводится вторая метка,
-  `last_delivered_at`, тем же приёмом, что и непрочитанные (20260826200000):
-  статус конкретного сообщения — не хранимое значение, а сравнение на
-  клиенте (`created_at` сообщения против чужой метки). `mark_room_read()`
-  теперь двигает обе метки разом — прочитанное не бывает недоставленным, — а
-  новая RPC `mark_rooms_delivered()` двигает «доставлено» во всех комнатах
-  вызывающего сразу и зовётся при каждой загрузке списка комнат: без своей
-  инфраструктуры push-подтверждений это и есть единственный сигнал
-  «доставлено», которым приложение располагает. `room_members` добавлена в
-  публикацию realtime вторым (после `room_messages`) применением этого
-  механизма в проекте — той же политикой SELECT, что и обычное чтение, так
-  что галочка у отправителя может перевернуться, пока он ещё смотрит на
-  экран.
+  Next to `last_read_at` on the `room_members` row, a second marker is
+  added, `last_delivered_at`, using the same technique as unread
+  (20260826200000): a specific message's status isn't a stored value but a
+  comparison on the client (the message's `created_at` against the other
+  person's marker). `mark_room_read()` now moves both markers at once — a
+  read message is never undelivered — and the new RPC
+  `mark_rooms_delivered()` moves "delivered" in all of the caller's rooms at
+  once and is called on every load of the room list: without its own push
+  acknowledgement infrastructure, that is the only "delivered" signal the
+  app has. `room_members` was added to the realtime publication — the second
+  use of this mechanism in the project (after `room_messages`) — under the
+  same SELECT policy as a normal read, so the sender's check mark can flip
+  while they are still looking at the screen.
 
-  В интерфейсе — на СВОИХ сообщениях: в комнате на двоих значок в духе
-  WhatsApp (отправлено/доставлено/прочитано), в групповой — агрегат
-  «прочитано N/M», потому что один значок не умеет сказать «прочитали трое
-  из пяти».
+  In the UI — on YOUR OWN messages: in a two-person room a WhatsApp-style
+  icon (sent/delivered/read), in a group an aggregate "Read N/M", because a
+  single icon can't say "three out of five have read it".
 
-  Проверено: `make verify` зелёный, 273 теста. Миграция применена на живую
-  БД и записана в `schema_migrations`. RLS проверена симуляцией: посторонний
-  не видит `room_members` чужой комнаты (0 строк), `mark_rooms_delivered()`
-  и `mark_room_read()` двигают метку только у вызывающего — в комнате из
-  трёх участников чужие метки не менялись ни разу.
+  Verified: `make verify` green, 273 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations`. RLS was verified by
+  simulation: an outsider doesn't see `room_members` of someone else's room
+  (0 rows), `mark_rooms_delivered()` and `mark_room_read()` move only the
+  caller's marker — in a room of three members, other people's markers never
+  changed.
 
-- Комната стала чатом, лента комнаты снята (0.17.3) — вместе с адресацией
-  поста: `post_rooms` и `posts.in_general_feed` дропнуты, посты, лежавшие
-  только в комнатах, удалены (8 штук на живой базе, без медиа и
-  комментариев). Миграция `20260828100000_rooms_without_feeds.sql`.
+- The room became a chat, the room feed was removed (0.17.3) — together with
+  post addressing: `post_rooms` and `posts.in_general_feed` were dropped,
+  posts that lived only in rooms were deleted (8 of them on the live
+  database, with no media or comments). Migration
+  `20260828100000_rooms_without_feeds.sql`.
 
-  Причина не в том, что ленту комнаты никто не открывал, а в цене второй
-  ветви правила видимости поста: о ней обязана помнить каждая новая фича про
-  посты, и 20260826190000 закрывала ровно такую находку через сутки после
-  наката комнат — фотография поста, адресованного только в комнату,
-  открывалась знакомому автора вне её. Адресация вернётся настройкой
-  видимости самого поста (future-development.md), а не комнатой.
+  The reason isn't that nobody opened the room feed, but the cost of the
+  second branch of the post visibility rule: every new post-related feature
+  is obliged to remember it, and 20260826190000 closed exactly such a finding
+  a day after rooms rolled out — the photo of a post addressed only to a room
+  could be opened by a connection of the author outside it. Addressing will
+  come back as a visibility setting on the post itself
+  (future-development.md), not as a room.
 
-  Правило видимости свёрнуто обратно в одну ветвь — политика `posts` и
-  `is_post_visible()`; `create_post_with_media()` вернулась к трём
-  аргументам; `my_rooms()` пересоздана без `last_post_at` (четвёртый раз, и
-  всё по той же причине — `create or replace` не меняет OUT-колонки); вид
-  уведомления `room_post`, его триггер и настройка `notify_room_posts` ушли
-  вместе с тем, о чём уведомляли (и вместе с текстами в send-push — это
-  всегда две правки). В клиенте: экран ленты комнаты удалён, строка в списке
-  комнат открывает чат, участники и переименование переехали в кнопку в
-  AppBar чата, из композера ушли галочки адресатов.
+  The visibility rule was collapsed back into one branch — the `posts` policy
+  and `is_post_visible()`; `create_post_with_media()` went back to three
+  arguments; `my_rooms()` was recreated without `last_post_at` (the fourth
+  time, and all for the same reason — `create or replace` doesn't change OUT
+  columns); the `room_post` notification kind, its trigger and the
+  `notify_room_posts` setting went away along with what they notified about
+  (and along with the texts in send-push — it's always two edits). In the
+  client: the room feed screen was removed, a row in the room list opens the
+  chat, members and renaming moved to a button in the chat AppBar, and the
+  recipient check boxes left the composer.
 
-  Найдено симуляцией сразу после наката: ветвь «автор комментария мой сосед
-  по комнате» держалась на дропнутой `post_in_my_rooms()`, а тело
-  `security definer`-функции разрешается в рантайме — чтение комментариев
-  падало бы 42883 у всех, кому не хватило первой ветви. Политика `comments`
-  и `is_comment_visible()` вернулись к дороомнатному тексту, обе копии
-  правила разом.
+  Found by simulation right after the rollout: the "comment author is my
+  roommate" branch relied on the dropped `post_in_my_rooms()`, and the body of
+  a `security definer` function is resolved at runtime — reading comments
+  would have failed with 42883 for everyone for whom the first branch wasn't
+  enough. The `comments` policy and `is_comment_visible()` went back to their
+  pre-rooms text, both copies of the rule at once.
 
-  ЛОМАЕТ ВЫЛОЖЕННЫХ КЛИЕНТОВ, осознанно: build 46 и старше шлёт
-  `.eq('in_general_feed', true)` в запросе ленты (теперь 400) и зовёт RPC с
-  пятью параметрами (теперь 404). Поэтому за релизом идёт рассылка
-  `app_update_important` — см. «Рассылка „обновитесь“» в operations.md.
+  BREAKS SHIPPED CLIENTS, deliberately: build 46 and older sends
+  `.eq('in_general_feed', true)` in the feed query (now a 400) and calls the
+  RPC with five parameters (now a 404). So the release is followed by an
+  `app_update_important` broadcast — see the "update the app" broadcast in
+  operations.md.
 
-  Проверено: `make verify` зелёный, 269 тестов. Миграция применена на живую
-  БД и записана в `schema_migrations`. RLS проверена симуляцией на трёх
-  аккаунтах: посты видны ровно по `visible_author_ids()` (ни одной лишней
-  строки), число видимых объектов в `storage/posts` совпало с числом видимых
-  строк `post_media` у каждого, чат и комнаты не задеты.
+  Verified: `make verify` green, 269 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations`. RLS was verified by simulation
+  on three accounts: posts are visible exactly per `visible_author_ids()`
+  (not a single extra row), the number of visible objects in `storage/posts`
+  matched the number of visible `post_media` rows for each account, chat and
+  rooms unaffected.
 
-- Mute одной комнаты (0.17.3) — закрывает пункт из future-development.md.
-  Миграция `20260828110000_mute_one_room.sql`.
+- Mute a single room (0.17.3) — closes an item from future-development.md.
+  Migration `20260828110000_mute_one_room.sql`.
 
-  Настройка `notify_room_messages` отвечает на вопрос «хочу ли я пуши из
-  чатов вообще», а флаг `room_members.notifications_muted` — «хочу ли я их
-  из этого чата»: оживший групповой чат раньше глушили целиком вместе с
-  перепиской, которая нужна. Третья метка на строке участника и по той же
-  причине, что первые две (`last_read_at`, `last_delivered_at`): отношение
-  «человек ↔ комната» уже описано этой строкой, отдельная таблица повторяла
-  бы её ключ один в один. Пишет флаг RPC `set_room_muted()` — UPDATE-гранта
-  у таблицы нет и эта миграция его не заводит, а политика не умеет
-  ограничить, КАКИЕ колонки меняются, и открыла бы обе метки, по которым
-  считаются непрочитанные и рисуются галочки.
+  The `notify_room_messages` setting answers "do I want pushes from chats at
+  all", and the `room_members.notifications_muted` flag answers "do I want
+  them from this chat": previously a group chat that came alive had to be
+  silenced entirely, along with conversations that matter. A third marker on
+  the member row, for the same reason as the first two (`last_read_at`,
+  `last_delivered_at`): the "person ↔ room" relationship is already
+  described by this row, and a separate table would duplicate its key
+  one-to-one. The flag is written by the `set_room_muted()` RPC — the table
+  has no UPDATE grant and this migration doesn't add one, and a policy can't
+  restrict WHICH columns change and would open both markers that unread
+  counts and check marks are based on.
 
-  Mute — про пуши и только: непрочитанные считаются по-прежнему, значок
-  остаётся, а рядом с ним на строке списка появляется перечёркнутый
-  колокольчик. Переключатель — на экране комнаты, и он не только для
-  владельца: заглушённая комната — это про свой телефон, а не про комнату.
-  `my_rooms()` пересоздана пятый раз (набор OUT-колонок), чтобы флаг ехал
-  вместе со списком, а не вторым запросом.
+  Mute is about pushes and nothing else: unread is still counted, the badge
+  stays, and a crossed-out bell appears next to it on the list row. The
+  toggle is on the room screen, and it isn't owner-only: a muted room is
+  about your own phone, not about the room. `my_rooms()` was recreated for
+  the fifth time (the set of OUT columns) so the flag comes with the list
+  rather than in a second query.
 
-  Проверено: `make verify` зелёный. Миграция применена на живую БД и
-  записана в `schema_migrations`. RLS проверена симуляцией: `set_room_muted()`
-  меняет только строку вызывающего (чужие в той же комнате не тронуты), а
-  вызов для комнаты, в которой вызывающего нет, не меняет ничего.
+  Verified: `make verify` green. The migration was applied to the live DB and
+  recorded in `schema_migrations`. RLS was verified by simulation:
+  `set_room_muted()` changes only the caller's row (other rows in the same
+  room untouched), and a call for a room the caller isn't in changes nothing.
 
-- Медиа в сообщениях комнаты (0.17.3) — до 10 фото/видео на сообщение,
-  закрывает пункт из future-development.md. Миграция
+- Media in room messages (0.17.3) — up to 10 photos/videos per message,
+  closes an item from future-development.md. Migration
   `20260828120000_room_message_media.sql`.
 
-  Вложения лежат колонкой `room_messages.media` (jsonb), а не строками
-  отдельной таблицы, и это единственное такое место в проекте. Причина
-  первая — realtime отдаёт СТРОКУ: строки второй таблицы приехали бы
-  отдельным запросом, которого у подписки нет, и пузырь с фотографией
-  появлялся бы у остальных пустым. Вторая — CHECK «либо текст, либо
-  вложения» наконец выражается, потому что это условие одной строки (у поста
-  то же правило проверяется процедурно внутри `create_post_with_media()`).
-  Третья — обратный путь от файла к строке здесь не нужен: видимость
-  сообщения это членство в комнате, а комната написана в самом пути
-  `messages/<room_id>/<author_id>/…`.
+  Attachments live in a column, `room_messages.media` (jsonb), not as rows of
+  a separate table, and this is the only such place in the project. Reason
+  one: realtime delivers a ROW — rows of a second table would need a separate
+  query, which the subscription doesn't have, and a bubble with a photo would
+  appear empty for everyone else. Reason two: the CHECK "either text or
+  attachments" can finally be expressed, because it's a single-row condition
+  (for posts the same rule is checked procedurally inside
+  `create_post_with_media()`). Reason three: the reverse path from a file to
+  a row isn't needed here — message visibility is room membership, and the
+  room is written right in the path `messages/<room_id>/<author_id>/…`.
 
-  Форму и пути держит CHECK через immutable `room_message_media_ok()` — в
-  самом CHECK нельзя ни подзапрос, ни `jsonb_array_elements`. Она проверяет,
-  что каждый путь лежит под своей комнатой и своим автором, то есть правило
-  живёт на строке, а не только в политике. Функция выдана `authenticated`
-  не для вызова из клиента, а потому что CHECK вычисляется правами пишущего:
-  без гранта отправка падала бы 42501, что и показала симуляция.
+  Shape and paths are enforced by a CHECK via the immutable
+  `room_message_media_ok()` — a CHECK itself can contain neither a subquery
+  nor `jsonb_array_elements`. It verifies that each path lies under its own
+  room and its own author, so the rule lives on the row, not just in the
+  policy. The function is granted to `authenticated` not for calling from the
+  client but because a CHECK is evaluated with the writer's privileges:
+  without the grant, sending would fail with 42501, as the simulation showed.
 
-  Отправка осталась обычным `insert` (RPC не понадобился),
-  `delete_own_room_message()` теперь снимает и вложения, возвращая
-  осиротевшие пути, а `orphaned_media_paths()` научилась префиксу
-  `messages/` — до неё брошенное вложение не подобрал бы никто.
+  Sending stayed a plain `insert` (no RPC was needed),
+  `delete_own_room_message()` now also removes attachments, returning the
+  orphaned paths, and `orphaned_media_paths()` learned the `messages/`
+  prefix — before that, nobody would have picked up an abandoned attachment.
 
-  В клиенте вынесено в `lib/shared/` то, что теперь общее у композера поста
-  и чата: выбор файлов со всеми его гейтами (`media_picking.dart` — формат,
-  длительность, размер, постер видео), просмотрщик и слайд
-  (`media_gallery.dart` вокруг интерфейса `GalleryMedia`) и подпись URL
-  (`signed_urls.dart`). Копий этих правил стало по одной, а не по две.
+  In the client, what is now shared between the post composer and the chat
+  was moved to `lib/shared/`: file picking with all its gates
+  (`media_picking.dart` — format, duration, size, video poster), the viewer
+  and slide (`media_gallery.dart` around the `GalleryMedia` interface) and URL
+  signing (`signed_urls.dart`). There is now one copy of each of these rules,
+  not two.
 
-  Проверено: `make verify` зелёный, 274 теста. Миграция применена на живую
-  БД и записана в `schema_migrations`. Симуляцией проверено: сообщение с
-  корректным вложением проходит, путь в чужую папку и одиннадцатый элемент
-  отбиваются CHECK'ом, `delete_own_room_message()` возвращает оба пути
-  (видео и его постер), объект в комнате виден её участнику и не виден
-  постороннему.
+  Verified: `make verify` green, 274 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations`. Verified by simulation: a
+  message with a valid attachment goes through, a path into someone else's
+  folder and an eleventh element are rejected by the CHECK,
+  `delete_own_room_message()` returns both paths (the video and its poster),
+  an object in a room is visible to its member and not visible to an
+  outsider.
 
-- Тап по пушу открывает то, о чём он (0.17.3) — закрывает пункт из
-  future-development.md, и не только для комнат: правило одно на все виды
-  уведомлений. Правка Edge Function `send-push` + клиент, миграции не
-  потребовалось.
+- Tapping a push opens what it's about (0.17.3) — closes an item from
+  future-development.md, and not only for rooms: there's one rule for all
+  notification kinds. An edit to the `send-push` Edge Function + the client;
+  no migration was needed.
 
-  Обнаружилось, что id никуда и не ехали: в payload строки очереди они были
-  с самых комнат, но `sendToToken()` слала одно `notification`, без `data`.
-  Теперь функция кладёт `kind` и найденные в payload id (`room_id`,
-  `post_id`, `comment_id`, `author_id`) — строками, как требует FCM, и
-  отсутствующий ключ просто не кладётся, а не уезжает как «undefined».
+  It turned out the ids weren't going anywhere: they had been in the queue
+  row's payload ever since rooms, but `sendToToken()` sent only a
+  `notification`, without `data`. Now the function adds `kind` and the ids
+  found in the payload (`room_id`, `post_id`, `comment_id`, `author_id`) — as
+  strings, as FCM requires, and a missing key is simply not added rather than
+  going out as "undefined".
 
-  Куда ведёт какой вид, решает одна чистая функция `pushTargetFrom()`, и
-  таблица там полная: комната → её чат, комментарий и ответ → комментарии
-  поста, новый пост / дайджест / «неделя тишины» → лента, уведомление об
-  обновлении и любой неизвестный вид → никуда. Вид без своего id тоже никуда
-  не ведёт: пустой экран хуже его отсутствия. Обрабатывает тап оболочка
-  приложения — единственный виджет, смонтированный всегда, пока есть сессия,
-  что и нужно для холодного старта, где тап приходит раньше самого экрана.
+  Where each kind leads is decided by one pure function, `pushTargetFrom()`,
+  and the table there is complete: room → its chat, comment and reply → the
+  post's comments, new post / digest / "week of silence" → the feed, the
+  update notification and any unknown kind → nowhere. A kind without its own
+  id also leads nowhere: an empty screen is worse than none. The tap is
+  handled by the app shell — the only widget that is always mounted while
+  there's a session, which is exactly what a cold start needs, where the tap
+  arrives before the screen itself.
 
-  Функция выложена (`supabase functions deploy send-push`) и отвечает 200 на
-  пустой прогон; старым клиентам лишний `data` безразличен. `make verify`
-  зелёный, 280 тестов — вся таблица видов покрыта.
+  The function was deployed (`supabase functions deploy send-push`) and
+  answers 200 on an empty run; old clients don't care about the extra
+  `data`. `make verify` green, 280 tests — the whole table of kinds is
+  covered.
 
-- «Печатает…» и «в сети» в чате комнаты (0.17.3) — закрывает пункт из
-  future-development.md. Миграция `20260828130000_room_presence.sql`.
+- "typing…" and "online" in the room chat (0.17.3) — closes an item from
+  future-development.md. Migration `20260828130000_room_presence.sql`.
 
-  Ни таблицы, ни колонки: presence Realtime держит это в памяти и раздаёт
-  подписчикам сам, а значение, устаревающее через секунду после записи,
-  хранить негде. Отсюда и граница фичи — «в сети» значит «сейчас в этом
-  чате», а не «заходил в приложение»; «был в сети в 12:40» потребовал бы
-  своей колонки и отдельного разговора про приватность.
+  Neither a table nor a column: Realtime presence keeps this in memory and
+  distributes it to subscribers itself, and a value that goes stale a second
+  after it's written has nowhere to be stored. Hence the feature's boundary —
+  "online" means "in this chat right now", not "opened the app"; "last seen
+  at 12:40" would need its own column and a separate conversation about
+  privacy.
 
-  Главное решение — канал ПРИВАТНЫЙ. Обычный канал Realtime открыт любому,
-  кто знает его имя: presence и broadcast, в отличие от Postgres Changes,
-  не проверяют RLS вообще, потому что ничего не читают из таблиц. Приватный
-  проверяет — через `realtime.messages`, где RLS включена, а политик не было
-  ни одной (то есть приватные каналы были запрещены целиком). Заведены две,
-  обе спрашивают `is_my_room_topic('room:<uuid>')`: регулярка перед
-  приведением типа обязательна, иначе `'room:мусор'::uuid` был бы не
-  «false», а ошибкой внутри политики.
+  The key decision is that the channel is PRIVATE. A regular Realtime channel
+  is open to anyone who knows its name: presence and broadcast, unlike
+  Postgres Changes, don't check RLS at all, because they don't read anything
+  from tables. A private one does check — via `realtime.messages`, where RLS
+  is enabled but there were no policies at all (meaning private channels were
+  forbidden entirely). Two were added, both asking
+  `is_my_room_topic('room:<uuid>')`: the regex before the type cast is
+  mandatory, otherwise `'room:мусор'::uuid` would not be "false" but an error
+  inside the policy.
 
-  Клиент объявляет `track({user_id, typing})` и снимает флаг тремя путями:
-  отправкой, уходом с экрана и таймером в 4 секунды после последнего
-  нажатия. Строка под названием комнаты показывает сначала «печатает» (в
-  группе — с именем), иначе «в сети» / «N в сети», и своё присутствие в счёт
-  не идёт.
+  The client announces `track({user_id, typing})` and clears the flag in
+  three ways: by sending, by leaving the screen, and by a 4-second timer after
+  the last keystroke. The line under the room name shows "typing" first (in a
+  group — with the name), otherwise "online" / "N online", and your own
+  presence doesn't count.
 
-  Проверено: `make verify` зелёный, 284 теста. Миграция применена на живую
-  БД и записана в `schema_migrations`; симуляцией проверено, что предикат
-  темы отвечает `true` на свою комнату и `false` на чужую, на несуществующую
-  и на мусор.
+  Verified: `make verify` green, 284 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations`; simulation confirmed the topic
+  predicate answers `true` for your own room and `false` for someone else's,
+  a nonexistent one, and garbage.
 
-- Заявка в знакомые участнику комнаты (0.17.3) — последний пункт раздела
-  «Комнаты» из future-development.md, и единственный из шести, потребовавший
-  новой сущности. Миграция `20260828140000_connection_requests.sql`.
+- A connection request to a room member (0.17.3) — the last item of the
+  "Rooms" section in future-development.md, and the only one of the six that
+  required a new entity. Migration `20260828140000_connection_requests.sql`.
 
-  До сих пор Connection заводился ровно одним способом — инвайт-кодом,
-  который показывают вживую. Комнаты завели ситуацию, в которой этого мало:
-  владелец собирает комнату из СВОИХ знакомых, её участники друг другу
-  знакомыми быть не обязаны, и людям, которые уже сидят в одном чате, негде
-  обменяться кодом. Поэтому заявку можно отправить ТОЛЬКО тому, с кем есть
-  общая комната (`shares_room_with_caller()` на сервере) — узкая дверь, из
-  которой не вырастает ни поиск людей, ни возможность написать незнакомцу.
+  Until now a Connection was created in exactly one way — an invite code
+  shown in person. Rooms created a situation where that isn't enough: the
+  owner assembles a room from THEIR OWN connections, its members don't have
+  to be connections of each other, and people who are already in the same
+  chat have no way to exchange a code. So a request can be sent ONLY to
+  someone you share a room with (`shares_room_with_caller()` on the server) —
+  a narrow door that grows into neither people search nor the ability to
+  message a stranger.
 
-  Пара в `connection_requests` упорядочена, в отличие от `connections`: у
-  заявки есть направление. Уникальность по (requester, recipient) держит
-  правило «одна заявка на пару за всё время, в любом статусе» — отказ
-  окончателен, потому что возможность просить снова превращает отказ в
-  переговоры; передумавший отправляет свою заявку в обратную сторону.
-  Встречная заявка не заводится, а принимается: двое, попросившие друг
-  друга, согласны оба.
+  The pair in `connection_requests` is ordered, unlike `connections`: a
+  request has a direction. Uniqueness on (requester, recipient) holds the
+  rule "one request per pair, ever, in any status" — a decline is final,
+  because being able to ask again turns a decline into a negotiation;
+  someone who changes their mind sends their own request in the opposite
+  direction. A counter-request isn't created but accepted: two people who
+  asked each other both agree.
 
-  Блок и отсутствие общей комнаты отвечают одним PT403 — различать их значит
-  отвечать на вопрос, который блок обязан скрывать; блок проверяется и при
-  ответе, потому что мог появиться после отправки. Отказ не уведомляет
-  никого: тихий отказ не должен становиться событием. Настройки-выключателя
-  у обоих новых видов пуша нет (единственные такие рядом с `app_update`):
-  заявка адресована лично и приходит раз в несколько месяцев.
+  A block and the absence of a shared room answer with the same PT403 —
+  distinguishing them would answer a question the block is obliged to hide;
+  the block is also checked when responding, because it may have appeared
+  after the request was sent. A decline notifies no one: a quiet decline
+  shouldn't become an event. Neither of the two new push kinds has an
+  off-switch setting (the only such ones besides `app_update`): a request is
+  addressed personally and comes once every few months.
 
-  В интерфейсе: кнопка «позвать в знакомые» у участника на экране комнаты —
-  ровно там, где двое незнакомых людей и встречаются, — и раздел входящих
-  заявок первым на экране «Знакомства». Тап по пушу открывает его же.
+  In the UI: an "Ask to connect" button next to a member on the room screen —
+  exactly where two strangers meet — and an incoming requests section first
+  on the "Connections" screen. Tapping the push opens it too.
 
-  Проверено: `make verify` зелёный, 292 теста. Миграция применена на живую БД
-  и записана в `schema_migrations`, Edge Function выложена (тексты — всегда
-  вторая правка к новому виду). Симуляцией проверено: путь «заявка → принятие
-  → Connection с method `connection_request`» проходит целиком, встречная
-  заявка сразу возвращает `connected`, вторая заявка отвечает PT409, заявка
-  тому, с кем нет общей комнаты, — PT403, ответ на чужую заявку — PT404, а
-  посторонний не видит саму строку заявки.
+  Verified: `make verify` green, 292 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations`, the Edge Function deployed
+  (texts are always the second edit for a new kind). Verified by simulation:
+  the path "request → accept → Connection with method `connection_request`"
+  goes through end to end, a counter-request immediately returns
+  `connected`, a second request answers PT409, a request to someone you share
+  no room with — PT403, a response to someone else's request — PT404, and an
+  outsider doesn't see the request row itself.
 
-- Кому виден пост (0.17.4) — при публикации и при редактировании выбирается
-  аудитория: все знакомые или только избранные. Миграция
+- Who can see a post (0.17.4) — when publishing and when editing, an audience
+  is chosen: all connections or favorites only. Migration
   `20260829100000_post_visibility.sql`.
 
-  Это замена адресации поста в комнаты, снятой днём раньше вместе с их
-  лентами, и разница между ними — весь смысл замены: комната была ГРУППОЙ,
-  отдельным местом со своим составом и своей лентой, а видимость — свойство
-  САМОГО ПОСТА, то есть колонка на его строке. Второй таблицы, второй ленты и
-  ветви, живущей отдельной жизнью, больше нет.
+  This replaces addressing posts to rooms, removed a day earlier together
+  with their feeds, and the difference between them is the whole point of
+  the replacement: a room was a GROUP, a separate place with its own members
+  and its own feed, whereas visibility is a property of THE POST ITSELF,
+  i.e. a column on its row. There's no longer a second table, a second feed,
+  or a branch living a life of its own.
 
-  Аудитория «только избранные» — это список избранных АВТОРА; отдельной
-  таблицы «близкие друзья» не заводилось, потому что такой список уже есть.
-  Стоит назвать вслух побочный смысл: избранное было чисто личным («хочу пуш
-  о его постах»), а теперь оно ещё и аудитория. Узнать, что ты у кого-то в
-  избранном, по-прежнему нельзя — строки видит только владелец, а метка
-  «только избранные» показывается лишь автору поста.
+  The "favorites only" audience is the AUTHOR's favorites list; no separate
+  "close friends" table was created, because such a list already exists. The
+  side meaning is worth stating out loud: favorites used to be purely
+  personal ("I want a push about their posts"), and now they are also an
+  audience. You still can't find out that you're in someone's favorites —
+  only the owner sees the rows, and the "favorites only" label is shown only
+  to the post's author.
 
-  Правило видимости снова двухветвенное и снова записано в двух местах —
-  политика `posts` и `is_post_visible()`. Предикатов избранного тоже два:
-  множество `authors_who_favorited_me()` для политики (хэшируется один раз) и
-  скаляр `is_favorited_by()` для построчных вызывающих. Оба `security
-  definer`, иначе подзапрос к ЧУЖОМУ избранному внутри политики
-  отфильтровался бы своей же RLS в ноль — тот же класс, что дыра
-  `blocked_users` из 0.9.0.
+  The visibility rule is two-branched again and again written in two places
+  — the `posts` policy and `is_post_visible()`. There are also two favorites
+  predicates: the set `authors_who_favorited_me()` for the policy (hashed
+  once) and the scalar `is_favorited_by()` for per-row callers. Both are
+  `security definer`, otherwise a subquery into SOMEONE ELSE's favorites
+  inside the policy would be filtered to zero by its own RLS — the same class
+  as the `blocked_users` hole from 0.9.0.
 
-  Симуляция сразу после наката нашла ошибку в обратную сторону: автор перестал
-  видеть собственный пост «только для избранных» — во вторую ветвь он проходил
-  бы, только держа в избранном самого себя. Добавлено явной строкой в обе
-  копии правила и в проверки миграции.
+  A simulation right after the rollout found a bug in the opposite
+  direction: the author stopped seeing their own "favorites only" post — they
+  would only pass the second branch by having themselves in favorites. Added
+  as an explicit line to both copies of the rule and to the migration's
+  checks.
 
-  Уведомления считаются по тому же правилу: пуш «новый пост» уходит тем, кто
-  добавил АВТОРА к себе, а видят пост те, кого добавил автор, — списки разные,
-  и без явного условия пуш ушёл бы тому, кому пост не покажут. Дайджест по той
-  же причине считает только видимое.
+  Notifications are computed by the same rule: the "new post" push goes to
+  those who added THE AUTHOR, while the post is seen by those the author
+  added — different lists, and without an explicit condition the push would
+  go to someone the post won't be shown to. For the same reason the digest
+  counts only what's visible.
 
-  У правки значение по умолчанию `null` («не трогать»), а не `'connections'`:
-  клиент build 47, который о видимости не знает, правит подпись у поста
-  «только для избранных» — и не должен этой правкой раскрыть его всем.
+  The edit's default value is `null` ("leave as is"), not `'connections'`:
+  a build 47 client, which doesn't know about visibility, edits the caption
+  of a "favorites only" post — and must not expose it to everyone with that
+  edit.
 
-  Проверено: `make verify` зелёный, 299 тестов. Миграция применена на живую БД
-  и записана в `schema_migrations`. Симуляцией проверено на трёх зрителях:
-  избранный видит 5 постов автора и 4 файла, не избранный — 4 и 3 (медиа и
-  файлы в Storage наследуют видимость поста), автор — свои 5.
+  Verified: `make verify` green, 299 tests. The migration was applied to the
+  live DB and recorded in `schema_migrations`. Verified by simulation with
+  three viewers: a favorited one sees 5 of the author's posts and 4 files, a
+  non-favorited one — 4 and 3 (media and files in Storage inherit the post's
+  visibility), the author — their own 5.
 
-- Двенадцатый полный аудит (0.17.5) — ревью всего проекта без опоры на прошлые
-  ревью: 15 миграций, `send-push`, весь `app/lib`, CI. Восемь находок, все
-  закрыты. Миграции `20260829110000_close_twelfth_audit_findings.sql` и
+- Twelfth full audit (0.17.5) — a review of the whole project without relying
+  on past reviews: 15 migrations, `send-push`, all of `app/lib`, CI. Eight
+  findings, all closed. Migrations
+  `20260829110000_close_twelfth_audit_findings.sql` and
   `20260829120000_message_media_delete_by_author.sql`.
 
-  **Главная — `/rpc/is_favorited_by` отвечал про чужое избранное.**
-  20260829100000 выдала `authenticated` обе функции дуэта, а нужна была одна:
-  `authors_who_favorited_me()` стоит в SELECT-политике `posts`, которая
-  вычисляется правами читающего, и без гранта лента выключилась бы у всех, — а
-  `is_favorited_by()` зовёт только `is_post_visible()`, сама `security definer`
-  и никому не выданная, то есть внутри неё вызов идёт правами владельца. Грант
-  был мёртвый, и через него любой залогиненный спрашивал «держит ли вот этот
-  человек меня в избранном» про кого угодно — ровно тот бит, ради сокрытия
-  которого `favorite_users` закрыта RLS до строк одного владельца. Тот же
-  класс, что мёртвый грант на `is_author_visible()` (0.17.1), но, в отличие от
-  него, не безобидный. Симуляцией проверено обе стороны: ручка отвечает 42501,
-  а пост «только избранным» по-прежнему виден избранному (и его счётчики) и
-  по-прежнему не виден остальным Connections.
-
-  Заодно исправлена формулировка инварианта, которую та же миграция унесла в
-  docs: «узнать, что ты у кого-то в избранном, нельзя» перестало быть правдой в
-  тот же момент — `authors_who_favorited_me()` без аргументов перечисляет всех,
-  кто добавил вызывающего. Это цена аудитории, а не оплошность: пока чужой
-  список решает, что человек увидит, спрятать от него сам факт попадания в
-  список нечем. Правильная формулировка — «чужой список закрыт, свой „кто
-  добавил меня“ открыт его владельцу».
-
-  **Аватарка удалённой комнаты была недостижимым мусором.** Сборщик сирот знал
-  `posts/`, `avatars/` и `messages/`, но не `rooms/` (20260826210000 завела
-  префикс, 20260828120000 расширяла сборщик и его не заметила). Хуже, чем
-  «не собирается»: обе storage-политики префикса считают право через
-  `owns_room()` → `room_owner_id()` → строку в `room_members`, которой у
-  пустой комнаты уже нет, так что объект нельзя было ни прочитать, ни удалить,
-  ни найти. Второй путь туда же — неудавшаяся best-effort уборка при замене
-  аватарки. Добавлена третья ветвь, спрашивающая `rooms.avatar_path`.
-  Проверено симуляцией: сирота собирается, живая аватарка и заливка моложе
-  суток — нет.
-
-  **У `room_messages.media` не было потолка размера** — единственная
-  клиентская колонка схемы без него и единственная, которая уезжает не в ответ
-  на запрос, а сама: таблица в публикации realtime, подписчик получает СТРОКУ.
-  Десять путей с законным префиксом и мегабайтом набивки рассылались всей
-  комнате одной отправкой. Теперь 400 символов на путь и 8000 байт на колонку —
-  двойной запас от честного максимума (самый длинный законный путь 161 символ,
-  десять элементов со всеми полями ≈ 3970 байт).
-
-  **Кнопка «позвать» после отказа висела намертво.** Экран читал только заявки
-  со статусом `pending`, поэтому отклонённая пропадала из списка — а отказ
-  молчалив по замыслу, так что отправителю не говорил никто. Кнопка
-  возвращалась и отвечала PT409 навсегда: второй строки в то же направление
-  `connection_requests_pair_key` не даст. Клиент теперь забирает свои заявки в
-  любом статусе (`fetchRequests()`), а PT409 обрабатывается как «уже
-  состоялось», а не как красная ошибка — обещание, которое до сих пор было
-  только комментарием над методом. Обратный ход при этом остался законным:
-  отказавший волен позвать сам, и это не та же просьба, а его решение. Два
-  новых виджет-теста на обе половины правила.
-
-  **Удаление аккаунта не убирало вложения из чатов.** Метод перечислял
-  аватарку, галерею и медиа постов, но не `room_messages.media`. Починка
-  упёрлась в storage: DELETE-политика префикса `messages/` требовала членства в
-  комнате, а `delete_own_account()` уносит `room_members` каскадом раньше, чем
-  клиент доходит до бакета, — то есть автору отказывали в его же файлах, и они
-  оставались до `reap_orphaned_media()` (сотня в час, не раньше суток). Условие
-  членства снято с DELETE и только с DELETE: чужого байта через третий сегмент
-  пути не достать при любом членстве, а SELECT и INSERT про комнату и спрашивать
-  о ней обязаны. Заодно закрыт тот же отказ у автора, который гасит своё
-  сообщение уже после ухода из комнаты (`delete_own_room_message()` членства не
-  требует и сейчас).
-
-  **Мелочи.** Шапка 20260828140000 ссылалась на «второй, симметричный индекс»,
-  которого нет и быть не должно: он запретил бы ровно тот обратный ход, который
-  абзацем ниже там же назван законным — уникальность направленная, и docs
-  приведены к этому чтению. Комментарии в `notification_preferences_repository`
-  («both room kinds», «seven booleans») и `feed_cache` («`room_<id>` scope»)
-  описывали фичи, снятые в 0.17.2 вместе с лентами комнат.
-
-  Проверено: `make verify` зелёный, 301 тест. Обе миграции применены на живую
-  БД и записаны в `schema_migrations`. Сквозной SQL-тест новой DELETE-политики
-  невозможен — платформа запрещает прямой `delete` из `storage.objects`
-  (`storage.protect_delete()`), вердикт вынесен по тексту политики в проверках
-  после наката.
-
-- Mute — фильтр ленты, а не стена (0.17.5) — найдено пользователем: замьютишь
-  знакомого, тапнешь по его аватарке — профиль открывается, а постов в нём нет.
-  Читается это как «у него нет постов» или «он меня заблокировал», хотя он
-  ничего не делал и о мьюте не знает: скрывала его МОЯ личная настройка.
-  Миграция `20260829130000_mute_is_a_feed_filter.sql`.
-
-  Причина — в том, что mute был конъюнктом единственного правила видимости
-  (`is_author_visible()`: «Connection, которого я не замьютил и с которым нет
-  блока»), то есть прятал человека насовсем: посты, их медиа, комментарии,
-  счётчики, файлы в Storage. Разнести «в ленте скрыть, в профиле показать»
-  внутри RLS нельзя в принципе — это один и тот же `select from posts`,
-  отличается лишь клиентский `.eq('author_id', …)`, — а завести для профиля
-  вторую копию правила значило бы повторить ошибку, ради исправления которой
-  правило и сводили в одну функцию (0.11.0, 0.13.2).
-
-  Поэтому mute ушёл из RLS целиком и означает теперь ровно две вещи: **нет в
-  общей ленте и нет пушей**. Правило видимости осталось одно и стало короче:
-  «я, системный аккаунт, либо Connection, с которым нет блока ни в одну
-  сторону». Тот же конъюнкт снят с `is_comment_visible_to_post_owner()` и
-  `is_commenter_visible_to_post_owner()` — иначе комментарий замьюченного стал
-  бы видимым (он проходит первой ветвью политики), а строка `users` с его
-  именем нет, и под постом появилась бы подпись без автора.
-
-  Ленту фильтрует теперь она сама: `ConnectionsRepository.fetchMutedIds()` +
-  параметр `mutedAuthorIds` у `FeedRepository.fetchPage()`, который
-  подмешивается в тот же `not.in.(…)`, что и системный аккаунт. Один запрос на
-  цикл загрузки, а не на страницу: все страницы прячут одних и тех же людей, и
-  ответ не может измениться посреди скролла — а `_refresh()` перечитывает его
-  заново, и mute/unmute как раз дёргает `feedRefreshTickProvider`, то есть
-  refresh. На профиле (`authorId` задан) запрос не делается вовсе. Неудача
-  чтения списка мьютов роняет страницу в обычный «не удалось загрузить» с
-  откатом на кэш, а не подставляет пустой набор: тихо показать ленту, полную
-  тех, кого просили не показывать, — хуже.
-
-  **Блокировка не тронута ни в одном месте и остаётся единственной границей
-  приватности**: она взаимна и целиком на сервере. Mute ею и не был — это
-  односторонняя настройка, второй стороне невидимая, — но теперь его исполняет
-  клиент, и полагаться на него как на границу нельзя. Ничего чужого этим не
-  открывается: замьюченный и так остаётся Connection, чью строку `users` и
-  аватарку политики показывали всегда (`is_connected_to_caller()` про mute не
-  спрашивает никогда). `has_muted()` жива и осталась ровно в двух функциях
-  уведомлений — замьютить и продолжать получать пуши было бы бессмыслицей;
-  проверка на это стоит в самой миграции.
-
-  Проверено симуляцией RLS на живой паре с mute, контрольные числа до/после:
-  постов замьюченного автора 0 → 5, всего видимых постов 27 → 32, строка
-  профиля 1 → 1 (она была видна и раньше — отсюда и пустая страница), счётчики
-  реакций замьюченного 0 → 5. Контроль на блоке: заблокированный видел 0
-  постов блокирующего и 0 счётчиков до правки и столько же после. `make verify`
-  зелёный, 306 тестов (+5: фильтр ленты, отсутствие фильтра и запроса на
-  профиле, один запрос на пагинацию, перечитывание на refresh, падение страницы
-  при нечитаемом списке мьютов).
-
-- Документация приведена к одному виду (0.17.5) — не фича, а уборка: часть
-  файлов держала у себя то, чего их названия не обещают.
-
-  **Заведён [docs/client-architecture.md](docs/client-architecture.md)** —
-  «Устройство клиента». Раньше такого места не было, и клиентские вещи
-  оседали там, где их писали: `data-model.md` («Схема и правило видимости»)
-  описывал маршрутизацию тапа по пушу — какой виджет его ловит, что бывает на
-  холодном старте, почему провайдер не autoDispose, — то есть ровно то, что от
-  схемы не зависит и при её неизменности может смениться целиком. Туда же
-  переехали клиентская половина presence («печатает…») и mute как фильтр
-  ленты. В `data-model.md` на их месте остались указатели, а само правило
-  видимости — там, где ему и место.
-
-  **Живой справочник уехал из исторического документа.**
-  `implementation-plan.md` объявлен историческим первой же строкой, но держал
-  раздел «Технические решения по умолчанию» с пометкой «отклонения стоит
-  фиксировать здесь» — то есть обещал актуальность там, где её нет по
-  определению. Список (Riverpod, go_router, пин Flutter 3.32.8, формат
-  Supabase-ключей) переехал в `client-architecture.md`.
-
-  **Индексы сведены.** README и таблица в CLAUDE.md/AGENTS.md перечисляют один
-  и тот же набор и делят его на живое и историческое; `future-development.archive.md`
-  в них раньше вообще не значился, хотя лежал в репозитории. Строка «пошаговый
-  план MVP, CI/деплой» больше не врёт: CI и деплой описаны в `operations.md`, а
-  план только рассказывает, как всё шло.
-
-  **Стиль.** У каждого файла теперь одинаковая шапка: заголовок, абзац «что
-  это и чем это не является», у исторических — **Документ исторический.**
-  первой фразой (архив отложенного оформлялся blockquote'ом, теперь как все).
-  Живые документы в `docs/` переносятся по 80 символов — `future-development.md`
-  был единственным, кто расходился сам с собой: шапка обёрнута, тело нет.
-  Переупаковка пословно проверена, текст не изменился. Исторические файлы
-  оставлены как есть: их не положено править, и переносить в них строки значило
-  бы залить `git blame` шумом ради косметики.
-
-  Заодно поправлены два устаревших утверждения: README обещал в отложенных
-  фичах «медиа в сообщениях» (сделано в 0.17.3), а `docs/` описывался как
-  «схема БД, эксплуатация, планы».
-
-- Исправлено дублирование сообщений в комнатах (0.17.6) — на слабой сети
-  `sendMessage()` иногда посылало одно и то же сообщение вдвоём: `.timeout()`
-  в Dart не отменяет сам запрос, а лишь перестаёт его ждать, поэтому исходный
-  insert порой всё же долетал до сервера уже после того, как клиент показал
-  ошибку. Черновик при ошибке не очищается, и повторный тап «отправить»
-  раньше минтил новый `client_token` — уникальный индекс на
-  `(author_id, client_token)` не срабатывал, и в БД оседали две разные строки
-  с одинаковым текстом. Токен теперь минтится один раз на черновик и
-  переиспользуется, пока текст/вложения не изменились: повторная отправка
-  того же черновика либо создаёт сообщение один раз, либо — если предыдущая
-  попытка уже долетела — получает обратно ту же строку через уже
-  существующую обработку `23505` в `RoomsRepository.sendMessage`.
-
-- Первая сборка под iOS и собственная иконка вместо стандартной Flutter
-  (0.18.0) — приложение впервые собрано и загружено в TestFlight.
-  `app/ios/Podfile` закрепляет `platform :ios, '15.0'` (требование
-  `firebase_core`), `IPHONEOS_DEPLOYMENT_TARGET` в `Runner.xcodeproj` поднят с
-  12.0 до 15.0 во всех конфигурациях сборки. `ExportOptions.plist` и
-  `DEVELOPMENT_TEAM` в `project.pbxproj` используют один и тот же Apple Team
-  ID; `Runner.entitlements` объявляет `aps-environment: development` — Xcode
-  сам переписывает его на `production` при архивации под App Store (см.
-  `docs/ios-deployment-guide.md`). `Info.plist` дополнен
-  `NSPhotoLibraryUsageDescription`, `UIBackgroundModes: remote-notification` и
-  `ITSAppUsesNonExemptEncryption: false` под push-уведомления через APNs (см.
-  `docs/ios-push-apns-setup.md`). Новый `make build-ios` — compile-check без
-  подписи (`--no-codesign`), не для реального релиза. Собственная иконка
-  (вместо стандартной Flutter) заведена и для iOS
-  (`AppIcon.appiconset`, все 15 размеров без альфа-канала — иначе App Store
-  отклоняет 1024×1024 маркетинговый значок), и для Android (`mipmap-*`).
-  Версия `app/pubspec.yaml` — `0.18.0+51`.
-
-- Заголовки секций на экране «Настройки» (0.18.1) — «Notifications» и
-  «Account» отделены от строк приглушённым caption-стилем
-  (`titleSmall`, `onSurfaceVariant`, `letterSpacing: 0.1`, заглавными буквами)
-  вместо визуального слияния с обычными пунктами списка. Заодно
-  `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` в
-  `main.dart` — Android 15+/`targetSdk 36` требует edge-to-edge явно,
-  иначе `MediaQuery.viewInsets.bottom` может не приходить на части
-  устройств. Версия `app/pubspec.yaml` — `0.18.1+52`.
-
-- Android-иконка переведена на adaptive icon (0.18.2) —
-  `mipmap-anydpi-v26/ic_launcher.xml` composit-ит отдельные слои
-  foreground/background/monochrome вместо одного плоского PNG на
-  каждую плотность; foreground залит на 61% канвы (66/108 safe zone) —
-  не 88%, как на iOS: разные лаунчеры Android по-разному кадрируют
-  выступающий за safe zone контент, что и подтвердилось на Honor.
-  Минимальная поддерживаемая версия Android — 10 (`minSdk 29`).
-  Версия `app/pubspec.yaml` — `0.18.3+54`.
-
-- Иконка push-уведомлений на Android вместо сплошного кружка (0.18.4) —
-  FCM для фонового/terminated показа брал `android:icon` лаунчера,
-  тот со времён 0.18.2 полноцветный adaptive icon, а строка состояния
-  рисует только альфа-канал маленькой иконки; поскольку фон лаунчера
-  непрозрачен целиком, силуэт схлопывался в закрашенный круг. Добавлен
-  `ic_stat_notify` (`drawable-*dpi`) — вырезан из monochrome-слоя
-  адаптивной иконки, но с меньшими полями (~6% против ~40% safe zone
-  у лаунчера), иначе на 24dp глиф читается точкой; `AndroidManifest.xml`
-  указывает на него через
-  `com.google.firebase.messaging.default_notification_icon`. Проверено
-  на физическом устройстве через `notification_outbox`/`send-push`.
-  Версия `app/pubspec.yaml` — `0.18.4+55`.
-
-- Тринадцатый полный аудит (0.18.6) — семь находок, пять серверных и две
-  клиентские. Миграция `20260905100000_close_thirteenth_audit_findings.sql`.
-
-  **Сосед по комнате читал всю галерею профиля.** SELECT-политика префикса
-  `avatars/` с 20260826180000 содержала ветвь `shares_room_with_caller(...)`,
-  чтобы у соседа по комнате не было пустого кружка в списке участников. Ветвь
-  вышла ПРЕФИКСНОЙ — она отвечала «да» про любой объект под `avatars/<uid>/`, а
-  там лежит вся галерея, до 80 фотографий. RLS на `profile_photos` соседа по
-  комнате при этом не пускает вовсе, то есть строки были скрыты, а байты — нет:
-  `storage.list('avatars/<uid>')` проходит ту же политику и перечислял их все.
-  Ровно ту же ошибку — префикс вместо объекта — 20260826190000 уже исправляла у
-  `posts/`; у `avatars/` она была незаметна до комнат, потому что до них обе
-  оставшиеся ветви (своё и Connection) префиксу и равнялись. Ветвь заменена на
-  `is_room_peer_avatar(path)`: сосед по комнате видит ровно один объект —
-  текущую `users.avatar_path`. Воспроизведено и проверено симуляцией RLS через
-  Management API на фикстуре «владелец собрал комнату из двух своих знакомых,
-  которые друг другу не знакомы»: до правки сосед видел 0 строк галереи и 4
-  объекта, после — 0 строк и 1 объект (именно аватарку); у Connection и у
-  самого владельца галереи контрольные 4/4 не изменились.
-
-  **Мёртвый грант публиковал `/rpc/set_post_media`.** Третья находка этого
-  класса подряд (после `is_author_visible()` и `is_favorited_by()`) и самая
-  дорогая: `set_post_media()` не проверяет «ни текста, ни медиа» и не может —
-  она видит только медиа, — так что вызов с пустым `items` по собственному
-  посту без подписи оставлял пустой пост живым в ленте у всех знакомых до
-  ближайшего `purge_empty_posts()`. Грант держался ради build 41, но условие
-  «когда `min(app_build)` перевалит за 42» выполнилось с другой стороны:
-  20260828100000 выключила ленту и публикацию всем сборкам 46 и ниже. Клиент
-  функцию не зовёт — `updatePost()` ходит через `update_post_with_media()`, а та
-  вызывает её изнутри `security definer`, где грант не нужен. Грант снят,
-  функция осталась. Крон `purge-empty-posts` остаётся: прямой INSERT в `posts`
-  никуда не делся.
-
-  **Ретрай, сужающий аудиторию, не отзывал уже поставленные в очередь пуши.**
-  `enqueue_post_notifications()` — AFTER INSERT, а ветка `on conflict` в
-  `create_post_with_media()` — UPDATE. Публикация «всем знакомым», которая
-  закоммитилась уже после того, как `.timeout()` перестал её ждать, успевала
-  разложить `new_post`; композер оставался открытым с живым токеном, и
-  следующий тап — уже с «только избранным» — менял колонку, не трогая очередь.
-  Пуш «у Пети новый пост» доходил до того, кому пост не покажут. Теперь такой
-  ретрай удаляет из `notification_outbox` ещё не отправленные `new_post` про
-  этот пост у всех, кого нет в избранном автора. Уже отправленное не трогается
-  (отозвать пуш нельзя), `digest` не трогается вовсе (он не называет пост, а
-  считает их), обратный ход пушей не досылает. Проверено симуляцией: после
-  публикации `new_post` лежит у обоих подписчиков, после ретрая с сужением — у
-  того, кто в избранном автора, остаётся, у второго исчезает.
-
-  **Четыре RPC комнаты были оракулом существования.** `rename_room()`,
-  `add_room_member()`, `remove_room_member()` и `set_room_avatar()` отвечали
-  `PT404` на несуществующую комнату и `PT403` на чужую, а `security definer`
-  проносит вопрос мимо RLS — по коду ответа перебором uuid отличалась живая
-  комната от выдуманной. Проект закрывает такие оракулы везде и называет
-  правило вслух («„не мой“ и „не существует“ обязаны быть неотличимы» —
-  `delete_own_comment()`, `set_post_media()`, `delete_own_room_message()`);
-  эти четыре были единственным исключением. Обе проверки свёрнуты в одну по
-  `room_owner_id(...) is distinct from auth.uid()` — NULL от несуществующей
-  комнаты попадает в ту же ветку. Форма важна: `set_room_avatar()` спрашивала
-  владение через `not owns_room(...)`, а там NULL даёт NULL и ветка не
-  срабатывает вовсе — работало только потому, что выше стояла проверка
-  существования. Проверено симуляцией: у всех четырёх коды и тексты ошибок для
-  чужой живой комнаты и для выдуманного uuid теперь совпадают побайтово.
-  Клиента это не задело: `PT403` от этих RPC он нигде не разбирал.
-
-  **Лишний поколоночный грант `select (visibility)` на `posts`** снят: SELECT у
-  таблицы выдан целиком (`relacl` = `authenticated=rdm`), а табличная
-  привилегия покрывает и колонки, добавленные позже. Вреда не было, но
-  комментарий рядом утверждал обратное правило. Проверено до наката симуляцией
-  с откатом: `attacl` колонки становится NULL, `has_column_privilege` остаётся
-  `true`.
-
-  **Null во вложенном `users` ронял весь список заявок.**
-  `ConnectionRequest.fromRow` кастовал embed к non-nullable `Map`, но заявку
-  делает читаемой не она сама, а общая комната: стоит одной стороне выйти из
-  комнаты — PostgREST отдаёт `null`, каст бросает `_TypeError` из
-  `fetchRequests()`, провайдер уходит в error, а оба экрана читают его как
-  `.value ?? const []`. Входящие заявки исчезали из вкладки «Знакомства»
-  насовсем — строка, из-за которой это происходит, сама не пропадает никогда.
-  `otherName`/`otherAvatarPath` стали nullable, строка остаётся в списке под
-  `connectionRequestUnknownName` в обоих ARB. Именно остаётся, а не
-  отбрасывается: копия отправителя — это то, что не даёт кнопке «позвать»
-  вернуться в направление, которое `connection_requests_pair_key` второй раз не
-  примет, а получатель ответить на такую заявку по-прежнему может
-  (`respond_to_connection_request()` общей комнаты не требует). Новый
-  `connections_repository_test.dart` покрывает обе стороны.
-
-  **`ref` после `await` до проверки `mounted`** — семь мест. `WidgetRef`
-  держится на `BuildContext` и после размонтирования **бросает**
-  (`StateError`), причём и в release. Бросок ловил собственный `catch` метода,
-  тот выходил по `!mounted` — и обновление молча не происходило: вкладки ленты,
-  комнат и знакомств живут в `IndexedStack` шелла, остаются смонтированными и
-  показывали состояние до тапа, предлагая действие, которое сервер уже
-  выполнил. Переставить `mounted` выше — не лечение, это меняет проглоченный
-  бросок на сознательно пропущенное обновление. Заведён
-  `lib/shared/refresh_after_await.dart` (обёртка над
-  `ProviderScope.containerOf(context, listen: false)`), контейнер захватывается
-  ДО `await` и переживает экран; правило описано один раз там и в
-  `docs/client-architecture.md`.
-
-  Заодно поправлена шапка `20260828140000_connection_requests.sql`: она
-  утверждала «одна заявка на пару за всё время» и ссылалась на «второй,
-  симметричный индекс ниже», которого нет и не должно быть — он запретил бы
-  обратный ход, законный по тому же абзацу. Правился только текст комментария,
-  DDL миграция не менял; `docs/data-model.md` это расхождение уже описывал и
-  приведён в соответствие.
-
-- Документация сверена с кодом (0.18.6) — не фича, а вторая уборка после
-  0.17.5. Та приводила файлы к одному виду; эта проверяла, что написанное в
-  них ещё правда.
-
-  **Четыре устаревших утверждения, все про одно и то же изменение.** После
-  20260829130000 mute перестал быть правилом RLS, а README продолжал обещать,
-  что «от заблокированного или замьюченного человека скрыты и посты, и
-  комментарии независимо от версии клиента» — то есть называл границей
-  приватности то, что ею перестало быть; черновик листинга App Store обещал
-  ровно это же будущим читателям в сторе. Оба переписаны: блокировка —
-  граница, mute — личная настройка ленты. В `data-model.md` туда же попали
-  три места, за которыми правки не поспели: видимость `post_media`
-  описывалась join'ом к `visible_author_ids()` (своей копии правила у неё нет
-  с 20260826180000), видимость `profile_photos` — как «то же правило, что у
-  аватарки в Storage» (с 20260905100000 они разошлись на ветвь соседа по
-  комнате), и `shares_room_with_caller()` числилась прямо в storage-политике,
-  хотя стоит там теперь через `is_room_peer_avatar()`. Плюс сценарий старой
-  дыры с `dislikes_disabled` был написан в настоящем времени и опирался на
-  mute, которым сегодня так не воспользоваться.
-
-  **Черновик листинга App Store обещал несуществующую фичу.** Дважды —
-  «connect through invite links or QR codes» и «a QR code at an in-person
-  meeting», — хотя `qr_code` в `connections.method` это задел, а не путь: ни
-  одна живая строка через приложение с ним не пришла. Заодно в листинг
-  добавлено то, что появилось после его написания (заявки в знакомые, медиа и
-  «печатает…» в комнатах), а счётчики символов пересчитаны — все три были
-  неточны ещё до правок. В «Notes» записано, когда и по чему копия сверялась.
-
-  **Ссылки вели не в тот файл.** Шесть ссылок в `docs/` звали «раздел
-  „Конвенции работы“» и «„Грабли“» в `CLAUDE.md` — файл на шесть строк, где ни
-  того, ни другого нет: содержимое давно в `AGENTS.md`. Переставлены на него.
-  Тридцать таких же ссылок в комментариях миграций оставлены как есть — это
-  журнал, а не живой документ; вместо их правки в `CLAUDE.md` добавлен абзац,
-  который разрешает эту отсылку раз и навсегда.
-
-  **Правило, на которое ссылались по имени, нигде не было записано.**
-  `deleteRowsThenObjects` встречался в `data-model.md` трижды как известная
-  всем вещь, а объяснения не было ни в одном документе. Оно клиентское,
-  поэтому уехало в `client-architecture.md` отдельным разделом («Сначала
-  строки, потом объекты»), вместе с тем, почему объектная половина
-  best-effort и почему все семь мест ходят через один хелпер.
-
-  **Индексы опять разошлись с репозиторием** — `docs/review/` не значился ни в
-  README, ни в таблице `AGENTS.md`, ровно как `future-development.archive.md`
-  до 0.17.5. Добавлен в оба.
-
-  **Грабли пополнились четырьмя пунктами** по итогам тринадцатого аудита:
-  префиксная ветвь в storage-политике перестаёт равняться построчному правилу,
-  как только у неё появляется более узкая аудитория; `if not f(...)` с
-  NULL-возвратом не срабатывает вовсе; идемпотентный ретрай — это UPDATE, и
-  `AFTER INSERT`-триггеры на нём не повторяются; `ref` у Riverpod после
-  `await` бросает и в release.
-
-  **Стиль.** У `ios-push-apns-setup.md` не было вводного абзаца «что это и чем
-  не является» — единственный живой документ без него. Заголовок «Идеи на
-  потом» в `future-development.md` был сломанным предложением на 94 символа;
-  там же поправлена оборванная фраза в пункте про импорт из соцсетей и две
-  ссылки, написанные не в том формате, что остальные в файле. Перенос по 80
-  символов восстановлен везде, где разъехался (осталась одна строка — голый
-  URL, который не переносится). Новых файлов не заводилось: всё, что нашлось,
-  село в существующие.
-
-  **Опубликованная privacy policy обещала лишнего** (найдено при слиянии с
-  веткой, где она появилась). «Who you've muted, blocked or favorited is never
-  shown to anyone else — including the person concerned» верно для mute и
-  блока, но не для избранного: с тех пор как избранное стало аудиторией поста,
-  `authors_who_favorited_me()` выдана `authenticated` и обязана быть выдана —
-  без неё SELECT-политика `posts` отказывает читателю на каждой строке, — а она
-  перечисляет всех, кто добавил вызывающего к себе. Инвариант в
-  `data-model.md` уже был сформулирован правильно («чужой список избранного
-  закрыт, свой „кто добавил меня“ — открыт его владельцу»); формулировка в
-  policy приведена к нему.
-
-  **Terms of Use обещали действие, которого в приложении нет** — «you can
-  always end a connection or leave a room to stop seeing someone's content».
-  Выйти из комнаты можно, а разорвать Connection нельзя ничем: у
-  `authenticated` нет DELETE ни гранта, ни политики на `connections`, RPC
-  такой не существует, в `app/lib` нет ни одного упоминания, и сам вопрос
-  «нужна ли такая возможность» до сих пор открыт в future-development.md.
-  Формулировка заменена на то, что приложение правда умеет: заблокировать,
-  замьютить, выйти из комнаты. Место не косметическое — именно этот абзац
-  читают ревьюеры сторов, проверяя, что заявленные средства против абьюза
-  существуют.
-
-  Ещё три уточнения в privacy policy, все про недосказанное: галерея видна
-  Connections, а соседу по комнате — только текущая аватарка (после
-  20260905100000); метка прочтения описана как «read/delivered markers for
-  your own messages», хотя собирается ЧУЖАЯ — это твоя метка, по которой
-  остальные участники видят, дошло ли до тебя их сообщение; вместе с токеном
-  пуша хранится ещё и язык интерфейса (`device_tokens.locale`), которым
-  выбирается язык уведомления. Дата «Last updated» в обоих документах
-  сдвинута — этого требует их собственный раздел «Changes to this policy».
-
-  **Имя правообладателя было разным в трёх местах** — «Timofei Rusakov» на
-  опубликованных privacy policy и terms of use, «Andre Roussakoff» в черновике
-  листинга App Store, там же с пометкой «confirm the name». Везде «Timofei
-  Rusakov», и в черновике рядом стоит напоминание держать три места в согласии.
-
-  **`docs/gh-pages/` не значился ни в одном индексе** — приехал с той же
-  веткой. Добавлен в README и в таблицу AGENTS.md, с пометкой, что править
-  надо исходник, а не ветку `gh-pages`: её переписывает CI при пуше в `main`.
-
-  **`ios-push-apns-setup.md` утверждал, что ключ APNs ещё не залит.** Залит —
-  iOS-пуши работают; из репозитория этого было не видно, и документ так и
-  остался написан как «что осталось сделать». Теперь он начинается с «This is
-  done» и держится ради двух вещей: проверить, что ключ на месте, и повторить
-  заливку, если он когда-нибудь пропадёт (отзыв, чужое удаление из Firebase,
-  новый проект). Проверок две — в Firebase Console и, когда туда не попасть,
-  со стороны базы:
-  поставить себе одно уведомление в `notification_outbox` и прочитать ответ
-  Edge Function, который `pg_net` кладёт в `net._http_response`
-  (`{"processed":1,"sent":0}` на аккаунте с одним лишь iPhone — подпись
-  отсутствующего ключа). Там же записано, что НЕ доказывает ничего: строка в
-  `device_tokens` (регистрация проходит и без ключа — тем эта поломка и тиха),
-  `sent_at` на строке очереди (`send-push` штампует всё, что забрал, независимо
-  от ответа FCM) и молчащий симулятор (он не принимает пуши в принципе).
-
-- Страницы GitHub Pages переехали в репозиторий, и их выкладывает CI (0.18.6) —
-  сделано не в этой ветке: приехало мержем и **уехало на `main` как 0.18.5**,
-  которая своей записи здесь не получила. Записано под 0.18.6, чтобы история
-  не потеряла кусок; версия, в которой оно вышло, названа здесь прямо.
-
-  Privacy policy, terms of use и обе страницы auth-потока (подтверждение email,
-  сброс пароля) до этого жили только в orphan-ветке `gh-pages` и правились
-  прямо там — то есть не проходили ни ревью, ни истории рядом с кодом, который
-  описывают. Теперь их исходник лежит в `docs/gh-pages/`, а
-  `.github/workflows/sync-gh-pages.yml` копирует его в ветку при пуше в `main`
-  и коммитит только при реальном изменении (`email-confirmed.html` кладётся как
-  `index.html` — под него настроен `site_url` в `supabase/config.toml`).
-  Править надо исходник: ветку CI перезапишет.
-
-  `CLAUDE.md` там же перешёл на `@AGENTS.md` — это import-синтаксис, он
-  подгружает файл в контекст, а не отсылает к нему читателя.
-
-- Разделители по дням и ответ на конкретное сообщение в чате (0.18.7) —
-  закрыты два пункта из future-development.md.
-
-  Разделители — чисто клиентская фича: `room_chat_screen.dart` строит список
-  элементов заново из уже загруженных сообщений на каждый `build()` (а не
-  держит отдельное состояние), вставляя метку дня везде, где два соседних
-  сообщения приходятся на разные календарные дни в местной зоне зрителя.
-  Пересчёт с нуля, а не патч существующего списка, — единственный способ не
-  завести дубль или пропуск метки на границе страницы: список сообщений
-  меняется в трёх разных местах (`_loadMore()` дописывает в конец, realtime
-  вставляет в начало, `_delete()` правит на месте), и держать вторую
-  синхронизированную структуру для каждого из них было бы источником ровно
-  той рассинхронизации, которую разделители должны предотвращать. Значения
-  «Сегодня»/«Вчера» для недавних дней, полная дата — для остальных.
-
-  Ответ на сообщение — `room_messages.reply_to_id`, nullable самоссылка
-  (`on delete set null`, миграция `20260911100000_room_message_replies.sql`).
-  По дороге дважды наступили на грабли, обе теперь в AGENTS.md:
-
-  1. **INSERT-политика уронила отправку ЛЮБОГО сообщения в проде**, не только
-     ответов. Проверка «`reply_to_id` — из этой же комнаты» была написана как
-     голый `EXISTS (SELECT 1 FROM room_messages …)` прямо в политике —
-     подзапрос к таблице внутри её же политики скомпилировался в цикл
-     (`42P17 infinite recursion detected in policy`), и RLS-планировщик
-     строит план подзапроса на уровне запроса целиком, независимо от того, что
-     лежит в `reply_to_id` конкретной строки. Починено тем же приёмом, что и
-     `is_comment_visible()`/`my_room_ids()`: проверка вынесена в
-     `security definer`-функцию `room_message_in_room()`, внутри которой RLS
-     не действует вовсе. Хотфикс накачен на живой проект в течение нескольких
-     минут после поломки — «Подзапрос к своей же таблице» в AGENTS.md.
-  2. **PostgREST не резолвил embed self-referencing FK через обычный
-     синтаксис.** И `room_messages!reply_to_id`, и
-     `room_messages!room_messages_reply_to_id_fkey` либо не находили
-     relationship (`PGRST200`), либо резолвили его в обратную сторону —
-     каждое сообщение получало `reply_to: []` (кто ответил НА него, а не на
-     что ответило ОНО). PostgREST документирует self-reference через
-     `alias:fk_column(...)` — колонка как имя embed-таргета, без имени таблицы
-     и без `!`-хинта: `reply_to:reply_to_id(...)`; это единственный вариант,
-     который резолвится to-one и в нужную сторону.
-
-  Сама фича: свайп/long-press по сообщению открывает лист с «Ответить»
-  (кроме заглушек) и «Удалить» (только свои, живые) — раньше `onLongPress`
-  напрямую вызывал удаление, теперь под ним два разных действия. Композер
-  показывает превью «Ответ: Имя» + сниппет с кнопкой отмены, в отправленном
-  пузыре — цитата (автор + сниппет), тап по ней скроллит и на секунду
-  подсвечивает оригинал. Скролл к произвольному, возможно ещё не
-  подгруженному сообщению — задача, у которой нет решения через обычный
-  `ListView.builder` (большинство элементов физически не построены), поэтому
-  список переведён на `ScrollablePositionedList` (пакет
-  `scrollable_positioned_list`) — по образцу `reorderables`, уже принятому в
-  проекте: точечная зависимость под одну конкретную задачу интерфейса, а не
-  общая замена архитектуры экрана. `RoomMessage.replyToPreview` заполнен
-  только у сообщений, прочитанных через `fetchMessages`/`sendMessage`
-  (embed приезжает вместе со строкой); у сообщения, пришедшего по realtime,
-  Postgres Changes отдаёт только сырую колонку `reply_to_id` без джойна —
-  экран сам ищет оригинал в уже загруженном списке, а если не находит
-  (страница с ним ещё не подгружена), рисует «оригинал недоступен» вместо
-  падения.
-
-  Проверено: RLS-симуляцией через Management API (`set local role
-  authenticated` + `request.jwt.claims`, в транзакции с `rollback`) —
-  разрешён ответ на сообщение из своей комнаты, отклонён ответ на сообщение
-  из чужой комнаты и на несуществующий id; отдельно перепроверен и хотфикс
-  (обычная отправка снова работает). Затем вручную на физическом устройстве
-  на двух живых аккаунтах: разделители дат, весь цикл ответа (выбор
-  сообщения → превью → отправка → цитата в пузыре → тап по цитате → скролл и
-  подсветка), реалтайм-доставка ответа второй стороне.
-
-
-- Платформа и версия ОС установки (0.18.8) — `device_tokens` научилась
-  отвечать, на чём стоит установка, а не только какой версией приложения она
-  себя называет. Миграция
-  `20260912100000_device_platform_and_os.sql`, клиентская половина —
-  `shared/device_os.dart` парой к уже существующему `shared/app_version.dart`.
-
-  Вопрос вылез из локальной консоли (первый её экран показал разбивку по
-  сборкам): устройства сообщали `app_build` **на единицу выше**, чем стоит в
-  `pubspec.yaml`, дважды подряд — 0.18.6 как `+59` при `+58` в репозитории и
-  0.18.7 как `+60` при `+59`. Локализовать это по платформе было нечем: в
-  строке токена нет ничего, что отличило бы iOS от Android. Отсюда же
-  невозможна была и адресная рассылка «всем, кто на iOS», и она же —
-  ближайшее применение этих колонок.
-
-  `platform` — перечисление (`android`, `ios`, `macos`, `windows`, `linux`,
-  `fuchsia`, `web`), ровно то, что умеет вернуть `Platform.operatingSystem`,
-  плюс `web` под отложенную веб-версию. Свободным текстом делать нельзя: это
-  ключ, по которому собираются аудитории, и «iOS»/«ios»/«iPhone» в одной
-  колонке превращают любой `group by` в ложь.
-
-  `os_version` — только цифры и точки (`18.1`, `15`). Платформа отвечает
-  сентенцией, и каждая своей: iOS — `Version 18.1 (Build 22B83)`, Android —
-  `Android 15 (API 35)`. Хранить это дословно значит переложить разбор на
-  каждого читателя навсегда, а идентификатор сборки внутри ближе к отпечатку
-  устройства, чем к чему-то полезному. Клиент выдёргивает первую группу
-  цифр-и-точек, не больше трёх частей; `15.1.2.3` уезжает как `15.1.2`.
-
-  Обе колонки nullable, и оба CHECK пропускают NULL — по той же причине, что
-  и у `app_build`: строку пишет фоновый upsert при каждом запуске, и отказ по
-  ограничению уронил бы САМУ регистрацию пуш-токена, молча и вместе со всеми
-  уведомлениями. Нормализация живёт на клиенте именно поэтому, а не потому
-  что серверу лень. Выложенные версии про новые колонки не знают, так что до
-  их обновления у всех 14 живых установок там NULL — это ожидаемое состояние,
-  а не пропажа данных.
-
-  Грант на INSERT у `device_tokens` **поколоночный** (`grant insert
-  (app_build, app_version, fcm_token, locale, user_id)` из baseline), поэтому
-  новые колонки пришлось перечислить явно: без этого upsert с ними отлетел бы
-  по правам — снова тихо и снова вместе с регистрацией токена.
-
-  Проверено симуляцией от лица `authenticated`, а не на глаз: вставка с
-  `('ios', '18.1')` проходит, `'iPhone'` и сырое `Version 18.1 (Build 22B83)`
-  отбиваются своими CHECK, пара NULL проходит. Плюс восемь юнит-тестов на
-  разбор реальных ответов обеих платформ (`test/shared/device_os_test.dart`),
-  включая то, что из `Android 15 (API 35), SDK 35` берётся релиз, а не номер
-  API.
-
-- Жалобы на контент и модерация (0.18.8) — закрыт пункт «Полноценная
-  модерация и жалобы» из future-development.md и требование App Store 1.2 к
-  приложениям с пользовательским контентом. Миграция
-  `20260913100000_content_reports_and_moderation.sql`, кнопка «Пожаловаться» на
-  посте, комментарии, сообщении в комнате и в профиле знакомого, очередь
-  разбора — в локальной консоли (`console/`).
-
-  Блокировка знакомого, которая была до сих пор, модерацией не была и не
-  задумывалась ею: это личная граница между двумя людьми, владелец приложения
-  о ней не узнаёт вовсе.
-
-  **Скрытие сделано обратимым и одинаковым для всех, включая автора.**
-  Полумера «автор всё ещё видит свой пост» означала бы два ответа на вопрос
-  «виден ли объект», то есть конец правила видимости как одного правила.
-  Автор узнаёт о скрытии уведомлением, а не по дырке в своей стене. Условие
-  добавлено в `is_post_visible()`, и оттуда само разошлось на комментарии под
-  постом и на storage-политику медиа. Медиа сообщений потребовало отдельной
-  правки: его ветка в storage-политике была префиксной («объект в папке моей
-  комнаты») и про сами сообщения не знала — скрытое сообщение исчезло бы из
-  чата, а фотографии остались бы доступны по прямой ссылке. Тот же класс, что
-  находка с аватарками соседей по комнате, и лечится тем же приёмом.
-
-  **Запрет писать проверяется триггером, а не INSERT-политикой, и это главное
-  решение всей задачи.** Все девятнадцать пишущих RPC проекта —
-  `security definer`, выданные `authenticated`, а `force row level security`
-  не включён нигде: внутри такой функции RLS не применяется вовсе. Условие
-  «забанен» в политике `posts` не остановило бы никого, потому что посты
-  создаются через `create_post_with_media()`. Триггер висит на таблице, а не
-  на роли, поэтому одно тело закрывает и прямую вставку, и RPC. Проверено
-  симуляцией обоих путей: забанённый получает `AMB01` и там, и там, а не
-  забанённый публикует как обычно. Клиент отличает бан от отказа политики по
-  своему SQLSTATE и показывает дату окончания из DETAIL, вместо того чтобы
-  предлагать повторить попытку.
-
-  Три вещи, на которых эта миграция чуть не сломала прод и которые стоит
-  помнить:
-
-  1. **42P17.** Первая редакция добавляла в политику редактирования поста
-     подзапрос к `posts` — внутри политики самой `posts`. Это падение любого
-     обновления поста, ровно как в 20260911100000. Проверка оказалась не
-     нужна: UPDATE у `posts` выдан поколоночно и только на `text`, границу
-     держит грант, а не политика.
-  2. **Потерянный вид уведомления.** CHECK на `notification_outbox`
-     пересоздаётся через `drop`+`add`, и список, собранный по прочитанным
-     миграциям, не содержал `connection_accepted` — молча перестали бы
-     приходить уведомления о принятой заявке. Список берётся из
-     `pg_constraint` живой базы, и никак иначе.
-  3. **Дефолтные гранты.** Новая таблица приезжает с полными правами для
-     `authenticated`, а новая функция — с `execute`, то есть сама становится
-     эндпоинтом PostgREST. Отсюда `revoke all` у таблицы и явные `revoke
-     execute` у всех новых функций, кроме диспетчера `can_report()`: его одного
-     и видно снаружи. Вызывать `is_post_visible()` прямо из политики нельзя —
-     выражение политики исполняется от лица вызывающего, а гранта у него нет,
-     и первая же жалоба отлетела бы на 42501.
-
-  Побочно: меню на карточке поста теперь есть у каждого поста, а не только у
-  своего (у чужого в нём «Пожаловаться»), и его пришлось сжать до 32×32 —
-  дефолтный тап-таргет в 48px добавлял каждой карточке ленты ~28px высоты.
-  Поймал это тест на подгрузку страниц, который от возросшей высоты стал
-  парковать прокрутку у самого низа.
-
-- Видно, почему до человека не доходят пуши (0.18.8) — миграция
-  `20260913120000_push_registration_status.sql` плюс запись исхода в
+  **The main one — `/rpc/is_favorited_by` answered about other people's
+  favorites.** 20260829100000 granted both functions of the pair to
+  `authenticated`, but only one needed it: `authors_who_favorited_me()` sits
+  in the `posts` SELECT policy, which is evaluated with the reader's
+  privileges, and without the grant the feed would have shut off for
+  everyone — whereas `is_favorited_by()` is called only by
+  `is_post_visible()`, which is itself `security definer` and granted to no
+  one, so inside it the call runs with the owner's privileges. The grant was
+  dead, and through it any logged-in user could ask "does this person have me
+  in favorites" about anyone — exactly the bit that `favorite_users` is
+  locked down by RLS to a single owner's rows to hide. The same class as the
+  dead grant on `is_author_visible()` (0.17.1), but, unlike that one, not
+  harmless. Both sides verified by simulation: the endpoint answers 42501,
+  while a "favorites only" post is still visible to a favorited user (along
+  with its counters) and still not visible to other Connections.
+
+  Also fixed the wording of the invariant that the same migration carried
+  into docs: "you can't find out that you're in someone's favorites" stopped
+  being true at that same moment — `authors_who_favorited_me()` with no
+  arguments lists everyone who added the caller. This is the price of an
+  audience, not an oversight: as long as someone else's list decides what a
+  person will see, there's no way to hide from them the very fact of being on
+  the list. The correct wording is "someone else's list is closed; your own
+  'who added me' is open to its owner".
+
+  **A deleted room's avatar was unreachable garbage.** The orphan collector
+  knew `posts/`, `avatars/` and `messages/`, but not `rooms/`
+  (20260826210000 introduced the prefix, 20260828120000 extended the
+  collector and missed it). Worse than "not collected": both storage policies
+  for the prefix compute the permission via `owns_room()` →
+  `room_owner_id()` → a row in `room_members`, which an empty room no longer
+  has, so the object could be neither read, deleted, nor found. A second path
+  to the same place is a failed best-effort cleanup when replacing the
+  avatar. A third branch was added that asks `rooms.avatar_path`. Verified by
+  simulation: an orphan is collected, a live avatar and an upload younger
+  than a day are not.
+
+  **`room_messages.media` had no size cap** — the only client-writable column
+  in the schema without one, and the only one that goes out not in response
+  to a query but on its own: the table is in the realtime publication, and
+  the subscriber receives the ROW. Ten paths with a legitimate prefix and a
+  megabyte of padding were broadcast to the whole room in a single send. Now
+  it's 400 characters per path and 8000 bytes per column — twice the honest
+  maximum (the longest legitimate path is 161 characters, ten elements with
+  all fields ≈ 3970 bytes).
+
+  **The "Ask to connect" button got permanently stuck after a decline.** The
+  screen read only requests with `pending` status, so a declined one vanished
+  from the list — and a decline is silent by design, so nobody told the
+  sender. The button came back and answered PT409 forever:
+  `connection_requests_pair_key` won't allow a second row in the same
+  direction. The client now fetches its own requests in any status
+  (`fetchRequests()`), and PT409 is handled as "already happened" rather than
+  a red error — a promise that until now existed only as a comment above the
+  method. The reverse move remains legitimate: the person who declined is
+  free to ask themselves, and that isn't the same request but their own
+  decision. Two new widget tests for both halves of the rule.
+
+  **Account deletion didn't remove chat attachments.** The method listed the
+  avatar, the gallery and post media, but not `room_messages.media`. The fix
+  ran into storage: the DELETE policy of the `messages/` prefix required room
+  membership, and `delete_own_account()` removes `room_members` by cascade
+  before the client gets to the bucket — so the author was refused their own
+  files, and they stayed until `reap_orphaned_media()` (a hundred per hour,
+  no sooner than a day). The membership condition was removed from DELETE,
+  and only from DELETE: no one else's byte can be reached through the third
+  path segment regardless of membership, whereas SELECT and INSERT are about
+  the room and must ask about it. This also closes the same refusal for an
+  author who deletes their message after leaving the room
+  (`delete_own_room_message()` doesn't require membership even now).
+
+  **Minor items.** The header of 20260828140000 referred to a "second,
+  symmetric index" that doesn't exist and must not: it would forbid exactly
+  the reverse move that the paragraph below in the same place calls
+  legitimate — uniqueness is directional, and the docs were brought in line
+  with this reading. Comments in `notification_preferences_repository`
+  ("both room kinds", "seven booleans") and `feed_cache` ("`room_<id>` scope")
+  described features removed in 0.17.2 together with room feeds.
+
+  Verified: `make verify` green, 301 tests. Both migrations were applied to
+  the live DB and recorded in `schema_migrations`. An end-to-end SQL test of
+  the new DELETE policy is impossible — the platform forbids a direct
+  `delete` from `storage.objects` (`storage.protect_delete()`), so the
+  verdict was based on the policy text in the post-rollout checks.
+
+- Mute is a feed filter, not a wall (0.17.5) — found by a user: mute a
+  connection, tap their avatar — the profile opens, but there are no posts in
+  it. That reads as "they have no posts" or "they blocked me", even though they
+  did nothing and don't know about the mute: what hid them was MY personal
+  setting. Migration `20260829130000_mute_is_a_feed_filter.sql`.
+
+  The cause: mute was a conjunct of the single visibility rule
+  (`is_author_visible()`: "a Connection I haven't muted and with whom there is
+  no block"), so it hid the person entirely: posts, their media, comments,
+  counters, files in Storage. Splitting "hide in the feed, show in the profile"
+  inside RLS is impossible in principle — it's the same `select from posts`,
+  differing only in the client-side `.eq('author_id', …)` — and adding a second
+  copy of the rule for the profile would repeat the very mistake that the rule
+  was consolidated into a single function to fix (0.11.0, 0.13.2).
+
+  So mute left RLS entirely and now means exactly two things: **not in the
+  main feed and no pushes**. There is still one visibility rule, and it got
+  shorter: "me, the system account, or a Connection with no block in either
+  direction". The same conjunct was removed from
+  `is_comment_visible_to_post_owner()` and
+  `is_commenter_visible_to_post_owner()` — otherwise a muted person's comment
+  would become visible (it passes the policy's first branch) while the `users`
+  row with their name would not, and a caption with no author would show up
+  under the post.
+
+  The feed now filters itself: `ConnectionsRepository.fetchMutedIds()` + a
+  `mutedAuthorIds` parameter on `FeedRepository.fetchPage()`, which is mixed
+  into the same `not.in.(…)` as the system account. One request per load cycle,
+  not per page: every page hides the same people, and the answer can't change
+  mid-scroll — while `_refresh()` re-reads it, and mute/unmute is exactly what
+  pokes `feedRefreshTickProvider`, i.e. a refresh. On a profile (`authorId`
+  set) the request isn't made at all. A failure to read the mute list drops
+  the page into the usual "failed to load" with a fallback to cache, rather
+  than substituting an empty set: quietly showing a feed full of the people
+  you asked not to be shown is worse.
+
+  **Blocking is untouched everywhere and remains the only privacy
+  boundary**: it is mutual and entirely server-side. Mute never was one — it's
+  a one-sided setting, invisible to the other side — but now the client
+  enforces it, and it can't be relied on as a boundary. Nothing belonging to
+  anyone else is exposed by this: the muted person is still a Connection whose
+  `users` row and avatar the policies always showed
+  (`is_connected_to_caller()` never asks about mute). `has_muted()` is alive
+  and remains in exactly two notification functions — muting someone and
+  still getting their pushes would be nonsense; a check for that is in the
+  migration itself.
+
+  Verified by an RLS simulation on a live pair with a mute, control numbers
+  before/after: posts by the muted author 0 → 5, total visible posts 27 → 32,
+  profile row 1 → 1 (it was visible before too — hence the empty page), the
+  muted person's reaction counters 0 → 5. Control on a block: the blocked user
+  saw 0 of the blocker's posts and 0 counters before the fix and the same
+  after. `make verify` green, 306 tests (+5: feed filter, no filter and no
+  request on a profile, one request per pagination, re-read on refresh, page
+  failure when the mute list is unreadable).
+
+- Documentation brought to a single shape (0.17.5) — not a feature but a
+  cleanup: some files held things their names don't promise.
+
+  **Added [docs/client-architecture.md](docs/client-architecture.md)** —
+  "Client architecture". There used to be no such place, and client-side things
+  settled wherever they were written: `data-model.md` ("Schema and visibility
+  rule") described routing a push tap — which widget catches it, what happens
+  on a cold start, why the provider isn't autoDispose — i.e. exactly what
+  doesn't depend on the schema and could change entirely while the schema
+  stays the same. The client half of presence ("typing…") and mute as a feed
+  filter moved there too. In `data-model.md` pointers were left in their place,
+  and the visibility rule itself stays where it belongs.
+
+  **The living reference moved out of a historical document.**
+  `implementation-plan.md` is declared historical in its very first line, yet
+  held a section "Default technical decisions" with the note "deviations should
+  be recorded here" — i.e. it promised currency where, by definition, there is
+  none. The list (Riverpod, go_router, the Flutter 3.32.8 pin, the Supabase key
+  format) moved to `client-architecture.md`.
+
+  **Indexes reconciled.** The README and the table in CLAUDE.md/AGENTS.md list
+  one and the same set and split it into living and historical;
+  `future-development.archive.md` wasn't listed in them at all before, even
+  though it was in the repository. The line "step-by-step MVP plan, CI/deploy"
+  no longer lies: CI and deploy are described in `operations.md`, and the plan
+  only tells how things went.
+
+  **Style.** Every file now has the same header: a title, a paragraph "what
+  this is and what it is not", and for historical ones **This document is
+  historical.** as the first sentence (the archive of deferred items used a
+  blockquote; now it's like everyone else). Living documents in `docs/` wrap at
+  80 characters — `future-development.md` was the only one inconsistent with
+  itself: header wrapped, body not. The rewrap was checked word by word; the
+  text didn't change. Historical files were left as they are: they aren't
+  supposed to be edited, and rewrapping lines in them would flood `git blame`
+  with noise for the sake of cosmetics.
+
+  Two outdated statements were fixed along the way: the README promised
+  "media in messages" among deferred features (done in 0.17.3), and `docs/` was
+  described as "DB schema, operations, plans".
+
+- Fixed duplicated messages in rooms (0.17.6) — on a weak network
+  `sendMessage()` sometimes sent the same message twice: `.timeout()` in Dart
+  doesn't cancel the request itself, it just stops waiting for it, so the
+  original insert sometimes still reached the server after the client had
+  shown an error. The draft isn't cleared on error, and a repeated "send" tap
+  used to mint a new `client_token` — the unique index on
+  `(author_id, client_token)` didn't fire, and two different rows with the same
+  text ended up in the DB. The token is now minted once per draft and reused
+  as long as the text/attachments haven't changed: resending the same draft
+  either creates the message once, or — if the previous attempt already got
+  through — gets the same row back via the already existing `23505` handling
+  in `RoomsRepository.sendMessage`.
+
+- First iOS build and a custom icon instead of the default Flutter one
+  (0.18.0) — the app was built and uploaded to TestFlight for the first time.
+  `app/ios/Podfile` pins `platform :ios, '15.0'` (required by
+  `firebase_core`), `IPHONEOS_DEPLOYMENT_TARGET` in `Runner.xcodeproj` was
+  raised from 12.0 to 15.0 in all build configurations. `ExportOptions.plist`
+  and `DEVELOPMENT_TEAM` in `project.pbxproj` use the same Apple Team ID;
+  `Runner.entitlements` declares `aps-environment: development` — Xcode
+  rewrites it to `production` itself when archiving for the App Store (see
+  `docs/ios-deployment-guide.md`). `Info.plist` gained
+  `NSPhotoLibraryUsageDescription`, `UIBackgroundModes: remote-notification` and
+  `ITSAppUsesNonExemptEncryption: false` for push notifications via APNs (see
+  `docs/ios-push-apns-setup.md`). The new `make build-ios` is a compile check
+  without signing (`--no-codesign`), not for a real release. A custom icon
+  (instead of the default Flutter one) was added both for iOS
+  (`AppIcon.appiconset`, all 15 sizes without an alpha channel — otherwise the
+  App Store rejects the 1024×1024 marketing icon) and for Android (`mipmap-*`).
+  `app/pubspec.yaml` version — `0.18.0+51`.
+
+- Section headers on the "Settings" screen (0.18.1) — "Notifications" and
+  "Account" are set apart from the rows by a muted caption style
+  (`titleSmall`, `onSurfaceVariant`, `letterSpacing: 0.1`, uppercase)
+  instead of visually blending in with ordinary list items. Along the way,
+  `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` in
+  `main.dart` — Android 15+/`targetSdk 36` requires edge-to-edge explicitly,
+  otherwise `MediaQuery.viewInsets.bottom` may not arrive on some
+  devices. `app/pubspec.yaml` version — `0.18.1+52`.
+
+- The Android icon switched to an adaptive icon (0.18.2) —
+  `mipmap-anydpi-v26/ic_launcher.xml` composites separate
+  foreground/background/monochrome layers instead of one flat PNG per
+  density; the foreground fills 61% of the canvas (66/108 safe zone) —
+  not 88% as on iOS: different Android launchers crop content that
+  sticks out past the safe zone differently, which was confirmed on a Honor.
+  Minimum supported Android version — 10 (`minSdk 29`).
+  `app/pubspec.yaml` version — `0.18.3+54`.
+
+- Android push-notification icon instead of a solid circle (0.18.4) —
+  for background/terminated display FCM took the launcher's `android:icon`,
+  which since 0.18.2 is a full-color adaptive icon, while the status bar
+  draws only the alpha channel of the small icon; since the launcher
+  background is fully opaque, the silhouette collapsed into a filled circle.
+  Added `ic_stat_notify` (`drawable-*dpi`) — cut from the monochrome layer of
+  the adaptive icon, but with smaller margins (~6% versus the launcher's ~40%
+  safe zone), otherwise at 24dp the glyph reads as a dot; `AndroidManifest.xml`
+  points to it via
+  `com.google.firebase.messaging.default_notification_icon`. Verified
+  on a physical device via `notification_outbox`/`send-push`.
+  `app/pubspec.yaml` version — `0.18.4+55`.
+
+- Thirteenth full audit (0.18.6) — seven findings, five server-side and two
+  client-side. Migration `20260905100000_close_thirteenth_audit_findings.sql`.
+
+  **A roommate could read the entire profile gallery.** The SELECT policy on
+  the `avatars/` prefix since 20260826180000 contained a
+  `shares_room_with_caller(...)` branch, so that a roommate wouldn't see an
+  empty circle in the member list. The branch turned out PREFIX-based — it
+  answered "yes" for any object under `avatars/<uid>/`, and that's where the
+  whole gallery lives, up to 80 photos. RLS on `profile_photos` meanwhile
+  doesn't let a roommate in at all, i.e. the rows were hidden but the bytes
+  weren't: `storage.list('avatars/<uid>')` goes through the same policy and
+  listed them all. Exactly the same mistake — prefix instead of object —
+  20260826190000 had already fixed for `posts/`; for `avatars/` it went
+  unnoticed until rooms, because before them both remaining branches (own and
+  Connection) were equivalent to the prefix anyway. The branch was replaced
+  with `is_room_peer_avatar(path)`: a roommate sees exactly one object — the
+  current `users.avatar_path`. Reproduced and verified by an RLS simulation via
+  the Management API on the fixture "the owner put together a room from two of
+  their connections who aren't connected to each other": before the fix the
+  roommate saw 0 gallery rows and 4 objects, after — 0 rows and 1 object
+  (exactly the avatar); for a Connection and for the gallery owner themselves
+  the control 4/4 didn't change.
+
+  **A dead grant exposed `/rpc/set_post_media`.** The third finding of this
+  class in a row (after `is_author_visible()` and `is_favorited_by()`) and the
+  most costly: `set_post_media()` doesn't check "neither text nor media" and
+  can't — it sees only media — so a call with empty `items` on one's own post
+  without a caption left an empty post alive in the feed of all connections
+  until the next `purge_empty_posts()`. The grant was kept for build 41, but
+  the condition "when `min(app_build)` passes 42" was met from the other side:
+  20260828100000 switched off the feed and posting for all builds 46 and
+  below. The client doesn't call the function — `updatePost()` goes through
+  `update_post_with_media()`, which calls it from inside `security definer`,
+  where the grant isn't needed. The grant was revoked, the function stays. The
+  `purge-empty-posts` cron stays: a direct INSERT into `posts` hasn't gone
+  anywhere.
+
+  **A retry that narrowed the audience didn't withdraw already queued
+  pushes.** `enqueue_post_notifications()` is AFTER INSERT, while the
+  `on conflict` branch in `create_post_with_media()` is an UPDATE. A post "to
+  all connections" that committed after `.timeout()` had stopped waiting for
+  it managed to fan out `new_post`; the composer stayed open with a live
+  token, and the next tap — now with "favorites only" — changed the column
+  without touching the queue. The push "Petya has a new post" reached someone
+  who won't be shown the post. Now such a retry deletes from
+  `notification_outbox` the not-yet-sent `new_post` entries about this post
+  for everyone who isn't in the author's favorites. Already sent ones aren't
+  touched (a push can't be recalled), `digest` isn't touched at all (it
+  doesn't name the post, it counts them), and widening back doesn't send the
+  missing pushes. Verified by simulation: after posting, `new_post` sits with
+  both subscribers; after a narrowing retry it stays with the one in the
+  author's favorites and disappears for the other.
+
+  **Four room RPCs were an existence oracle.** `rename_room()`,
+  `add_room_member()`, `remove_room_member()` and `set_room_avatar()` answered
+  `PT404` for a nonexistent room and `PT403` for someone else's, and
+  `security definer` carries the question past RLS — by brute-forcing uuids,
+  the response code told a live room apart from a made-up one. The project
+  closes such oracles everywhere and states the rule out loud ("'not mine' and
+  'doesn't exist' must be indistinguishable" — `delete_own_comment()`,
+  `set_post_media()`, `delete_own_room_message()`); these four were the only
+  exception. Both checks were collapsed into one on
+  `room_owner_id(...) is distinct from auth.uid()` — the NULL from a
+  nonexistent room falls into the same branch. The form matters:
+  `set_room_avatar()` asked about ownership via `not owns_room(...)`, and there
+  NULL yields NULL and the branch doesn't fire at all — it only worked because
+  the existence check stood above it. Verified by simulation: for all four, the
+  error codes and texts for someone else's live room and for a made-up uuid now
+  match byte for byte. The client wasn't affected: it never parsed `PT403`
+  from these RPCs anywhere.
+
+  **The redundant column-level grant `select (visibility)` on `posts`** was
+  revoked: SELECT on the table is granted in full (`relacl` =
+  `authenticated=rdm`), and a table privilege also covers columns added later.
+  There was no harm, but the comment next to it asserted the opposite rule.
+  Verified before applying by a simulation with rollback: the column's `attacl`
+  becomes NULL, `has_column_privilege` stays `true`.
+
+  **A null in the embedded `users` crashed the whole request list.**
+  `ConnectionRequest.fromRow` cast the embed to a non-nullable `Map`, but what
+  makes the request readable is not the request itself but a shared room: as
+  soon as one side leaves the room, PostgREST returns `null`, the cast throws
+  `_TypeError` from `fetchRequests()`, the provider goes into error, and both
+  screens read it as `.value ?? const []`. Incoming requests disappeared from
+  the "Connections" tab for good — the row that causes it never goes away by
+  itself. `otherName`/`otherAvatarPath` became nullable, and the row stays in
+  the list under `connectionRequestUnknownName` in both ARBs. It stays rather
+  than being dropped: the sender's copy is what keeps the "ask to connect"
+  button from coming back in the direction that `connection_requests_pair_key`
+  won't accept a second time, and the recipient can still respond to such a
+  request (`respond_to_connection_request()` doesn't require a shared room).
+  The new `connections_repository_test.dart` covers both sides.
+
+  **`ref` after `await` before the `mounted` check** — seven places.
+  `WidgetRef` lives on a `BuildContext` and after unmounting it **throws**
+  (`StateError`), in release too. The throw was caught by the method's own
+  `catch`, which exited on `!mounted` — and the refresh silently didn't happen:
+  the feed, rooms and connections tabs live in the shell's `IndexedStack`, stay
+  mounted and showed the state from before the tap, offering an action the
+  server had already performed. Moving `mounted` higher isn't a cure; it just
+  swaps a swallowed throw for a deliberately skipped refresh. Added
+  `lib/shared/refresh_after_await.dart` (a wrapper over
+  `ProviderScope.containerOf(context, listen: false)`); the container is
+  captured BEFORE the `await` and outlives the screen; the rule is described
+  once there and in `docs/client-architecture.md`.
+
+  Along the way, the header of `20260828140000_connection_requests.sql` was
+  fixed: it claimed "one request per pair for all time" and referred to "a
+  second, symmetric index below", which doesn't exist and mustn't — it would
+  forbid the reverse direction, legitimate per the same paragraph. Only the
+  comment text was edited; the migration's DDL didn't change;
+  `docs/data-model.md` already described this discrepancy and was brought in
+  line.
+
+- Documentation checked against the code (0.18.6) — not a feature but a second
+  cleanup after 0.17.5. That one brought the files to a single shape; this one
+  checked that what's written in them is still true.
+
+  **Four outdated statements, all about the same change.** After
+  20260829130000 mute stopped being an RLS rule, yet the README kept promising
+  that "posts and comments from a blocked or muted person are hidden regardless
+  of client version" — i.e. it called a privacy boundary something that had
+  stopped being one; the App Store listing draft promised exactly the same to
+  future readers in the store. Both were rewritten: blocking is a boundary,
+  mute is a personal feed setting. Three places in `data-model.md` that the
+  edits hadn't caught up with went into the same bucket: `post_media`
+  visibility was described as a join to `visible_author_ids()` (it hasn't had
+  its own copy of the rule since 20260826180000), `profile_photos` visibility
+  as "the same rule as for the avatar in Storage" (since 20260905100000 they
+  diverge on the roommate branch), and `shares_room_with_caller()` was listed
+  directly in the storage policy, although it now sits there via
+  `is_room_peer_avatar()`. Plus, the scenario of the old hole with
+  `dislikes_disabled` was written in the present tense and relied on mute,
+  which can't be used that way today.
+
+  **The App Store listing draft promised a nonexistent feature.** Twice —
+  "connect through invite links or QR codes" and "a QR code at an in-person
+  meeting" — although `qr_code` in `connections.method` is groundwork, not a
+  path: not a single live row came through the app with it. Along the way, the
+  listing gained what appeared after it was written (connection requests,
+  media and "typing…" in rooms), and the character counts were recalculated —
+  all three were off even before the edits. "Notes" records when and against
+  what the copy was checked.
+
+  **Links pointed to the wrong file.** Six links in `docs/` referred to "the
+  'Working conventions' section" and "'Pitfalls'" in `CLAUDE.md` — a six-line
+  file that has neither: the content has long been in `AGENTS.md`. They were
+  repointed to it. Thirty such links in migration comments were left as is —
+  that's a journal, not a living document; instead of editing them, a
+  paragraph was added to `CLAUDE.md` that resolves this reference once and for
+  all.
+
+  **A rule referred to by name was written down nowhere.**
+  `deleteRowsThenObjects` appeared in `data-model.md` three times as something
+  everyone knows, but no document explained it. It's client-side, so it moved
+  to `client-architecture.md` as a separate section ("Rows first, then
+  objects"), together with why the object half is best-effort and why all
+  seven places go through a single helper.
+
+  **The indexes drifted from the repository again** — `docs/review/` was listed
+  neither in the README nor in the `AGENTS.md` table, just like
+  `future-development.archive.md` before 0.17.5. Added to both.
+
+  **Pitfalls gained four entries** following the thirteenth audit: a prefix
+  branch in a storage policy stops being equivalent to the per-row rule as
+  soon as it gets a narrower audience; `if not f(...)` with a NULL return
+  doesn't fire at all; an idempotent retry is an UPDATE, and `AFTER INSERT`
+  triggers don't repeat on it; Riverpod's `ref` after `await` throws in release
+  too.
+
+  **Style.** `ios-push-apns-setup.md` had no intro paragraph "what this is and
+  what it is not" — the only living document without one. The "Ideas for
+  later" heading in `future-development.md` was a broken 94-character
+  sentence; in the same file, a cut-off phrase in the item about importing
+  from social networks was fixed, along with two links written in a different
+  format from the rest of the file. 80-character wrapping was restored
+  everywhere it had drifted (one line remains — a bare URL that can't be
+  wrapped). No new files were created: everything found went into existing
+  ones.
+
+  **The published privacy policy promised too much** (found while merging the
+  branch where it appeared). "Who you've muted, blocked or favorited is never
+  shown to anyone else — including the person concerned" is true for mute and
+  block, but not for favorites: ever since favorites became a post audience,
+  `authors_who_favorited_me()` has been granted to `authenticated` and must be
+  — without it the `posts` SELECT policy refuses the reader on every row — and
+  it lists everyone who added the caller. The invariant in `data-model.md` was
+  already phrased correctly ("someone else's favorites list is closed; one's
+  own 'who added me' is open to its owner"); the policy wording was brought in
+  line with it.
+
+  **The Terms of Use promised an action the app doesn't have** — "you can
+  always end a connection or leave a room to stop seeing someone's content".
+  You can leave a room, but a Connection can't be ended by any means:
+  `authenticated` has neither a DELETE grant nor a policy on `connections`, no
+  such RPC exists, there isn't a single mention in `app/lib`, and the very
+  question "is such an ability needed" is still open in
+  future-development.md. The wording was replaced with what the app can really
+  do: block, mute, leave a room. The spot isn't cosmetic — this is exactly the
+  paragraph store reviewers read when checking that the declared anti-abuse
+  tools exist.
+
+  Three more clarifications in the privacy policy, all about things left
+  unsaid: the gallery is visible to Connections, while a roommate sees only the
+  current avatar (after 20260905100000); the read marker was described as
+  "read/delivered markers for your own messages", although what's collected is
+  the OTHER one — it's your marker, by which the other members see whether
+  their message has reached you; along with the push token, the interface
+  language (`device_tokens.locale`) is stored too, which is used to pick the
+  notification language. The "Last updated" date in both documents was moved
+  — their own "Changes to this policy" section requires it.
+
+  **The rights holder's name differed in three places** — "Timofei Rusakov" on
+  the published privacy policy and terms of use, "Andre Roussakoff" in the App
+  Store listing draft, there with the note "confirm the name". It's "Timofei
+  Rusakov" everywhere, and the draft has a reminder next to it to keep the
+  three places in agreement.
+
+  **`docs/gh-pages/` wasn't listed in any index** — it arrived with the same
+  branch. Added to the README and to the AGENTS.md table, with a note that the
+  source should be edited, not the `gh-pages` branch: CI rewrites it on push to
+  `main`.
+
+  **`ios-push-apns-setup.md` claimed the APNs key hadn't been uploaded yet.**
+  It has — iOS pushes work; this wasn't visible from the repository, and the
+  document remained written as "what's left to do". Now it starts with "This is
+  done" and is kept for two things: checking that the key is in place, and
+  redoing the upload if it ever disappears (revocation, someone else deleting
+  it from Firebase, a new project). There are two checks — in the Firebase
+  Console and, when you can't get there, from the database side:
+  enqueue a single notification to yourself in `notification_outbox` and read
+  the Edge Function response that `pg_net` puts into `net._http_response`
+  (`{"processed":1,"sent":0}` on an account with only an iPhone — the
+  signature of a missing key). It also records what proves NOTHING: a row in
+  `device_tokens` (registration succeeds even without the key — that's what
+  makes this breakage silent), `sent_at` on the queue row (`send-push` stamps
+  everything it picked up, regardless of the FCM response) and a silent
+  simulator (it doesn't receive pushes at all).
+
+- GitHub Pages moved into the repository, and CI deploys them (0.18.6) —
+  not done in this branch: it came in via a merge and **shipped to `main` as
+  0.18.5**, which didn't get its own entry here. Recorded under 0.18.6 so the
+  history doesn't lose a piece; the version it shipped in is named here
+  explicitly.
+
+  The privacy policy, terms of use and both auth-flow pages (email
+  confirmation, password reset) previously lived only in the orphan `gh-pages`
+  branch and were edited right there — i.e. they went through neither review
+  nor history next to the code they describe. Now their source lives in
+  `docs/gh-pages/`, and `.github/workflows/sync-gh-pages.yml` copies it into
+  the branch on push to `main` and commits only on an actual change
+  (`email-confirmed.html` is placed as `index.html` — `site_url` in
+  `supabase/config.toml` is configured for it).
+  Edit the source: CI will overwrite the branch.
+
+  `CLAUDE.md` switched to `@AGENTS.md` there as well — that's import syntax; it
+  loads the file into context rather than referring the reader to it.
+
+- Day separators and replying to a specific message in chat (0.18.7) —
+  two items from future-development.md closed.
+
+  Separators are a purely client-side feature: `room_chat_screen.dart` rebuilds
+  the item list from the already loaded messages on every `build()` (rather
+  than keeping separate state), inserting a day label wherever two adjacent
+  messages fall on different calendar days in the viewer's local time zone.
+  Recomputing from scratch, rather than patching the existing list, is the only
+  way not to introduce a duplicate or missing label at a page boundary: the
+  message list changes in three different places (`_loadMore()` appends to the
+  end, realtime inserts at the start, `_delete()` edits in place), and keeping
+  a second synchronized structure for each of them would be the source of
+  exactly the desync the separators are supposed to prevent. Values
+  "Today"/"Yesterday" for recent days, a full date for the rest.
+
+  Replying to a message — `room_messages.reply_to_id`, a nullable
+  self-reference (`on delete set null`, migration
+  `20260911100000_room_message_replies.sql`). Along the way we stepped on two
+  pitfalls, both now in AGENTS.md:
+
+  1. **The INSERT policy broke sending ANY message in prod**, not just
+     replies. The check "`reply_to_id` is from the same room" was written as a
+     bare `EXISTS (SELECT 1 FROM room_messages …)` right in the policy — a
+     subquery on the table inside its own policy compiled into a loop
+     (`42P17 infinite recursion detected in policy`), and the RLS planner
+     builds the subquery's plan at the level of the whole query, regardless of
+     what's in a particular row's `reply_to_id`. Fixed with the same technique
+     as `is_comment_visible()`/`my_room_ids()`: the check was moved into a
+     `security definer` function `room_message_in_room()`, inside which RLS
+     doesn't apply at all. The hotfix was applied to the live project within a
+     few minutes of the breakage — "Subquery on its own table" in AGENTS.md.
+  2. **PostgREST didn't resolve a self-referencing FK embed via the usual
+     syntax.** Both `room_messages!reply_to_id` and
+     `room_messages!room_messages_reply_to_id_fkey` either didn't find the
+     relationship (`PGRST200`) or resolved it in the opposite direction —
+     every message got `reply_to: []` (who replied TO it, rather than what IT
+     replied to). PostgREST documents self-reference via
+     `alias:fk_column(...)` — the column as the embed target name, without the
+     table name and without a `!` hint: `reply_to:reply_to_id(...)`; this is
+     the only variant that resolves to-one and in the right direction.
+
+  The feature itself: a swipe/long-press on a message opens a sheet with
+  "Reply" (except on placeholders) and "Delete" (only your own, live ones) —
+  previously `onLongPress` called delete directly; now there are two different
+  actions under it. The composer shows a "Replying to: Name" preview + a
+  snippet with a cancel button; the sent bubble has a quote (author + snippet),
+  and tapping it scrolls to and highlights the original for a second. Scrolling
+  to an arbitrary, possibly not yet loaded message is a problem with no
+  solution via a regular `ListView.builder` (most items aren't physically
+  built), so the list was switched to `ScrollablePositionedList` (the
+  `scrollable_positioned_list` package) — following the example of
+  `reorderables`, already accepted in the project: a targeted dependency for
+  one specific UI task, not a general replacement of the screen's architecture.
+  `RoomMessage.replyToPreview` is populated only for messages read via
+  `fetchMessages`/`sendMessage` (the embed arrives with the row); for a
+  message that arrived via realtime, Postgres Changes delivers only the raw
+  `reply_to_id` column without a join — the screen looks up the original in
+  the already loaded list itself, and if it doesn't find it (the page with it
+  isn't loaded yet), it draws "original unavailable" instead of crashing.
+
+  Verified: by an RLS simulation via the Management API (`set local role
+  authenticated` + `request.jwt.claims`, in a transaction with `rollback`) —
+  replying to a message from your own room is allowed; replying to a message
+  from someone else's room and to a nonexistent id is rejected; the hotfix was
+  re-verified separately as well (regular sending works again). Then manually
+  on a physical device with two live accounts: date separators, the full reply
+  cycle (pick a message → preview → send → quote in the bubble → tap the
+  quote → scroll and highlight), realtime delivery of the reply to the other
+  side.
+
+
+- Platform and OS version of an install (0.18.8) — `device_tokens` learned to
+  tell what an install runs on, not just which app version it reports itself
+  as. Migration
+  `20260912100000_device_platform_and_os.sql`, the client half —
+  `shared/device_os.dart`, paired with the already existing
+  `shared/app_version.dart`.
+
+  The question came up from the local console (its first screen showed a
+  breakdown by build): devices reported an `app_build` **one higher** than
+  what's in `pubspec.yaml`, twice in a row — 0.18.6 as `+59` with `+58` in the
+  repository and 0.18.7 as `+60` with `+59`. There was no way to localize this
+  by platform: nothing in the token row distinguishes iOS from Android. For the
+  same reason a targeted send "to everyone on iOS" was impossible too, and that
+  is the nearest use for these columns.
+
+  `platform` is an enumeration (`android`, `ios`, `macos`, `windows`, `linux`,
+  `fuchsia`, `web`), exactly what `Platform.operatingSystem` can return, plus
+  `web` for the deferred web version. It can't be free text: it's the key
+  audiences are built by, and "iOS"/"ios"/"iPhone" in one column turn any
+  `group by` into a lie.
+
+  `os_version` — digits and dots only (`18.1`, `15`). The platform answers with
+  a sentence, and each its own: iOS — `Version 18.1 (Build 22B83)`, Android —
+  `Android 15 (API 35)`. Storing that verbatim would mean shifting the parsing
+  onto every reader forever, and the build identifier inside is closer to a
+  device fingerprint than to anything useful. The client extracts the first
+  group of digits-and-dots, no more than three parts; `15.1.2.3` goes out as
+  `15.1.2`.
+
+  Both columns are nullable, and both CHECKs let NULL through — for the same
+  reason as with `app_build`: the row is written by a background upsert on
+  every launch, and a constraint rejection would break the push token
+  registration ITSELF, silently and along with all notifications.
+  Normalization lives on the client for exactly that reason, not because the
+  server is lazy. Released versions don't know about the new columns, so until
+  they update, all 14 live installs have NULL there — that's the expected
+  state, not lost data.
+
+  The INSERT grant on `device_tokens` is **column-level** (`grant insert
+  (app_build, app_version, fcm_token, locale, user_id)` from the baseline), so
+  the new columns had to be listed explicitly: without that, an upsert with
+  them would fail on permissions — again silently and again together with
+  token registration.
+
+  Verified by a simulation as `authenticated`, not by eye: an insert with
+  `('ios', '18.1')` passes, `'iPhone'` and the raw `Version 18.1 (Build 22B83)`
+  are rejected by their CHECKs, a pair of NULLs passes. Plus eight unit tests
+  on parsing real responses from both platforms
+  (`test/shared/device_os_test.dart`), including that from
+  `Android 15 (API 35), SDK 35` the release is taken, not the API number.
+
+- Content reports and moderation (0.18.8) — closes the "Full moderation and
+  reports" item in future-development.md and the App Store 1.2 requirement for
+  apps with user-generated content. Migration
+  `20260913100000_content_reports_and_moderation.sql`, a "Report" button on a
+  post, a comment, a room message and a connection's profile, and the review
+  queue in the local console (`console/`).
+
+  Blocking a connection, which existed before, was never moderation and was
+  never meant to be: it is a personal boundary between two people, and the app
+  owner never learns about it at all.
+
+  **Hiding is reversible and the same for everyone, the author included.**
+  The half-measure "the author still sees their own post" would mean two
+  answers to the question "is this object visible", i.e. the end of the
+  visibility rule as a single rule. The author learns about the hiding from a
+  notification, not from a hole in their wall. The condition went into
+  `is_post_visible()`, and from there it propagated on its own to the comments
+  under the post and to the media storage policy. Message media needed a
+  separate fix: its branch in the storage policy was prefix-based ("an object
+  in my room's folder") and knew nothing about the messages themselves — a
+  hidden message would disappear from the chat while its photos stayed
+  reachable by direct link. Same class as the room-neighbours' avatars finding,
+  and fixed with the same technique.
+
+  **The write ban is enforced by a trigger, not an INSERT policy, and this is
+  the key decision of the whole task.** All nineteen writing RPCs in the
+  project are `security definer`, granted to `authenticated`, and
+  `force row level security` is enabled nowhere: inside such a function RLS
+  does not apply at all. A "banned" condition in the `posts` policy would stop
+  no one, because posts are created via `create_post_with_media()`. A trigger
+  hangs on the table, not on the role, so one body covers both the direct
+  insert and the RPC. Verified by simulating both paths: a banned user gets
+  `AMB01` on both, and a non-banned one publishes as usual. The client tells a
+  ban apart from a policy rejection by its SQLSTATE and shows the end date from
+  DETAIL, instead of offering to retry.
+
+  Three things on which this migration nearly broke production, worth
+  remembering:
+
+  1. **42P17.** The first draft added a subquery on `posts` to the post-edit
+     policy — inside a policy on `posts` itself. That breaks every post
+     update, exactly as in 20260911100000. The check turned out to be
+     unnecessary: UPDATE on `posts` is granted per column and only on `text`,
+     so the boundary is held by the grant, not the policy.
+  2. **A lost notification kind.** The CHECK on `notification_outbox` is
+     recreated via `drop`+`add`, and the list assembled from reading the
+     migrations did not contain `connection_accepted` — notifications about an
+     accepted request would silently have stopped arriving. The list is taken
+     from `pg_constraint` of the live database, and in no other way.
+  3. **Default grants.** A new table arrives with full privileges for
+     `authenticated`, and a new function with `execute`, i.e. it becomes a
+     PostgREST endpoint by itself. Hence `revoke all` on the table and explicit
+     `revoke execute` on all new functions except the `can_report()`
+     dispatcher: it alone is visible from outside. `is_post_visible()` can't be
+     called directly from the policy — the policy expression runs as the
+     caller, who has no grant, and the very first report would bounce with
+     42501.
+
+  Side effect: the menu on a post card now exists on every post, not only on
+  one's own (on someone else's it holds "Report"), and it had to be shrunk to
+  32×32 — the default 48px tap target added ~28px of height to every feed card.
+  This was caught by the pagination test, which, with the increased height,
+  started parking the scroll at the very bottom.
+
+- It is now visible why pushes don't reach a person (0.18.8) — migration
+  `20260913120000_push_registration_status.sql` plus recording the outcome in
   `registerDevice()`.
 
-  Вопрос звучал так: некоторые точно пользуются версией, которая собирает
-  токен, но в `device_tokens` их нет. Ответить было нечем, и это оказалось
-  дефектом, а не пробелом в данных. Регистрация у них ТОЧНО идёт —
-  `pushRegistrationProvider` смотрится в `MainShellScreen` соседней строкой с
-  `userActivityProvider`, так что строка в `user_activity` доказывает, что
-  шелл отрисовался, — но у `registerDevice()` три выхода без строки, и все три
-  молчаливые: отказ в разрешении, `getToken()` вернул null, и упавший апсерт.
-  Третий — худший: исключение уходило в `FutureProvider`, чьё состояние никто
-  не читает, так что СВОЙ сбой был снаружи неотличим от честного отказа
-  пользователя.
+  The question was: some people are definitely using a version that collects
+  the token, yet they are not in `device_tokens`. There was nothing to answer
+  with, and this turned out to be a defect, not a gap in the data. Registration
+  DEFINITELY runs for them — `pushRegistrationProvider` is watched in
+  `MainShellScreen` on the line next to `userActivityProvider`, so a row in
+  `user_activity` proves the shell was rendered — but `registerDevice()` has
+  three exits that write no row, and all three are silent: permission denied,
+  `getToken()` returned null, and a failed upsert. The third is the worst: the
+  exception went into a `FutureProvider` whose state nobody reads, so OUR OWN
+  failure was indistinguishable from the outside from an honest refusal by the
+  user.
 
-  По дороге выяснилось, что и цифры врали: `sent_at` в `notification_outbox`
-  значит «строку обработали», а не «пуш доставлен». Каждая заявленная строка
-  штампуется, даже когда у адресата нет ни одного устройства, — 38 из 153
-  строк были помечены отправленными в никуда. Поэтому «ему отправлено 9
-  пушей» ничего не доказывало про наличие токена.
+  Along the way it turned out the numbers lied too: `sent_at` in
+  `notification_outbox` means "the row was processed", not "the push was
+  delivered". Every claimed row is stamped, even when the recipient has no
+  devices at all — 38 of 153 rows were marked as sent into the void. So "9
+  pushes were sent to him" proved nothing about having a token.
 
-  Теперь клиент пишет исход (`granted`/`denied`/`no_token`/`error`, с кодом
-  ошибки для последнего) строкой на человека, апсертом на каждый запуск.
-  Колонки платформы и версии дублируют `device_tokens` намеренно: там они
-  появляются только при успешной регистрации, то есть у тех, про кого и так
-  всё понятно. В консоли это отдельный разрез «почему не доходят пуши» и
-  плашка в списке людей.
+  Now the client writes the outcome (`granted`/`denied`/`no_token`/`error`,
+  with an error code for the last one) as one row per person, upserted on
+  every launch. The platform and version columns duplicate `device_tokens` on
+  purpose: there they appear only after a successful registration, i.e. for
+  the people about whom everything is already clear. In the console this is a
+  separate "why pushes don't arrive" breakdown and a badge in the people list.
 
-  Грабля на будущее, вынесена в AGENTS.md: `ON CONFLICT DO UPDATE` требует не
-  только INSERT и UPDATE, но и **SELECT на таблицу** — он читает строку, с
-  которой столкнулся, чтобы применить `using`-выражение политики, и
-  поколоночного гранта ровно на ту колонку, что в выражении, ему не хватает.
-  Плоский `insert` при этом проходит, так что расхождение ловится только
-  апсертом.
+  A pitfall for the future, moved into AGENTS.md: `ON CONFLICT DO UPDATE`
+  requires not only INSERT and UPDATE but also **SELECT on the table** — it
+  reads the row it collided with in order to apply the policy's `using`
+  expression, and a per-column grant on exactly the column in the expression is
+  not enough for it. A plain `insert` passes, so the mismatch is caught only by
+  an upsert.
 
-- Версия ОС читается через `device_info_plus` (0.18.8) — и два бага, которые
-  нашлись только сборкой на живой телефон.
+- The OS version is read via `device_info_plus` (0.18.8) — and two bugs that
+  were found only by building onto a live phone.
 
-  **Первый: запись статуса регистрации молча не работала.** Грант UPDATE в
-  20260913120000 был выдан поколоночно и без `user_id` — по рассуждению
-  «ключ строки менять незачем». Рассуждение верное, вывод нет: PostgREST
-  разворачивает `upsert` в `ON CONFLICT DO UPDATE SET` по ВСЕМ присланным
-  колонкам, включая ту, по которой шёл конфликт, то есть всегда пишет
-  `user_id = excluded.user_id`. Без права на колонку весь апсерт отбивался по
-  42501. Симуляция этого не поймала, потому что `SET` в ней был написан
-  руками — и, разумеется, без `user_id`. Вывод общее частного и вынесен в
-  AGENTS.md: проверять надо ту форму запроса, которую шлёт клиент. Починено
-  миграцией `20260913130000`; дыры нет, `with check (user_id = auth.uid())`
-  на месте.
+  **First: recording the registration status silently didn't work.** The UPDATE
+  grant in 20260913120000 was issued per column and without `user_id` — on the
+  reasoning that "there's no reason to change the row's key". The reasoning is
+  right, the conclusion is not: PostgREST expands `upsert` into
+  `ON CONFLICT DO UPDATE SET` over ALL the columns sent, including the conflict
+  column, i.e. it always writes `user_id = excluded.user_id`. Without the
+  privilege on that column the whole upsert bounced with 42501. The simulation
+  didn't catch this because the `SET` in it was written by hand — and, of
+  course, without `user_id`. The general lesson is broader than this case and
+  has been moved into AGENTS.md: test the query shape that the client actually
+  sends. Fixed by migration `20260913130000`; there is no hole,
+  `with check (user_id = auth.uid())` is in place.
 
-  **Второй: версия ОС была выдумкой.** `Platform.operatingSystemVersion` из
-  `dart:io` на Android отдаёт идентификатор сборки, а не версию системы: на
-  A059 это `B4.1-260810-1153` при реальном Android 16. Разбор «первое число в
-  строке» записывал в базу `260810` — значение, которое ничего не значит и
-  выглядит как версия. Тест, который должен был это закрыть, проверял
-  сочинённую мной строку `Android 15 (API 35)` и был зелёным именно поэтому.
+  **Second: the OS version was made up.** `Platform.operatingSystemVersion`
+  from `dart:io` on Android returns the build identifier, not the system
+  version: on the A059 it is `B4.1-260810-1153` while the real version is
+  Android 16. Parsing "the first number in the string" wrote `260810` to the
+  database — a value that means nothing and looks like a version. The test that
+  was supposed to cover this checked a string I had made up,
+  `Android 15 (API 35)`, and was green precisely because of that.
 
-  Источником стал `device_info_plus` (`Build.VERSION.RELEASE` и
-  `systemVersion`), разбор привязан к началу строки, а в тестах теперь лежат
-  настоящие ответы устройств, включая тот самый build id — с проверкой, что
-  из него не получается версии. Проверено на телефоне: в обеих таблицах
-  `android 16`.
+  The source is now `device_info_plus` (`Build.VERSION.RELEASE` and
+  `systemVersion`), parsing is anchored to the start of the string, and the
+  tests now hold real device responses, including that very build id — with a
+  check that no version is derived from it. Verified on the phone: both tables
+  show `android 16`.
 
-- Консоль: редактор новостного аккаунта и рассылки (0.18.8) — два последних
-  раздела, после которых серых пунктов в её меню не осталось.
+- Console: news-account editor and broadcasts (0.18.8) — the last two
+  sections, after which no greyed-out items remain in its menu.
 
-  **Новости.** Композер с предпросмотром «как увидят в ленте», медиа с
-  загрузкой в бакет и перестановкой, черновики, правка и удаление
-  опубликованного. Пост создаётся прямой вставкой, а не через
-  `create_post_with_media()`: та берёт автора из `auth.uid()`, а консоль
-  ходит под service_role без JWT, и внутри функции он null. Поэтому все её
-  проверки повторены в консоли — лимит 20 медиа, префикс пути, «посту нужен
-  текст или медиа», пустая строка как отсутствие текста. Постер видео
-  снимается в браузере через canvas: на сервере ради одной картинки
-  понадобился бы ffmpeg.
+  **News.** A composer with a preview "as it will look in the feed", media with
+  upload to the bucket and reordering, drafts, editing and deleting what has
+  been published. The post is created by a direct insert, not via
+  `create_post_with_media()`: that one takes the author from `auth.uid()`,
+  while the console goes in as service_role without a JWT, and inside the
+  function it is null. So all of its checks are repeated in the console — the
+  20-media limit, the path prefix, "a post needs text or media", an empty
+  string as absence of text. The video poster is captured in the browser via
+  canvas: on the server it would need ffmpeg for the sake of a single image.
 
-  Черновики лежат файлом рядом с консолью, а не в базе: она локальная и
-  однопользовательская, черновик — личная заметка на этой машине, и таблица
-  ради него потребовала бы миграции, политик и грантов на данные, которые
-  никто больше не прочитает.
+  Drafts live in a file next to the console, not in the database: the console
+  is local and single-user, a draft is a personal note on this machine, and a
+  table for it would require a migration, policies and grants for data that
+  nobody else will ever read.
 
-  Цена, заплаченная за правку: PATCH без поля `media` означал «медиа больше
-  нет», потому что набор переписывается целиком (иначе нечем раздать
-  `position`). Дважды затёрло настоящий пост новостного аккаунта, пока это не
-  стало ошибкой 400 с требованием прислать `media` явным списком. Текст поста
-  восстановлен дословно — нашёлся в транскрипте той сессии, которая его и
-  публиковала.
+  The price paid for editing: a PATCH without a `media` field meant "there is
+  no media anymore", because the set is rewritten wholesale (otherwise there's
+  no way to assign `position`). It wiped a real news-account post twice before
+  this became a 400 error demanding `media` as an explicit list. The post text
+  was restored verbatim — it was found in the transcript of the very session
+  that had published it.
 
-  **Рассылки.** Уведомление «вышла новая версия»: цель по умолчанию из
-  `app/pubspec.yaml`, аудитория посчитана заранее и показана поимённо с их
-  собственными сборками, отдельно — кого отсеет защита от повтора и кто
-  выключил уведомления системного аккаунта. Отправку делает
-  `enqueue_app_update_notifications()`, консоль лишь форма: второй реализации
-  отбора этому месту не нужно, а показанный список — её зеркало, и рядом
-  печатается, сколько строк функция реально завела.
+  **Broadcasts.** The "a new version is out" notification: the default target
+  comes from `app/pubspec.yaml`, the audience is computed in advance and shown
+  by name with each person's own build, and separately — who will be filtered
+  out by the repeat protection and who has turned off notifications from the
+  system account. Sending is done by `enqueue_app_update_notifications()`; the
+  console is only a form: this spot doesn't need a second implementation of
+  the selection, the list shown is its mirror, and next to it is printed how
+  many rows the function actually created.
 
-- Локальная консоль управления приложением (0.18.8) — новый подпроект
-  `console/` (React + Vite + TypeScript). До неё всё, что не делается из
-  самого приложения, делалось запросами через Management API: посмотреть, кто
-  на какой версии, разослать «обновитесь», опубликовать пост от новостного
-  аккаунта. Жалоб не существовало вовсе.
+- Local app-management console (0.18.8) — a new subproject `console/` (React +
+  Vite + TypeScript). Before it, everything that can't be done from the app
+  itself was done with queries through the Management API: seeing who is on
+  which version, sending out "please update", publishing a post from the news
+  account. Reports didn't exist at all.
 
-  **Запускается только локально, и это часть конструкции, а не удобство.**
-  Консоль ходит service_role-ключом, то есть мимо RLS целиком, поэтому и API,
-  и Vite слушают `127.0.0.1`, а ключ живёт в `console/.env` и в браузер не
-  попадает никогда: страница ходит только в локальный `/api`, а в Supabase из
-  него — Node. Отсюда же серверная половина у инструмента, который в первом
-  этапе только читал.
+  **It runs only locally, and that is part of the design, not a convenience.**
+  The console uses the service_role key, i.e. bypasses RLS entirely, so both
+  the API and Vite listen on `127.0.0.1`, and the key lives in `console/.env`
+  and never reaches the browser: the page talks only to the local `/api`, and
+  from there Node talks to Supabase. This is also why a tool that only read
+  data in its first stage has a server half.
 
-  Хостить её и заводить роль модератора в БД сознательно не стали: человек с
-  service_role-ключом и есть вся авторизация, а вторая её копия в виде флага
-  на `users` притворялась бы, что бывает иначе. По той же причине в схеме нет
-  ни одной модераторской RPC — каждая функция в `public` это эндпоинт
-  PostgREST, а единственному потребителю, который и так ходит мимо RLS, он не
-  нужен.
+  Hosting it and adding a moderator role in the DB were deliberately
+  rejected: the person with the service_role key is the entire authorization,
+  and a second copy of it as a flag on `users` would pretend things could be
+  otherwise. For the same reason there is not a single moderator RPC in the
+  schema — every function in `public` is a PostgREST endpoint, and the only
+  consumer, which bypasses RLS anyway, doesn't need it.
 
-  Первый этап — «Обзор» (итоги по базе, регистрации и посты за 30 дней,
-  разбивка по версиям и платформам, возраст пуш-токенов, очередь уведомлений)
-  и «Пользователи» (поиск, сортировка, карточка человека с устройствами и
-  настройками). Срезы считаются в памяти, а не SQL-вью: на пилотном объёме это
-  дешевле и не тащит за собой миграции; потолок в 100 000 строк на таблицу
-  зашит явно и упрётся раньше, чем станет неправдой.
+  The first stage is "Overview" (database totals, sign-ups and posts over 30
+  days, breakdown by version and platform, push-token age, the notification
+  queue) and "Users" (search, sorting, a person's card with devices and
+  settings). Breakdowns are computed in memory, not with SQL views: at pilot
+  volume that's cheaper and doesn't drag migrations along; a cap of 100,000
+  rows per table is hard-coded explicitly and will be hit before it becomes
+  untrue.
 
-  Запуск и устройство — в [console/README.md](console/README.md).
+  How to run it and how it's built — in [console/README.md](console/README.md).
 
-- Комнаты: чат перестал врать и тормозить (0.18.10) — одна пачка правок по
-  жалобе «статус в сети и печатает появляется не всегда, сообщения
-  подтупливают, при отправке фото выше перезагружается». Все четыре симптома
-  оказались отдельными причинами, и три из них — не про скорость, а про
-  корректность.
+- Rooms: the chat stopped lying and lagging (0.18.10) — one batch of fixes for
+  the complaint "online status and typing don't always show up, messages are a
+  bit sluggish, sending a photo reloads the one above". All four symptoms
+  turned out to have separate causes, and three of them are not about speed
+  but about correctness.
 
-  **Чат молча терял всё, сказанное, пока приложение было свёрнуто.** Самое
-  тяжёлое из найденного. Postgres Changes — поток, а не журнал: подписчику
-  приходит то, что случилось, пока он подписан. А сокет рвёт сам
-  `supabase_flutter` на `paused` и пересоединяет на `resumed`, так что разрыв
-  случался при каждом переключении между приложениями. Догрузить пропущенное
-  было нечем: экран умел только `before`-курсор, то есть страницы **старее**,
-  и открытый чат оставался неполным до закрытия и повторного открытия. Туда же
-  уходили удаления — снос приезжает правкой уже лежащей строки. Теперь при
-  переподписке канала (и на `resumed` как страховке) перечитывается свежая
-  страница, а решает, можно ли её пришить, пересечение с загруженным: есть —
-  дописываются новые и заменяются на месте остальные, нет — список начинается
-  заново с этой страницы, потому что дыра в середине разговора хуже потерянной
-  позиции скролла. Устройство целиком — «Realtime не переигрывает пропущенное»
-  в [docs/client-architecture.md](docs/client-architecture.md).
+  **The chat silently lost everything said while the app was in the
+  background.** The heaviest of the findings. Postgres Changes is a stream,
+  not a log: a subscriber receives what happened while it was subscribed. And
+  the socket is dropped by `supabase_flutter` itself on `paused` and
+  reconnected on `resumed`, so the disconnect happened on every app switch.
+  There was nothing to backfill what was missed with: the screen only knew a
+  `before` cursor, i.e. **older** pages, and an open chat stayed incomplete
+  until it was closed and reopened. Deletions were lost the same way — a
+  removal arrives as an edit of an already present row. Now, when the channel
+  resubscribes (and on `resumed` as a safety net), a fresh page is re-read,
+  and whether it can be stitched on is decided by its overlap with what's
+  loaded: if there is overlap, new messages are appended and the rest are
+  replaced in place; if not, the list restarts from that page, because a hole
+  in the middle of a conversation is worse than a lost scroll position. The
+  full design — "Realtime doesn't replay what was missed" in
+  [docs/client-architecture.md](docs/client-architecture.md).
 
-  **«Печатает…» показывалось через раз, и причина была не в сети.** Канал
-  буферизует объявление, сделанное до того, как он поднялся, и отправляет его
-  на join — хуком, который вешает в собственном конструкторе, то есть раньше
-  клиентского колбэка. А колбэк трекал прибитый `typing: false`. Значит
-  «печатает», поднятое во время присоединения, приходило первым и тут же
-  затиралось, а экран к этому моменту уже считал объявление сделанным и не
-  повторял его ни на одном следующем нажатии — собеседник не видел индикатор
-  весь черновик. То же самое повторялось на каждом пересоединении после фона.
-  Теперь объявление спрашивается у экрана на каждом join (что в поле ввода,
-  знает только он), а упавший канал отдаёт два пустых множества: присутствие —
-  утверждение про «прямо сейчас», и список, оставшийся от канала, которого
-  больше нет, — ложь, пережившая единственное, что делало её правдой.
+  **"Typing…" showed up only every other time, and the cause wasn't the
+  network.** The channel buffers an announcement made before it came up and
+  sends it on join — via a hook it registers in its own constructor, i.e.
+  before the client callback. And the callback tracked a hard-coded
+  `typing: false`. So "typing" raised during the join arrived first and was
+  immediately overwritten, while the screen by then already considered the
+  announcement made and didn't repeat it on any subsequent keystroke — the
+  other person didn't see the indicator for the whole draft. The same thing
+  repeated on every reconnect after the background. Now the announcement is
+  asked from the screen on every join (only the screen knows what's in the
+  input field), and a dropped channel yields two empty sets: presence is a
+  statement about "right now", and a list left over from a channel that no
+  longer exists is a lie that has outlived the only thing that made it true.
 
-  **Фотография в чате моргала спиннером и подписывалась заново на каждое
-  входящее сообщение.** Бакет `media` приватный, ссылки подписываются запросом,
-  а подписывал их сам виджет вложений в `initState`. Список же вставляет новое
-  сообщение в индекс 0, все индексы ниже сдвигаются, и
-  `ScrollablePositionedList` строит через `SliverChildBuilderDelegate`, которому
-  пакет не даёт передать `findChildIndexCallback`, — элемент в слоте получает
-  просто следующее сообщение, ключ вложений не совпадает, `State` уходит.
-  Добавление ключей тут сделало бы хуже, поэтому лечится в корне: кеш
-  подписанных ссылок (`lib/shared/signed_url_cache.dart`) отвечает
-  **синхронно**, до первого кадра, `CachedNetworkImage` рисует из своего
-  дискового кеша по пути в бакете — ни моргания, ни запроса. Только в памяти и
-  на время жизни процесса, `clear()` при выходе из аккаунта вместе с кешем
-  ленты: это ссылки на объекты, показанные RLS **этому** аккаунту.
+  **A photo in the chat flickered with a spinner and was re-signed on every
+  incoming message.** The `media` bucket is private, links are signed by a
+  request, and they were signed by the attachments widget itself in
+  `initState`. The list, meanwhile, inserts a new message at index 0, all the
+  indices below shift, and `ScrollablePositionedList` builds via a
+  `SliverChildBuilderDelegate` to which the package doesn't let you pass
+  `findChildIndexCallback` — the element in a slot simply gets the next
+  message, the attachments key doesn't match, and the `State` is gone. Adding
+  keys here would make it worse, so it's fixed at the root: the signed-URL
+  cache (`lib/shared/signed_url_cache.dart`) answers **synchronously**, before
+  the first frame, and `CachedNetworkImage` draws from its disk cache by the
+  bucket path — no flicker, no request. In memory only and for the lifetime of
+  the process, `clear()` on sign-out together with the feed cache: these are
+  links to objects that RLS showed to **this** account.
 
-  **Одно сообщение стоило трёх запросов и веерной рассылки.** Приход сообщения
-  дёргал `mark_room_read()`, а следом перезапрос всего списка комнат:
-  `my_rooms()` (латераль за последним сообщением, `count(*)` по непрочитанным и
-  агрегация участников на каждую комнату) плюс `mark_rooms_delivered()`, а тот
-  безусловно переписывал **все** строки `room_members` вызывающего. Строки
-  опубликованы в realtime, так что каждая переписанная будила всех участников
-  той комнаты, чьи экраны делали то же самое в ответ — и чем больше у людей
-  общих комнат, тем дороже обходилось одно сообщение. Клиентская половина:
-  список комнат обновляется один раз на выходе с экрана, а не на каждое
-  сообщение (смотреть на него из чата всё равно некому). Серверная — миграция
-  `20260923100000_delivered_marks_only_when_they_move.sql`: отметка
-  доставки не двигается там, где нет ни одного живого чужого сообщения новее
-  неё, — продвижение там всё равно ненаблюдаемо. Контрольные числа на живой
-  базе: 16 строк на вызов до, 1 после, и та единственная — у человека, которому
-  действительно есть что доставить.
+  **One message cost three requests and a fan-out.** An incoming message
+  triggered `mark_room_read()`, followed by a refetch of the whole room list:
+  `my_rooms()` (a lateral for the last message, `count(*)` over unread and
+  member aggregation for every room) plus `mark_rooms_delivered()`, which
+  unconditionally rewrote **all** of the caller's `room_members` rows. The rows
+  are published to realtime, so each rewritten one woke up all members of that
+  room, whose screens did the same in response — and the more rooms people
+  share, the more a single message cost. The client half: the room list is
+  refreshed once on leaving the screen, not on every message (nobody is
+  looking at it from inside the chat anyway). The server half — migration
+  `20260923100000_delivered_marks_only_when_they_move.sql`: the delivery mark
+  doesn't move where there is no live message from someone else newer than it
+  — advancing it there is unobservable anyway. Control numbers on the live
+  database: 16 rows per call before, 1 after, and that single one belongs to a
+  person who really has something to be delivered.
 
-  Остальное из того же прохода, помельче: производный список сообщений с
-  разделителями дней пересобирался **на каждом кадре скролла** (нотификатор
-  позиций присваивает новый список после каждой раскладки) — теперь считается
-  один раз на изменение; `MediaQuery.of` в пузыре подписывал его на весь
-  `MediaQueryData`, так что открытие клавиатуры перестраивало все пузыри на
-  экране (`sizeOf`); «есть ли ещё история» читалось как «страница пришла
-  непустой», то есть после последней полной страницы всегда уходил один
-  лишний запрос (`page.length == limit`); провалившаяся загрузка истории
-  ретраилась без остановки — триггер срабатывает на каждом кадре, так что
-  запрос уходил заново сразу, как предыдущий сдавался, и так каждые 12 секунд,
-  пока чат открыт (появился backoff); отметки прочтения при старте экрана
-  заменялись целиком, затирая то, что успела принести подписка, — теперь
-  мержатся по позднейшей из двух.
+  The rest from the same pass, smaller: the derived message list with day
+  separators was rebuilt **on every scroll frame** (the positions notifier
+  assigns a new list after every layout) — now it's computed once per change;
+  `MediaQuery.of` in the bubble subscribed it to the whole `MediaQueryData`, so
+  opening the keyboard rebuilt every bubble on screen (`sizeOf`); "is there
+  more history" was read as "the page came back non-empty", i.e. after the last
+  full page one extra request always went out (`page.length == limit`); a
+  failed history load retried without stopping — the trigger fires on every
+  frame, so the request was re-sent as soon as the previous one gave up, every
+  12 seconds for as long as the chat was open (backoff added); read marks at
+  screen start were replaced wholesale, wiping what the subscription had
+  already brought — now they are merged by the later of the two.
 
-  Не сделано сознательно: список по-прежнему подпрыгивает на позицию-две,
-  когда сообщение приходит, пока человек читает историю выше.
-  `ScrollablePositionedList` держит якорь по индексу, а компенсация требует
-  `jumpTo` в post-frame колбэке — и убивала бы инерцию скролла, если сообщение
-  придёт в момент броска, потому что узнать «палец сейчас на экране» пакет не
-  даёт. Лекарство хуже болезни, и проверить в тестах нечем.
+  Deliberately not done: the list still jumps by a position or two when a
+  message arrives while the person is reading history above.
+  `ScrollablePositionedList` anchors by index, and compensating requires a
+  `jumpTo` in a post-frame callback — which would kill scroll momentum if the
+  message arrives mid-fling, because the package gives no way to know "a finger
+  is on the screen right now". The cure is worse than the disease, and there's
+  no way to verify it in tests.
 
-- Удаление фото профиля на iPad + полировка галереи (0.18.11) — удаление фото
-  профиля на iPad не давало никакого эффекта: `ref.invalidate()`, защищённый
-  проверкой `mounted`, молча пропускал обновление после навигации из-за
-  мульти-оконного жизненного цикла iPadOS. Исправлено классом, а не одним
-  местом — контейнер провайдеров захватывается через `refreshAfterAwait(context)`
-  до `await`, а инвалидация происходит безусловно, во всех затронутых экранах.
-  Заодно при проверке на симуляторе iPad поправлено: диалог подтверждения
-  удаления больше не закрывается по первому тапу мимо (`barrierDismissible:
-  false`); удаление фото остаётся на экране удаления вместо возврата в
-  профиль — можно снести пачку фото за один заход; строки при перетаскивании в
-  режиме сортировки получили видимый подъём (тень + подсветка); экран запуска
-  iOS сменил белый фон на сиреневый, а иконку — с фиксированных 180pt на 42% от
-  ширины/высоты экрана (на iPad была мелкой и болталась не по центру;
-  доведение — IMM-250).
-- iPadOS: системные кнопки окна не перекрывают верхний левый угол (0.18.11) —
-  в оконном (не полноэкранном) режиме мультизадачности iPadOS 26 рисует свои
-  «светофорные» кнопки управления окном поверх левого верхнего угла
-  приложения, закрывая, например, кнопку «назад» в настройках (известная
-  регрессия iPadOS 26, замечена и на Obsidian, и на Firefox для iOS).
-  Надёжного публичного API определить оконный/полноэкранный режим нет, и он
-  может смениться в любой момент перетаскиванием — точечные отступы под
-  каждый экран ненадёжны. Вместо этого `AppDelegate` один раз при запуске
-  резервирует на iPad дополнительные 24pt сверху безопасной зоны, так что
-  `AppBar` любого экрана не заезжает под область системных кнопок независимо
-  от режима окна — тем же приёмом, каким это уже обходят другие приложения.
-- Нижняя навигация: равные отступы и увеличенные иконки на планшете (0.18.11)
-  — стоковый `NavigationBar` изначально закладывает асимметричный ряд иконок:
-  он резервирует место под подпись даже при
-  `NavigationDestinationLabelBehavior.alwaysHide`, поэтому иконки никогда не
-  оказывались по центру, сколько ни подгоняй внешние отступы и safe area.
-  Бар переписан с нуля (`_BottomBar`/`_BottomBarIcon` на `Row` + `Padding`),
-  что дало полный контроль над отступами: сверху и снизу ряда иконок —
-  одинаковый отступ (с небольшим перекосом +8 сверху — на глаз именно так
-  читается как «поровну», проверено на нескольких рендерах); нижняя safe area
-  (home indicator / оконная рамка iPad) резервируется отдельной полосой через
-  `SafeArea(top: false)`, без зазора между иконками и этой полосой; иконки на
-  планшетах крупнее (38px против 24–26px на телефоне) по брейкпоинту
-  `MediaQuery.shortestSide >= 600`; индикатор выбранного пункта — контейнер
-  фиксированного размера с `Alignment.center`, поэтому его иконка всегда по
-  центру независимо от формы глифа (иконка чата раньше уезжала в сторону).
-  Проверено вживую на симуляторе iPad Air 13" (M4), и в полноэкранном, и в
-  реальном оконном режиме мультизадачности с видимыми «светофорными» кнопками.
-- iOS: переход на UIScene, чинит краш при запуске на iOS 27 (0.18.11) —
-  приложения, собранные под SDK iOS 27, падают сразу после экрана запуска,
-  если не перешли на жизненный цикл UIScene из UIKit. Подтверждено логом краша
-  с физических iPhone и iPad (оба на iOS 27) и воспроизведено один в один на
-  симуляторе iOS 27; debug-сборка на iOS 26.5 не пострадала — падение
-  оказалось регрессией именно iOS 27.
-  `Info.plist` получил `UIApplicationSceneManifest`, указывающий на новый
-  `SceneDelegate`; `AppDelegate.swift` перенёс регистрацию плагинов в новый
-  колбэк `didInitializeImplicitFlutterEngine` (по руководству Flutter по
-  миграции) — ответственность за окно и UI-жизненный цикл перешла к сцене;
-  новый `SceneDelegate.swift` (подкласс `FlutterSceneDelegate`) унаследовал
-  оттуда же верхний отступ из IMM-170 для оконного режима iPad, поскольку тот
-  завязан на `window`, который теперь принадлежит сцене; `ci_post_clone.sh`
-  поднял пин Flutter для Xcode Cloud до 3.47.5, чтобы TestFlight-сборки
-  получили тот же фикс (3.38+ несёт API UIScene, 3.41+ сам мигрирует
-  немодифицированный `AppDelegate`); `.gitignore` полностью исключил локальные
-  файлы FVM (`.fvm/`, `.fvmrc`) — машина для сборки iOS теперь использует
-  через FVM более новый локальный Flutter, а машина Android-разработчика
-  закреплена на 3.32.8 её версией macOS и не должна видеть версийную подсказку,
-  адресованную не ей.
-  Проверено: симулятор iOS 27 (iPhone 17) запускается без падения и
-  показывает экран входа; симулятор iOS 26.5 (iPad Air) по-прежнему работает,
-  включая оконный отступ из IMM-170; `make deps/format-check/analyze` чисты на
-  общем тулчейне 3.32.8 (ни один из изменённых файлов не Dart-файл, так что
-  общий тулчейн здесь ничего не меняет). Файлы `pubspec.lock`/`.yaml`, Android
-  CI и всё, с чем работает Android-разработчик, не тронуты.
-- iOS: перевод Firebase с CocoaPods на Swift Package Manager, чинит сборку в Xcode Cloud (0.18.11) — `xcodebuild` в Xcode Cloud резолвит зависимости через `-project Runner.xcodeproj`, а не через `-workspace Runner.xcworkspace`, как локально; из-за этого отсутствовал `Package.resolved` по пути, который требовал CI, и сборка падала на `ci_post_clone.sh` с ошибкой — `firebase-ios-sdk` не резолвится. Flutter 3.47.5 (тот же пин, что и для IMM-251) при `flutter build ios` сам переводит `firebase_core`/`firebase_messaging` с CocoaPods на SPM через `FlutterGeneratedPluginSwiftPackage` — воспроизведено локально через FVM, `Podfile.lock` лишился Firebase-зависимостей, `Runner.xcscheme` получил pre-build шаг `Prepare Flutter Framework Script`, `analysis_options.yaml` — автоисключения `build/**`/`android/**`/`ios/**`. Сгенерированный через `xcodebuild -resolvePackageDependencies -project Runner.xcodeproj -scheme Runner` `Package.resolved` (122 строки, полный граф `firebase-ios-sdk@12.17.0` и транзитивных зависимостей) закоммичен по обоим путям — `Runner.xcodeproj/project.xcworkspace/.../Package.resolved` (тот, что реально читает Xcode Cloud) и `Runner.xcworkspace/.../Package.resolved` (для локальной работы через воркспейс). Попутно найдена и исправлена регрессия `MinimumOSVersion` — Flutter при этой же миграции стирает её из `AppFrameworkInfo.plist`, что может заблокировать загрузку в App Store (известный баг flutter/flutter#185039); восстановлено значение `15.0`, совпадающее с `IPHONEOS_DEPLOYMENT_TARGET`. `pubspec.lock` откачен к состоянию перед экспериментом — апгрейд 29 пакетов оказался побочным эффектом запуска другой версии Flutter, а не частью фикса, и не затрагивает тулчейн Android-разработчика (3.32.8).
-  Проверено: сборка в Xcode Cloud на `develop` прошла успешно, приложение протестировано на физических iPhone и iPad.
-- Connections: иконка блокировки стала однозначно красной (0.18.12, IMM-232) — иконка `Icons.block` у заблокированного знакомого использовала `Theme.of(context).colorScheme.error`, приглушённый красно-фиолетовый цвет из палитры `ColorScheme.fromSeed` на deep-purple seed-цвете, из-за чего сообщение «заблокирован» читалось нечётко. Заменено на фиксированный `Color(0xFFD32F2F)` (Material Red 700) — насыщенный, но не «неоновый» красный, подобранный по нескольким итерациям сравнения на реальном устройстве (чистый `#FF0000` оказался слишком ярким и раздражающим).
+- Deleting a profile photo on iPad + gallery polish (0.18.11) — deleting a
+  profile photo on iPad had no effect: `ref.invalidate()`, guarded by a
+  `mounted` check, silently skipped the refresh after navigation because of the
+  iPadOS multi-window lifecycle. Fixed as a class, not in one spot — the
+  provider container is captured via `refreshAfterAwait(context)` before the
+  `await`, and invalidation happens unconditionally, on every affected screen.
+  Also fixed while testing on the iPad simulator: the delete confirmation
+  dialog no longer closes on the first stray tap outside (`barrierDismissible:
+  false`); deleting a photo stays on the delete screen instead of returning to
+  the profile — you can remove a batch of photos in one go; rows being dragged
+  in reorder mode got a visible lift (shadow + highlight); the iOS launch
+  screen changed its white background to lilac, and the icon from a fixed 180pt
+  to 42% of the screen width/height (on iPad it was small and off-centre;
+  follow-up — IMM-250).
+- iPadOS: system window buttons no longer cover the top-left corner (0.18.11) —
+  in the windowed (non-fullscreen) multitasking mode, iPadOS 26 draws its own
+  "traffic light" window-control buttons over the app's top-left corner,
+  covering, for example, the "back" button in settings (a known iPadOS 26
+  regression, also seen in Obsidian and Firefox for iOS).
+  There is no reliable public API to detect windowed/fullscreen mode, and it
+  can change at any moment by dragging — per-screen spot insets are
+  unreliable. Instead, `AppDelegate` once at launch reserves an extra 24pt at
+  the top of the safe area on iPad, so the `AppBar` of any screen never slides
+  under the system-button area regardless of window mode — the same technique
+  other apps already use to work around it.
+- Bottom navigation: equal spacing and larger icons on tablets (0.18.11)
+  — the stock `NavigationBar` lays out an asymmetric icon row by design:
+  it reserves space for a label even with
+  `NavigationDestinationLabelBehavior.alwaysHide`, so the icons were never
+  centred, however the outer paddings and safe area were tuned.
+  The bar was rewritten from scratch (`_BottomBar`/`_BottomBarIcon` on `Row` +
+  `Padding`), which gave full control over spacing: above and below the icon
+  row there is the same padding (with a slight +8 skew at the top — by eye,
+  this is what reads as "equal", checked on several renders); the bottom safe
+  area (home indicator / iPad window frame) is reserved as a separate strip via
+  `SafeArea(top: false)`, with no gap between the icons and that strip; icons
+  on tablets are larger (38px vs 24–26px on a phone) by the breakpoint
+  `MediaQuery.shortestSide >= 600`; the selected-item indicator is a
+  fixed-size container with `Alignment.center`, so its icon is always centred
+  regardless of the glyph's shape (the chat icon used to drift to the side).
+  Verified live on the iPad Air 13" (M4) simulator, both fullscreen and in
+  real windowed multitasking mode with the "traffic light" buttons visible.
+- iOS: migrate to UIScene, fixes the launch crash on iOS 27 (0.18.11) —
+  apps built against the iOS 27 SDK crash right after the launch screen
+  if they haven't migrated to the UIKit UIScene lifecycle. Confirmed by crash
+  logs from physical iPhone and iPad (both on iOS 27) and reproduced exactly on
+  the iOS 27 simulator; a debug build on iOS 26.5 was unaffected — the crash
+  turned out to be an iOS 27-specific regression.
+  `Info.plist` got a `UIApplicationSceneManifest` pointing to a new
+  `SceneDelegate`; `AppDelegate.swift` moved plugin registration into the new
+  `didInitializeImplicitFlutterEngine` callback (per Flutter's migration
+  guide) — responsibility for the window and the UI lifecycle moved to the
+  scene; the new `SceneDelegate.swift` (a `FlutterSceneDelegate` subclass)
+  inherited from there the top inset from IMM-170 for the iPad windowed mode,
+  since it is tied to `window`, which now belongs to the scene;
+  `ci_post_clone.sh` raised the Flutter pin for Xcode Cloud to 3.47.5 so that
+  TestFlight builds get the same fix (3.38+ ships the UIScene API, 3.41+
+  migrates an unmodified `AppDelegate` by itself); `.gitignore` now fully
+  excludes local FVM files (`.fvm/`, `.fvmrc`) — the iOS build machine now uses
+  a newer local Flutter via FVM, while the Android developer's machine is
+  pinned to 3.32.8 by its macOS version and must not see a version hint not
+  meant for it.
+  Verified: the iOS 27 simulator (iPhone 17) launches without crashing and
+  shows the sign-in screen; the iOS 26.5 simulator (iPad Air) still works,
+  including the windowed inset from IMM-170; `make deps/format-check/analyze`
+  are clean on the shared 3.32.8 toolchain (none of the changed files is a Dart
+  file, so the shared toolchain changes nothing here). The
+  `pubspec.lock`/`.yaml` files, Android CI and everything the Android developer
+  works with are untouched.
+- iOS: move Firebase from CocoaPods to Swift Package Manager, fixes the Xcode Cloud build (0.18.11) — `xcodebuild` in Xcode Cloud resolves dependencies via `-project Runner.xcodeproj` rather than via `-workspace Runner.xcworkspace` as it does locally; because of this, `Package.resolved` was missing at the path CI required, and the build failed at `ci_post_clone.sh` with an error — `firebase-ios-sdk` doesn't resolve. Flutter 3.47.5 (the same pin as for IMM-251), on `flutter build ios`, migrates `firebase_core`/`firebase_messaging` from CocoaPods to SPM by itself via `FlutterGeneratedPluginSwiftPackage` — reproduced locally via FVM, `Podfile.lock` lost its Firebase dependencies, `Runner.xcscheme` got a pre-build step `Prepare Flutter Framework Script`, `analysis_options.yaml` got auto-exclusions `build/**`/`android/**`/`ios/**`. The `Package.resolved` generated via `xcodebuild -resolvePackageDependencies -project Runner.xcodeproj -scheme Runner` (122 lines, the full graph of `firebase-ios-sdk@12.17.0` and its transitive dependencies) is committed at both paths — `Runner.xcodeproj/project.xcworkspace/.../Package.resolved` (the one Xcode Cloud actually reads) and `Runner.xcworkspace/.../Package.resolved` (for local work through the workspace). Along the way a `MinimumOSVersion` regression was found and fixed — during this same migration Flutter erases it from `AppFrameworkInfo.plist`, which can block upload to the App Store (known bug flutter/flutter#185039); the value `15.0` was restored, matching `IPHONEOS_DEPLOYMENT_TARGET`. `pubspec.lock` was rolled back to its pre-experiment state — the upgrade of 29 packages turned out to be a side effect of running a different Flutter version, not part of the fix, and it doesn't affect the Android developer's toolchain (3.32.8).
+  Verified: the Xcode Cloud build on `develop` succeeded, and the app was tested on physical iPhone and iPad.
+- Connections: the block icon is now unambiguously red (0.18.12, IMM-232) — the `Icons.block` icon on a blocked connection used `Theme.of(context).colorScheme.error`, a muted reddish-purple from the `ColorScheme.fromSeed` palette on the deep-purple seed colour, which made the "blocked" message read unclearly. Replaced with a fixed `Color(0xFFD32F2F)` (Material Red 700) — a saturated but not "neon" red, picked over several rounds of comparison on a real device (pure `#FF0000` turned out too bright and irritating).
 
-- Выделение и копирование текста, кликабельные ссылки в чате комнаты
-  (0.18.13) — закрыты два тикета из Linear (IMM-248, IMM-249).
+- Text selection and copying, clickable links in the room chat
+  (0.18.13) — closes two Linear tickets (IMM-248, IMM-249).
 
-  Текст сообщения теперь живёт в одном общем `SelectionArea` на весь список
-  (не по `SelectableText` на пузырь): так выделение, начатое в одном
-  сообщении, корректно снимается тапом по любому другому месту списка — у
-  отдельного `SelectableText` нет способа узнать, что тап вообще случился за
-  пределами его собственного `RenderBox`. Долгое нажатие на живой текст теперь
-  выделяет его системными хэндлами, а шторка «Ответить/Удалить/Пожаловаться»
-  переехала с долгого нажатия на обычный тап — иначе два жеста конкурировали
-  за один и тот же текст. Автор, время и заглушка удалённого сообщения из
-  выделения исключены (`SelectionContainer.disabled`) — копировать там нечего.
-  Разделители дат («Сегодня»/дата) тоже исключены из выделения, а у пустого
-  `onLongPress`-перехватчика на них есть отдельная причина: `disabled` не
-  мешает `SelectionArea` в принципе среагировать на долгий тап в его
-  границах — только результату быть пустым, — так что без перехватчика
-  долгое нажатие на разделитель всё равно давало вибро-отклик впустую.
+  Message text now lives in one shared `SelectionArea` for the whole list
+  (not a `SelectableText` per bubble): this way a selection started in one
+  message is correctly cleared by a tap anywhere else in the list — a
+  standalone `SelectableText` has no way to know that a tap happened outside
+  its own `RenderBox` at all. A long press on live text now selects it with
+  the system handles, and the "Reply/Delete/Report" sheet moved from long press
+  to a plain tap — otherwise the two gestures competed for the same text. The
+  author, the time and the deleted-message placeholder are excluded from
+  selection (`SelectionContainer.disabled`) — there's nothing to copy there.
+  Date separators ("Today"/a date) are also excluded from selection, and the
+  empty `onLongPress` interceptor on them exists for a separate reason:
+  `disabled` doesn't stop `SelectionArea` from reacting to a long press within
+  its bounds in principle — it only makes the result empty — so without the
+  interceptor a long press on a separator still produced a haptic tick for
+  nothing.
 
-  Ссылки — свой регэксп на `http(s)://`/`www.`, без стороннего пакета:
-  `_LinkifiedMessageText` режет текст сообщения на обычные и ссылочные куски,
-  ссылочный кусок получает подчёркивание/цвет `colorScheme.primary` и
-  `TapGestureRecognizer`, открывающий `url_launcher` во внешнем браузере.
-  Recognizer'ы создаются заново на каждой перестройке и явно освобождаются в
-  `dispose()` — `TextSpan.recognizer`, по документации самого класса, из
-  очевидных нигде не следует, но обязан быть закрыт тем, кто его завёл.
+  Links use our own regex for `http(s)://`/`www.`, no third-party package:
+  `_LinkifiedMessageText` splits the message text into plain and link chunks;
+  a link chunk gets an underline/`colorScheme.primary` colour and a
+  `TapGestureRecognizer` that opens `url_launcher` in the external browser.
+  Recognizers are created anew on every rebuild and explicitly disposed in
+  `dispose()` — per the class's own documentation, `TextSpan.recognizer` isn't
+  managed by any of the obvious owners, but must be disposed by whoever created
+  it.
 
-  Самой неочевидной вышла мелочь: копирование выделения, растянутого на
-  несколько сообщений, склеивало их текст без пробела и без переноса — между
-  пузырями нет ни одного символа, только отступ на макете. Прямой `\n` внутри
-  текста сообщения не подошёл сразу по двум причинам (см. новую находку в
-  AGENTS.md): лишняя строка внутри `Text.rich` стоит полной высоты строки
-  независимо от `fontSize` этого конкретного `TextSpan`, а `\n` самым
-  последним символом выделяемого текста при копировании молча обрезается.
-  Рабочая связка — невидимый маркер-разделитель (zero-width space) в конце
-  текста каждого сообщения, который ничего не стоит по высоте/ширине, плюс
-  свой `contextMenuBuilder` у `SelectionArea`: кнопка «Copy» после штатного
-  копирования дополнительно вычитывает `Clipboard.getData` и меняет маркеры на
-  настоящие `\n`, прежде чем положить текст обратно. На телефоне копирование
-  идёт тапом по кнопке в тулбаре (`SelectableRegionState._copy()`), а не через
-  `Actions`/`Intents` — оверрайд `CopySelectionTextIntent` эту кнопку не
-  перехватывает вовсе, только Ctrl+C/Cmd+C, так что править нужно было именно
-  `contextMenuBuilder`.
+  The least obvious part turned out to be a small thing: copying a selection
+  spanning several messages glued their text together with no space and no line
+  break — there isn't a single character between bubbles, only spacing in the
+  layout. A literal `\n` inside the message text didn't work, for two reasons
+  at once (see the new finding in AGENTS.md): an extra line inside `Text.rich`
+  costs a full line height regardless of the `fontSize` of that particular
+  `TextSpan`, and a `\n` as the very last character of the selectable text is
+  silently trimmed on copy. The working combination is an invisible separator
+  marker (zero-width space) at the end of each message's text, which costs
+  nothing in height/width, plus a custom `contextMenuBuilder` on the
+  `SelectionArea`: after the standard copy, the "Copy" button additionally
+  reads `Clipboard.getData` and replaces the markers with real `\n`s before
+  putting the text back. On a phone, copying happens by tapping the toolbar
+  button (`SelectableRegionState._copy()`), not through `Actions`/`Intents` —
+  an override of `CopySelectionTextIntent` doesn't intercept that button at
+  all, only Ctrl+C/Cmd+C, so it was `contextMenuBuilder` that had to be
+  changed.
 
-  Проверено: юнит- и виджет-тестами (`room_chat_screen_test.dart`, включая
-  тест, который тем же способом, что и настоящий пользователь — drag-select
-  плюс тап по «Copy» в тулбаре, — проверяет, что в буфере обмена оказывается
-  реальный перенос строки между сообщениями), затем вручную на физическом
-  устройстве по нескольким кругам правок: выделение и копирование текста,
-  ссылки открываются во внешнем браузере и не путаются с жестом шторки,
-  разделители дат не копируются и не вибрируют на долгом нажатии.
+  Verified: with unit and widget tests (`room_chat_screen_test.dart`, including
+  a test that, the same way a real user does — drag-select plus a tap on "Copy"
+  in the toolbar — checks that the clipboard ends up with a real line break
+  between messages), then manually on a physical device over several rounds of
+  fixes: selecting and copying text, links open in the external browser and
+  don't get mixed up with the sheet gesture, date separators aren't copied and
+  don't vibrate on long press.
 
-- Четырнадцатый полный аудит (0.18.13 — номер подставлен при бампе перед
-  PR: версию в `app/pubspec.yaml` этот проход намеренно не трогал).
+- Fourteenth full audit (0.18.13 — the number was filled in at the bump before
+  the PR: this pass deliberately didn't touch the version in
+  `app/pubspec.yaml`).
 
-  **Главная находка — `revoke ... from anon, authenticated` не снимает грант,
-  выданный PUBLIC.** `create function` в PostgreSQL по умолчанию выдаёт
-  EXECUTE роли PUBLIC, а в неё входят и `anon`, и `authenticated`. Поэтому
-  шесть функций, которые 20260913100000 считала закрытыми, закрытыми не были,
-  и четыре из них оставались достижимы через PostgREST. Проверено не
-  рассуждением, а запросом публичным ключом приложения без всякой сессии:
-  `POST /rest/v1/rpc/is_write_banned {"p_user": "<uuid>"}` отвечал `HTTP 200`
-  и `false`/`true` — то есть решение модерации про любой аккаунт по его uuid
-  мог прочитать кто угодно в интернете (ключ вшит в APK и публичен by
-  design). Вместе с ней отвечали `room_message_visible(uuid)`,
-  `room_message_media_visible(text)` (существование вложения в чужой комнате
-  по точному пути) и `can_report(text, uuid)`. После 20260924100000 все
-  четыре отвечают 401/42501 — тоже проверено тем же запросом.
+  **The main finding — `revoke ... from anon, authenticated` doesn't remove a
+  grant issued to PUBLIC.** `create function` in PostgreSQL by default grants
+  EXECUTE to the PUBLIC role, and both `anon` and `authenticated` are members
+  of it. So six functions that 20260913100000 considered closed were not
+  closed, and four of them remained reachable through PostgREST. Verified not
+  by reasoning but by a request with the app's public key and no session at
+  all: `POST /rest/v1/rpc/is_write_banned {"p_user": "<uuid>"}` answered
+  `HTTP 200` and `false`/`true` — i.e. the moderation decision about any account
+  could be read by its uuid by anyone on the internet (the key is embedded in
+  the APK and public by design). Along with it, `room_message_visible(uuid)`,
+  `room_message_media_visible(text)` (the existence of an attachment in someone
+  else's room by exact path) and `can_report(text, uuid)` answered. After
+  20260924100000 all four answer 401/42501 — also verified with the same
+  request.
 
-  Тот же промах уровнем выше и он же объясняет, почему это не поймали раньше:
-  baseline снимает дефолтные привилегии на функции у `anon` и комментарием
-  считает вопрос решённым, но дефолт выдаётся PUBLIC, и та строка его не
-  касалась — значит КАЖДАЯ функция, созданная после baseline, публиковалась
-  анониму, если её не закрыли явным словом `public`. Теперь сняты оба дефолта
-  (`from public` и `from authenticated`), так что новая функция закрыта по
-  умолчанию и забытый `grant` ломает фичу громко (42501), а не открывает её
-  тихо.
+  The same miss one level up also explains why it wasn't caught earlier: the
+  baseline revokes default privileges on functions from `anon` and, in a
+  comment, considers the matter settled, but the default is granted to PUBLIC,
+  and that line didn't touch it — so EVERY function created after the baseline
+  was published to the anonymous role unless it was closed with an explicit
+  `public`. Now both defaults are revoked (`from public` and
+  `from authenticated`), so a new function is closed by default and a
+  forgotten `grant` breaks the feature loudly (42501) rather than quietly
+  opening it.
 
-  На обратной стороне этой же правки чуть не выключились все вложения в
-  чатах: `room_message_media_visible()` стоит в SELECT-политике
-  `storage.objects`, выражение политики исполняется от вызывающей роли, и
-  работала она ровно за счёт гранта PUBLIC. Поймано dry-run'ом миграции в
-  транзакции с `rollback` до наката; функция закрыта от анонима и
-  переоткрыта `authenticated`, как соседняя `post_media_path_visible()`. В
-  проверки миграции добавлен общий блок: каждая функция из выражений
-  `pg_policies` обязана иметь EXECUTE у `authenticated` — список берётся
-  запросом, поэтому следующая политика попадёт под проверку сама.
+  On the flip side of this same fix, all attachments in chats nearly got
+  switched off: `room_message_media_visible()` sits in a SELECT policy on
+  `storage.objects`, a policy expression runs as the calling role, and it
+  worked solely thanks to the PUBLIC grant. Caught by a dry run of the
+  migration in a transaction with `rollback` before applying it; the function
+  was closed to the anonymous role and reopened to `authenticated`, like the
+  neighbouring `post_media_path_visible()`. A general block was added to the
+  migration's checks: every function from `pg_policies` expressions must have
+  EXECUTE for `authenticated` — the list is taken by a query, so the next
+  policy will fall under the check on its own.
 
-  **Запрет писать распространён на правку.** `reject_write_when_banned` висел
-  семью BEFORE INSERT, то есть забанённый не мог завести новый пост, но мог
-  переписать текст любого своего старого (`grant update (text)` на `posts`) и
-  сменить себе имя (`grant update (name)` на `users`) — прямым PATCH через
-  PostgREST. Добавлены поколоночные `before update of text on posts` и
-  `before update of name on users`; поколоночные не для скорости, а чтобы
-  консоль по-прежнему скрывала пост забанённого автора (`hidden_at` в список
-  не входит) и чтобы забанённый по-прежнему мог удалить свою фотографию
-  (удаление переписывает `avatar_path` триггером синка галереи). Заодно
-  найдено, что у `users` автор строки — это её `id`, которого в цепочке
-  `coalesce` не было вовсе: триггер срабатывал, автора не находил и выходил
-  как «пишет сервер». Это поймала поведенческая проба, а не чтение кода —
-  накат и все проверки миграции проходили.
+  **The write ban now extends to editing.** `reject_write_when_banned` was
+  attached as seven BEFORE INSERT triggers, i.e. a banned user couldn't create
+  a new post but could rewrite the text of any of their old ones
+  (`grant update (text)` on `posts`) and change their own name
+  (`grant update (name)` on `users`) — via a direct PATCH through PostgREST.
+  Added per-column `before update of text on posts` and
+  `before update of name on users`; per-column not for speed, but so that the
+  console can still hide a banned author's post (`hidden_at` isn't in the
+  column list) and so that a banned user can still delete their own photo
+  (deletion rewrites `avatar_path` via the gallery sync trigger). Along the way
+  it was found that for `users` the row's author is its `id`, which wasn't in
+  the `coalesce` chain at all: the trigger fired, didn't find the author and
+  exited as "the server is writing". This was caught by a behavioural probe,
+  not by reading the code — applying the migration and all of its checks
+  passed.
 
-  **`<>` с `auth.uid()` даёт NULL, а не true, когда пишет сервер.** Ветка «не
-  наше дело» в том же триггере была написана как
-  `v_author is null or v_author <> auth.uid()`, а у service_role `auth.uid()`
-  — NULL, то есть всё условие NULL, ветка не срабатывала, и функция шла
-  проверять бан автора чужой строки. Пока триггер стоял только на INSERT,
-  спасало то, что так пишет один системный аккаунт и он не забанен; с
-  триггером на `posts.text` это сломало бы правку новостного поста из
-  консоли. Стало `is distinct from`.
+  **`<>` with `auth.uid()` yields NULL, not true, when the server is
+  writing.** The "not our business" branch in the same trigger was written as
+  `v_author is null or v_author <> auth.uid()`, and for service_role
+  `auth.uid()` is NULL, so the whole condition is NULL, the branch didn't fire,
+  and the function went on to check the ban of the author of someone else's
+  row. While the trigger was only on INSERT, it was saved by the fact that only
+  one system account writes this way and it isn't banned; with the trigger on
+  `posts.text` this would have broken editing a news post from the console.
+  It's now `is distinct from`.
 
-  **Отражённая XSS на опубликованной странице сброса пароля.**
-  `docs/gh-pages/reset-password.html` склеивала `error_description` из
-  фрагмента ссылки в `innerHTML`, то есть
-  `#error_description=<img src=x onerror=…>` исполнял чужой скрипт на домене,
-  где через секунду набирают новый пароль. Проверено в браузере в обе
-  стороны: прежний код payload исполнял, новый рисует его текстом. Карточка
-  теперь собирается узлами с `textContent`, добавлена CSP (в ней важнее всего
-  `connect-src` — единственный адрес, куда страница может что-то отправить, —
-  и `form-action 'none'`, закрывающий отправку формы браузером: без
-  `preventDefault` форма без `action` уехала бы GET-запросом с паролем в query
-  string, то есть в историю браузера и в логи), убран двойной
-  `decodeURIComponent` (на `%ZZ` он бросал URIError и страница навсегда
-  оставалась на «Загрузка…»), а `supabase-js` прибит к точной версии с
-  `integrity` вместо плавающего тега `@2` — на этой странице чужой скрипт
-  равен утечке пароля.
+  **Reflected XSS on the published password-reset page.**
+  `docs/gh-pages/reset-password.html` concatenated `error_description` from the
+  link fragment into `innerHTML`, i.e.
+  `#error_description=<img src=x onerror=…>` executed a foreign script on the
+  domain where a new password is typed a second later. Verified in the browser
+  both ways: the old code executed the payload, the new one renders it as
+  text. The card is now built from nodes with `textContent`, a CSP was added
+  (the most important parts of it are `connect-src` — the only address the
+  page can send anything to — and `form-action 'none'`, which blocks the
+  browser from submitting the form: without `preventDefault`, a form without
+  `action` would have gone out as a GET request with the password in the query
+  string, i.e. into the browser history and the logs), the double
+  `decodeURIComponent` was removed (on `%ZZ` it threw a URIError and the page
+  stayed on "Загрузка…" ("Loading…") forever), and `supabase-js` is pinned to
+  an exact version with `integrity` instead of the floating `@2` tag — on this
+  page a foreign script equals a password leak.
 
-  **Локальная консоль перестала быть доступной из браузерных вкладок.** Петля
-  закрывает сеть, но не браузер разработчика: чужой домен с A-записью
-  `127.0.0.1` для браузера становится одним origin с консолью, CORS не
-  возникает, и скрипт с такой страницы читает ответы — а консоль ходит
-  service_role-ключом мимо RLS. Добавлен `server/local_only.ts` (проверка
-  `Host`/`Origin`/`Sec-Fetch-Site` перед разбором тела) и первые тесты
-  консоли вообще — на `node --test` через уже имеющийся `tsx`, без нового
-  раннера в зависимостях. Там же исправлено: срок наказания приходил из формы
-  без проверки, `Number("неделя")` доезжал до `new Date(NaN).toISOString()` и
-  превращался в 500 «Invalid time value», а отрицательное число молча
-  назначало бан, истёкший в тот же миг.
+  **The local console is no longer reachable from browser tabs.** Loopback
+  shuts out the network, but not the developer's browser: a foreign domain with
+  an A record of `127.0.0.1` becomes, for the browser, the same origin as the
+  console, no CORS comes into play, and a script on such a page reads the
+  responses — while the console uses the service_role key and bypasses RLS.
+  Added `server/local_only.ts` (a `Host`/`Origin`/`Sec-Fetch-Site` check before
+  parsing the body) and the console's first tests ever — on `node --test` via
+  the already present `tsx`, with no new runner in the dependencies. Fixed
+  there as well: the penalty duration came from the form unvalidated,
+  `Number("неделя")` made it all the way to `new Date(NaN).toISOString()` and
+  turned into a 500 "Invalid time value", and a negative number silently
+  assigned a ban that expired the same instant.
 
-  Прочее: `pg_temp` прибит последним в `search_path` у всех функций, кроме двух
-  инлайнящихся SQL-функций без обращений к таблицам (`ALTER FUNCTION`, тела не
-  тронуты) — эшелонирование, а не закрытая дыра, потому что через PostgREST
-  временную таблицу не создать; `reaction_summary()` из VOLATILE в STABLE
-  (только читает); `actions/checkout` пришпилен по SHA в
-  `sync-gh-pages.yml` — единственном workflow, который этого не делал, и при
-  этом единственном с `contents: write`; `analysis_options.yaml` получил
-  `strict-casts`/`strict-raw-types` (оба включились без единого нарушения) и
-  `unawaited_futures`/`use_build_context_synchronously` как ошибки; утечка
-  подписки на `onAuthStateChange` в `routerProvider` закрыта `ref.onDispose`;
-  doc-комментарий про mute комнаты исправлен — он обещал, что флаг скрыт от
-  остальных участников, а он не скрыт (что с этим делать — в «Комнаты»
-  docs/data-model.md).
+  Other: `pg_temp` is pinned last in `search_path` for all functions except two
+  inlinable SQL functions that don't touch tables (`ALTER FUNCTION`, bodies
+  untouched) — defence in depth, not a closed hole, because a temporary table
+  can't be created through PostgREST; `reaction_summary()` went from VOLATILE
+  to STABLE (it only reads); `actions/checkout` is pinned by SHA in
+  `sync-gh-pages.yml` — the only workflow that didn't do so, and at the same
+  time the only one with `contents: write`; `analysis_options.yaml` got
+  `strict-casts`/`strict-raw-types` (both switched on without a single
+  violation) and `unawaited_futures`/`use_build_context_synchronously` as
+  errors; the `onAuthStateChange` subscription leak in `routerProvider` was
+  closed with `ref.onDispose`; the doc comment about room mute was corrected —
+  it promised that the flag is hidden from other members, and it isn't (what
+  to do about that — in "Rooms" in docs/data-model.md).
 
-  Проверено: `make verify` (deps, формат, analyze, 356 тестов),
+  Verified: `make verify` (deps, format, analyze, 356 tests),
   `cd console && npm run lint && npm run typecheck && npm test && npm run build`,
-  миграция — dry-run в транзакции с `rollback` плюс поведенческая проба из
-  семи случаев (создание поста, правка текста, смена имени, сокрытие поста
-  консолью, правка новостного поста, удаление своей фотографии, снятие бана),
-  после наката — контрольные числа видимости под обычным участником комнаты
-  (вложения, аватарки, медиа постов, комнаты, сообщения, `my_rooms()`,
-  `reaction_summary()`, `comment_summary()`) и внешние запросы публичным
-  ключом по четырём закрытым функциям. Новый тест на экране профиля
-  проверялся откатом правки: без неё падает.
+  the migration — a dry run in a transaction with `rollback` plus a behavioural
+  probe of seven cases (creating a post, editing text, changing the name,
+  hiding a post from the console, editing a news post, deleting one's own photo,
+  lifting a ban), and after applying — control visibility numbers as a regular
+  room member (attachments, avatars, post media, rooms, messages, `my_rooms()`,
+  `reaction_summary()`, `comment_summary()`) and external requests with the
+  public key against the four closed functions. The new test on the profile
+  screen was checked by reverting the fix: without it, it fails.
 
-- Пятнадцатый полный аудит (0.18.13) — шесть находок, три в приложении и три
-  в консоли. Проход снова без опоры на прошлые ревью: весь `app/lib`, вся
-  консоль, edge-функция, миграции, страницы gh-pages, workflow'ы и скрипты.
+- Fifteenth full audit (0.18.13) — six findings, three in the app and three
+  in the console. Once again the pass didn't lean on earlier reviews: all of
+  `app/lib`, the whole console, the edge function, migrations, the gh-pages
+  pages, workflows and scripts.
 
-  **Главная — охота за целью ответа крутилась вхолостую, а не грузила.**
-  Тап по цитате ответа, чей оригинал ещё не подгружен, запускал
-  `_scrollToMessage`, а тот в цикле просил `_loadMore()`, пока сообщение не
-  найдётся. Но `_loadMore` возвращал `void`, и «я ничего не сделал» было
-  неотличимо от «страница пришла, но нужного в ней нет». Офлайн ветка
-  бэкоффа возвращалась на уже завершённом Future каждую итерацию — цикл
-  превращался в спин на event loop: сожранное ядро всё время, пока чат
-  открыт, и лечилось только возвращением сети. Теперь `_loadMore` отвечает,
-  сдвинулось ли что-нибудь, а цикл останавливается на «нет». Параллельный
-  вызов при этом ждёт уже летящую страницу (`_pageInFlight`), а не шлёт
-  дубликат и не сдаётся на раунд раньше, — это и держит цикл одновременно
-  завершимым и честным. Проверено тестом в обе стороны: без правки он не
-  завершается вовсе.
+  **The main one — hunting for a reply's target spun idle instead of loading.**
+  Tapping the quote of a reply whose original wasn't loaded yet started
+  `_scrollToMessage`, which looped asking `_loadMore()` until the message
+  turned up. But `_loadMore` returned `void`, so "I did nothing" was
+  indistinguishable from "a page arrived, but what we need isn't in it". The
+  offline backoff branch returned on an already-completed Future every
+  iteration — the loop turned into a spin on the event loop: a core eaten for
+  as long as the chat stayed open, cured only by the network coming back. Now
+  `_loadMore` reports whether anything moved, and the loop stops on "no". A
+  concurrent call meanwhile waits for the page already in flight
+  (`_pageInFlight`) instead of sending a duplicate or giving up a round
+  early — that's what keeps the loop both terminating and honest. Verified by
+  a test in both directions: without the fix it never finishes at all.
 
-  Вложения в чате могли навсегда остаться на спиннере: `_MessageMedia`
-  сторожил подписывание голым `bool`, который `didUpdateWidget` не сбрасывал
-  при смене поколения. Пришедшее сообщение сдвигало слот посреди запроса —
-  старый ответ отбрасывался проверкой поколения, а запрос для нового списка
-  отклонялся сторожем и не уходил вообще; пересобрать `State` заново некому.
-  Сторож теперь по поколению, как в карусели ленты. У подписки на отметки
-  не было `onResubscribed`: обрыв сокета без ухода в фон оставлял галочки
-  «доставлено» над прочитанным сообщением до перезахода в чат.
+  Chat attachments could stay on the spinner forever: `_MessageMedia` guarded
+  signing with a bare `bool` that `didUpdateWidget` didn't reset on a
+  generation change. An incoming message shifted the slot mid-request — the
+  old response was discarded by the generation check, while the request for
+  the new list was rejected by the guard and never went out at all; nothing
+  was going to rebuild the `State`. The guard is now per generation, as in the
+  feed carousel. The read-receipt subscription had no `onResubscribed`: a
+  socket drop without going to the background left "delivered" ticks over a
+  read message until you re-entered the chat.
 
-  В консоли — то же правило «инвариант, который держится на чужой доброй
-  воле, не инвариант», только про байты. Черновик новостей замораживал в
-  `drafts.json` путь уже залитого объекта, но у объекта без строки в
-  `post_media` нет ничего, что удержало бы его от `reap-orphaned-media`:
-  через сутки байты сносились, а публикация двухдневного черновика
-  **проходила успешно** — строки вставали, указывая в пустоту, и пост уходил
-  в ленту всем знакомым битым, вместе с уже отправленным пушем; вернуть
-  нечего, `drafts.json` — единственная копия. Черновик больше не ссылается в
-  бакет: файл лежит на диске консоли (`news-staging/`) и уезжает туда в
-  момент публикации. Попутно кончился и весь класс «консоль насорила в
-  бакет», и перестали протухать миниатюры черновика. Путь объекта теперь
-  целиком минтит сервер: расширение бралось из имени файла из браузера и
-  проверялось только по длине — нормально, пока результат был ключом в
-  Storage, где лишний слэш просто ещё один сегмент, но он стал именем файла
-  на диске, а `..` в 2–5 символов укладывается.
+  In the console — the same rule, "an invariant that rests on someone else's
+  goodwill is not an invariant", only about bytes. The news draft froze into
+  `drafts.json` the path of an already-uploaded object, but an object without
+  a row in `post_media` has nothing to keep it from `reap-orphaned-media`:
+  after a day the bytes were wiped, and publishing a two-day-old draft
+  **succeeded** — the rows went in pointing at nothing, and the post went out
+  broken to the feed of every connection, along with the push already sent;
+  there's nothing to restore, `drafts.json` is the only copy. The draft no
+  longer references the bucket: the file sits on the console's disk
+  (`news-staging/`) and moves there at publish time. Along the way the whole
+  class of "the console littered the bucket" ended too, and draft thumbnails
+  stopped going stale. The object path is now minted entirely by the server:
+  the extension was taken from the browser's file name and checked only for
+  length — fine while the result was a Storage key, where an extra slash is
+  just one more segment, but it became a file name on disk, and `..` fits
+  within 2–5 characters.
 
-  Ещё две: `parseBanDays` пропускал любое конечное число, так что `days: 1e9`
-  доезжал до `new Date()` за пределом диапазона и `writeBanUntil` падал ровно
-  тем `RangeError`, ради которого модуль и заведён (`authBanDuration`
-  прикрывал собственный кламп, у запрета писать его не было) — потолок
-  теперь один и на входе; история рассылок сортировалась по `Number(build)`,
-  а подставляемый при отсутствии сборки `?` — это NaN, то есть не порядок
-  вовсе, и одной такой строки хватало, чтобы вся таблица выехала.
+  Two more: `parseBanDays` let through any finite number, so `days: 1e9`
+  reached `new Date()` beyond its range and `writeBanUntil` crashed with
+  exactly the `RangeError` the module exists to prevent (`authBanDuration`
+  was covered by its own clamp, the write ban had none) — there's now one
+  ceiling, enforced at input as well; the broadcast history was sorted by
+  `Number(build)`, and the `?` substituted when there's no build is NaN, i.e.
+  no ordering at all, and a single such row was enough to throw the whole
+  table off.
 
-  Слиянием с веткой коллеги поймано седьмое, уже не аудитом: обе ветки
-  завели в `analysis_options.yaml` свой ключ `analyzer:`, git слил их без
-  конфликта (строки-то разные), а YAML на дубль ключа молча оставляет
-  последний — то есть тихо выключились бы либо iOS-исключения, либо
-  strict-режимы. Сведено в один ключ, с комментарием на месте.
+  Merging a colleague's branch caught a seventh, this time not by the audit:
+  both branches added their own `analyzer:` key to `analysis_options.yaml`,
+  git merged them without a conflict (the lines differ, after all), and YAML
+  silently keeps the last of a duplicate key — so either the iOS exclusions
+  or the strict modes would have quietly switched off. Merged into one key,
+  with a comment in place.
 
-  Проверено: `make verify` и полный набор проверок консоли (lint, typecheck,
-  тесты, сборка) зелёные до и после слияния. Тестов стало на шесть больше —
-  два в приложении (спин, догон отметок) и четыре в консоли (выход за
-  каталог, круг «тип ↔ расширение», потолок срока, разбираемость даты на
-  всём проходящем диапазоне).
+  Verified: `make verify` and the full console check suite (lint, typecheck,
+  tests, build) are green before and after the merge. There are six more
+  tests — two in the app (the spin, catching up on receipts) and four in the
+  console (escaping the directory, the "type ↔ extension" round trip, the
+  term ceiling, the date being parseable across the whole accepted range).
 
-- Хвост пятнадцатого аудита (0.18.14 — номер подставлен при бампе перед
-  PR: версию в `app/pubspec.yaml` этот проход намеренно не трогал) — три
-  мелочи, которые сам аудит нашёл, но в свой список находок не взял как
-  слишком узкие; заведены как IMM-254, IMM-255, IMM-256 и закрыты вместе.
+- Tail of the fifteenth audit (0.18.14 — the number was filled in at the bump
+  before the PR: this pass deliberately didn't touch the version in
+  `app/pubspec.yaml`) — three small things the audit itself found but didn't
+  take into its list of findings as too narrow; filed as IMM-254, IMM-255,
+  IMM-256 and closed together.
 
-  **`verify-version.sh` отвечал «passed» на версию без номера сборки**
-  (IMM-254). `[ "$x" -le "$y" ]` на нечисле — не сравнение, которое выходит
-  ложным, а ошибка употребления: `[` пишет `Illegal number` в stderr и
-  возвращает 2, а внутри `if` это читается как «ложно», и `set -e` туда не
-  достаёт. `version: 0.18.13+` даёт пустой `${v##*+}`, прежний шаблон
-  `*[!0-9:]*|:*` его не ловил (нецифр нет, двоеточие не в начале) — и
-  единственная проверка, которая гарантирует, что PR несёт номер сборки,
-  печатала успех для версии вовсе без него. Теперь оба номера проверяются по
-  отдельности, перечислением разрешённого. Заодно различены два провала
-  versionName: awk выходит с 1 на «уехал назад» и с 2 на «не
-  major.minor.patch», а печаталось на оба «must not decrease» — неверно для
-  второго, и именно так сюда приезжает версия с двумя `+` (`${v%+*}`
-  оставляет `1.0.0+1` «именем» для `1.0.0+1+2`). Проверено прогоном десяти
-  версий через скрипт, а не чтением.
+  **`verify-version.sh` answered "passed" for a version without a build
+  number** (IMM-254). `[ "$x" -le "$y" ]` on a non-number isn't a comparison
+  that comes out false but a usage error: `[` writes `Illegal number` to
+  stderr and returns 2, and inside `if` that reads as "false", where `set -e`
+  doesn't reach. `version: 0.18.13+` yields an empty `${v##*+}`, which the old
+  pattern `*[!0-9:]*|:*` didn't catch (no non-digits, no leading colon) — and
+  the only check that guarantees a PR carries a build number printed success
+  for a version without one at all. Now both numbers are checked separately,
+  by enumerating what's allowed. Also, the two versionName failures are now
+  told apart: awk exits with 1 on "went backwards" and with 2 on "not
+  major.minor.patch", but both printed "must not decrease" — wrong for the
+  second, and that's exactly how a version with two `+` ends up here
+  (`${v%+*}` leaves `1.0.0+1` as the "name" for `1.0.0+1+2`). Verified by
+  running ten versions through the script, not by reading.
 
-  **`posterFor` не снимал свой аварийный таймер** (IMM-255). Десятисекундный
-  таймаут, который не даёт подвиснуть на неразбираемом файле, не отменялся
-  при успехе — после снятого постера он всё равно срабатывал и звал `done`
-  второй раз. Промису это безразлично, а `revokeObjectURL` выполнялся дважды,
-  и до срабатывания таймер держал живыми замыкание, `<video>` и blob-URL.
-  Безвредно ровно потому, что в `done` больше ничего нет; флаг и
-  `clearTimeout` сняли эту зависимость.
+  **`posterFor` didn't clear its fallback timer** (IMM-255). The ten-second
+  timeout that keeps it from hanging on an unparseable file wasn't cancelled
+  on success — after the poster was captured it still fired and called `done`
+  a second time. The promise doesn't care, but `revokeObjectURL` ran twice,
+  and until it fired the timer kept the closure, the `<video>` and the blob
+  URL alive. Harmless only because `done` contains nothing else; a flag and
+  `clearTimeout` removed that dependency.
 
-  **Кривой id в консоли отвечал 500 вместо 400** (IMM-256). Идентификаторы
-  уходили в PostgREST без проверки формы, Postgres отвечал `22P02`, и
-  обработчик превращал любой бросок в 500 с текстом драйвера — при том что та
-  же ручка на корректный несуществующий id честно отвечает 404. Опечатка
-  выглядела как упавший сервер, а модератор видел внутренности. Один
-  `isUuid()` (`console/server/uuid.ts`) на всех точках входа, включая две
-  ручки новостей, которых не было в тикете, но дефект там тот же. Не про
-  безопасность: id уходит параметром фильтра, а не склейкой в SQL, и мусорный
-  просто не находит строк, — про то, чтобы ответ означал то, что означает.
-  Проверено вживую по всем семи ручкам: мусорный id даёт 400, не доходя до
-  базы; корректный несуществующий по-прежнему даёт 404.
+  **A malformed id in the console answered 500 instead of 400** (IMM-256).
+  Ids went to PostgREST without a shape check, Postgres answered `22P02`, and
+  the handler turned any throw into a 500 with the driver's text — even
+  though the same endpoint honestly answers 404 for a well-formed nonexistent
+  id. A typo looked like a crashed server, and the moderator saw the
+  internals. A single `isUuid()` (`console/server/uuid.ts`) at every entry
+  point, including two news endpoints that weren't in the ticket but have the
+  same defect. Not about security: the id goes in as a filter parameter, not
+  spliced into SQL, and a junk one simply finds no rows — it's about the
+  response meaning what it means. Verified live on all seven endpoints: a junk
+  id gives 400 without reaching the database; a well-formed nonexistent one
+  still gives 404.
 
-  Тестов в консоли стало 42 (было 38): `uuid.test.ts` проверяет форму,
-  не-строку и довесок после uuid.
+  Console tests are now 42 (were 38): `uuid.test.ts` checks the shape, a
+  non-string and trailing junk after the uuid.
 
-  По итогам ревью ветки — ещё три правки к тому же.
+  Following the branch review — three more fixes on top.
 
-  **Самопроверка 3 в `20261010100000_wrap_auth_uid_in_select.sql` валила
-  повторный накат**: обёртку разворачивала только в «после» и сравнивала с
-  сырым «до», где на уже обёрнутой политике обёртка тоже стоит. Падение
-  воспроизведено dry-run'ом на живой базе (все 27 политик), после правки
-  повторный накат проходит, а подмешанное `and true` в одну политику
-  по-прежнему ловится. Эффект миграции не менялся — только проверка, — и на
-  живой базе она уже стоит, поэтому заново не накатывалась.
+  **Self-check 3 in `20261010100000_wrap_auth_uid_in_select.sql` failed a
+  re-run**: it unwrapped the wrapper only in "after" and compared it with the
+  raw "before", where on an already-wrapped policy the wrapper is present too.
+  The failure was reproduced with a dry run on the live database (all 27
+  policies); after the fix a re-run passes, and an `and true` slipped into one
+  policy is still caught. The migration's effect didn't change — only the
+  check — and it's already applied on the live database, so it wasn't
+  re-applied.
 
-  **`verify-version.sh` пропускал номер сборки из 19+ цифр**: он переполняет
-  целое `[`, и это та же ошибка употребления с кодом 2 и тот же «passed».
-  Теперь длина ограничена до сравнения, а значение — потолком Google Play
-  (2100000000).
+  **`verify-version.sh` let through a build number of 19+ digits**: it
+  overflows `[`'s integer, and that's the same usage error with code 2 and
+  the same "passed". Now the length is limited before the comparison, and the
+  value by the Google Play ceiling (2100000000).
 
-  **Проверка `:id` — один `router.param('id', uuidParam)` на роутер** вместо
-  копии в пяти обработчиках: забытая в новой ручке копия молча вернула бы тот
-  же 500. `uuid_param.integration.test.ts` поднимает роутер на эфемерном
-  порту и падает, если `.param` убрать (тестов теперь 45).
+  **The `:id` check is a single `router.param('id', uuidParam)` per router**
+  instead of a copy in five handlers: a copy forgotten in a new endpoint would
+  silently bring back the same 500. `uuid_param.integration.test.ts` brings up
+  the router on an ephemeral port and fails if `.param` is removed (45 tests
+  now).
 
-- Вторая свёртка истории миграций (0.18.14 — номер подставлен при бампе
-  перед PR). Первый baseline и 27 миграций поверх него
-  (`20260826000000`…`20261010100000`) заменены одним
-  `20261018000000_baseline_schema.sql`; сами файлы — в теге
-  `pre-baseline-migrations-2`, рядом с первым. Как и в прошлый раз,
-  содержимое выведено из живой схемы (pg_catalog), а не из миграций.
+- Second squash of the migration history (0.18.14 — the number was filled in
+  at the bump before the PR). The first baseline and the 27 migrations on top
+  of it (`20260826000000`…`20261010100000`) are replaced by a single
+  `20261018000000_baseline_schema.sql`; the files themselves are in the tag
+  `pre-baseline-migrations-2`, next to the first one. As last time, the
+  contents were derived from the live schema (pg_catalog), not from the
+  migrations.
 
-  Проверено механически, а не чтением. Вся история проиграна на чистом
-  PostgreSQL с эмуляцией платформы Supabase и по отпечатку каталога (600
-  фактов: колонки и их порядок, ограничения, индексы, тела и права функций,
-  триггеры, политики `public`/`storage`/`realtime`, гранты, дефолтные
-  привилегии, публикация realtime, бакет, cron) совпала с production —
-  расходится только платформа (`rls_auto_enable()`, два её расширения,
-  гранты на таблицы storage/realtime). Baseline на такой же базе даёт тот
-  же отпечаток, тот же `pg_dump --schema-only` и тот же вывод
-  поведенческого прогона под `authenticated` и `anon`. На живом проекте
-  меняется только `supabase_migrations.schema_migrations` — 28 строк
-  становятся одной; схема и данные не трогаются. Порядок действий записан в
-  «Свёртка истории» (docs/operations.md).
+  Verified mechanically, not by reading. The whole history was replayed on a
+  clean PostgreSQL emulating the Supabase platform, and by catalog
+  fingerprint (600 facts: columns and their order, constraints, indexes,
+  function bodies and privileges, triggers, `public`/`storage`/`realtime`
+  policies, grants, default privileges, the realtime publication, the bucket,
+  cron) it matched production — only the platform differs
+  (`rls_auto_enable()`, its two extensions, grants on storage/realtime
+  tables). The baseline on the same kind of database gives the same
+  fingerprint, the same `pg_dump --schema-only` and the same output of the
+  behavioral run under `authenticated` and `anon`. On the live project only
+  `supabase_migrations.schema_migrations` changes — 28 rows become one; the
+  schema and data aren't touched. The procedure is written up in
+  "History squash" (docs/operations.md).
 
-  Контрольный блок baseline стал строже: к трём прежним проверкам
-  добавлены четыре инварианта из четырнадцатого аудита — функция,
-  доступная `anon`; триггерная функция, открытая `authenticated`; функция
-  из выражения политики без гранта `authenticated`; дефолтный EXECUTE для
-  PUBLIC.
+  The baseline's control block got stricter: four invariants from the
+  fourteenth audit were added to the three existing checks — a function
+  accessible to `anon`; a trigger function open to `authenticated`; a
+  function from a policy expression without an `authenticated` grant; a
+  default EXECUTE for PUBLIC.
 
-  Найдено по ходу и намеренно не исправлено — baseline обязан совпадать с
-  production: `users.write_banned_until` виден всем, кому RLS показывает
-  профиль. SELECT у `authenticated` выдан на таблицу `users` целиком, а
-  20260913100000 считала его поколоночным и писала, что колонку «не видит
-  никто, кроме сервера». Закрывать отдельной миграцией.
+  Found along the way and deliberately not fixed — the baseline must match
+  production: `users.write_banned_until` is visible to everyone RLS shows
+  the profile to. SELECT for `authenticated` is granted on the whole `users`
+  table, while 20260913100000 assumed it was per-column and wrote that the
+  column is "seen by no one but the server". To be closed by a separate
+  migration.
 
-- Дата бана больше не видна тем, кто видит профиль (0.18.15, IMM-541).
-  `users.write_banned_until` читал каждый, кому RLS показывает строку
-  `users`, — сам человек, Connections, соседи по комнате, комментаторы и
-  все про системный аккаунт: SELECT у `authenticated` табличный, а не
-  поколоночный, как считала 20260913100000. Поколоночный грант уронил бы
-  `select=*`, которым клиент грузит профиль, у всех выложенных версий,
-  поэтому колонка вынесена в `user_moderation` — RLS включена, политик и
-  грантов для клиента нет (`20261019100000`). `is_write_banned()` и
-  `reject_write_when_banned()` читают дату оттуда, консоль банит апсертом и
-  снимает бан UPDATE'ом. Приложение не менялось. На живой базе дыра
-  воспроизведена до наката; пробы до и после — сосед видит профиль, но не
-  бан; забанённый получает `AMB01`; после снятия снова пишет.
+- The ban date is no longer visible to those who can see the profile
+  (0.18.15, IMM-541). `users.write_banned_until` was readable by everyone RLS
+  shows the `users` row to — the person themselves, Connections, fellow room
+  members, commenters, and everyone for the system account: SELECT for
+  `authenticated` is table-wide, not per-column as 20260913100000 assumed. A
+  per-column grant would have broken the `select=*` the client loads the
+  profile with, in every released version, so the column was moved into
+  `user_moderation` — RLS enabled, no policies or grants for the client
+  (`20261019100000`). `is_write_banned()` and `reject_write_when_banned()`
+  read the date from there; the console bans with an upsert and lifts the
+  ban with an UPDATE. The app didn't change. On the live database the hole
+  was reproduced before applying; probes before and after — a fellow room
+  member sees the profile but not the ban; the banned user gets `AMB01`; after
+  the ban is lifted they can write again.
 
-- Клиент больше не держит права на последовательность `room_members.seq`
-  (0.18.15, IMM-542). У `authenticated` были `rwU` на
-  `room_members_seq_seq`, включая `setval` на счётчик, по которому
-  `room_owner_id()` решает, кто владелец комнаты. Через PostgREST это было
-  недостижимо, но грант не служил ничему и пришёл из дефолтных привилегий
-  `postgres`, которые baseline снимал только у `anon`. Сняты оба — и сам
-  грант, и дефолт на будущие последовательности (`20261019110000`);
-  миграция сама проверяет, что ни одна последовательность в `public` не
-  открыта `anon`/`authenticated`. Пробами на живой базе: прямые
-  `nextval`/`setval` отбиваются, `create_room()`, `add_room_member()` и
-  передача владения через `leave_room()` работают.
+- The client no longer holds privileges on the `room_members.seq` sequence
+  (0.18.15, IMM-542). `authenticated` had `rwU` on `room_members_seq_seq`,
+  including `setval` on the counter `room_owner_id()` uses to decide who owns
+  a room. It was unreachable through PostgREST, but the grant served no
+  purpose and came from the default privileges of `postgres`, which the
+  baseline revoked only from `anon`. Both are revoked — the grant itself and
+  the default for future sequences (`20261019110000`); the migration itself
+  checks that no sequence in `public` is open to `anon`/`authenticated`.
+  Probed on the live database: direct `nextval`/`setval` are rejected,
+  `create_room()`, `add_room_member()` and ownership transfer via
+  `leave_room()` work.
 
-- Список Connections остаётся приватным — решение, а не пробел (0.18.15,
-  IMM-216). Открытый вопрос «видно ли другим, с кем ты знаком» закрыт:
-  нет, и настройку видимости делать не будем. Так уже и работает — политика
-  `connections` отдаёт только свои строки, под постом знакомого видны
-  комментарии только своих Connections, профиль незнакомого не виден.
-  Записано в «Правило видимости» в `docs/data-model.md` вместе с
-  единственным остаточным сигналом (участники комнаты) и правилом для
-  новых экранов.
+- The Connections list stays private — a decision, not a gap (0.18.15,
+  IMM-216). The open question "can others see who you're connected with" is
+  closed: no, and we won't build a visibility setting. That's already how it
+  works — the `connections` policy returns only your own rows, under a
+  connection's post you see only comments from your own Connections, and a
+  non-connection's profile isn't visible. Recorded in "Visibility rule" in
+  `docs/data-model.md`, together with the only remaining signal (room
+  members) and a rule for new screens.
 
-- Правка отправленного сообщения в чате комнаты (0.18.15, IMM-208): своё,
-  текст и вложения, 48 часов с отправки. Единственный путь —
-  `edit_own_room_message(id, text, media)` (`20261019120000`): UPDATE-грант
-  открыл бы `created_at`, по которому считаются непрочитанные. Новая колонка
-  `room_messages.edited_at`; правка без изменений — не правка. Чужое,
-  несуществующее и скрытое модерацией — один PT404, заглушка удалённого —
-  PT422, окно истекло — свой `AME01` (считается от `created_at`, а не от
-  прошлой правки). Форму вложений и непустоту держат CHECK строки; бан —
-  поколоночный триггер на `text, media` с условием `deleted_at is null`:
-  править под баном нельзя, удалить своё — можно. Функция возвращает пути
-  убранных вложений, клиент сносит объекты после строки.
+- Editing a sent message in a room chat (0.18.15, IMM-208): your own, text
+  and attachments, for 48 hours after sending. The only path is
+  `edit_own_room_message(id, text, media)` (`20261019120000`): an UPDATE grant
+  would have exposed `created_at`, which unread counts are based on. New
+  column `room_messages.edited_at`; an edit without changes isn't an edit.
+  Someone else's, nonexistent and hidden by moderation — one PT404; a deleted
+  placeholder — PT422; the window has expired — a dedicated `AME01` (counted
+  from `created_at`, not from the previous edit). The attachments' shape and
+  non-emptiness are held by row CHECKs; the ban — by a per-column trigger on
+  `text, media` with the condition `deleted_at is null`: you can't edit while
+  banned, but you can delete your own. The function returns the paths of
+  removed attachments; the client deletes the objects after the row.
 
-  В приложении: «Изменить» в меню своего сообщения, пока окно открыто;
-  поле ввода переходит в режим правки — текст, прикреплённые вложения
-  (каждое можно убрать) и новые, а начатый черновик откладывается и
-  возвращается после. У изменённого — пометка «изменено» у времени.
-  Realtime-обновление больше не теряет имя автора и цитату, а цитата в
-  ответе берёт оригинал из загруженного списка раньше embed — и потому
-  показывает его исправленный текст. Одиннадцать проб на живой базе (до и
-  после наката), четырнадцать новых тестов, всего 372.
+  In the app: "Edit" in your own message's menu while the window is open;
+  the input field switches to edit mode — the text, the attached attachments
+  (each can be removed) and new ones, while a draft in progress is set aside
+  and comes back afterwards. An edited message gets an "edited" label next to
+  the time. A Realtime update no longer loses the author's name and the
+  quote, and the quote in a reply takes the original from the loaded list
+  before the embed — and so shows its edited text. Eleven probes on the live
+  database (before and after applying), fourteen new tests, 372 in total.

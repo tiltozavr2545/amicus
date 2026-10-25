@@ -10,9 +10,9 @@ export function Overview() {
   if (!data) return <p className="muted">{loading ? 'Считаю…' : ''}</p>;
 
   const t = data.totals;
-  // Установка не может сообщить сборку, которой нет в pubspec, — если
-  // сообщает, номер подняли по дороге в стор, и знать об этом полезнее, чем
-  // молча показывать её как «свежую».
+  // An install can't report a build that isn't in pubspec — if it does, the
+  // number was bumped on the way to the store, and knowing that is more useful
+  // than silently showing it as "latest".
   const ahead =
     data.repoVersion !== null &&
     data.latestBuild !== null &&

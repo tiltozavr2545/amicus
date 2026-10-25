@@ -1,8 +1,8 @@
 import { admin } from './supabase.ts';
 
-// Достаточно описать методы, которые реально использует вызывающий код:
-// настоящий тип PostgrestFilterBuilder тянет восемь generic-параметров,
-// завязанных на Database-схему, которой у консоли нет.
+// It is enough to describe the methods the calling code actually uses: the
+// real PostgrestFilterBuilder type drags in eight generic parameters tied to
+// a Database schema that the console doesn't have.
 interface Filterable<Self> {
   eq(column: string, value: unknown): Self;
   is(column: string, value: unknown): Self;
@@ -13,9 +13,10 @@ interface Filterable<Self> {
 }
 
 const PAGE = 1000;
-// Потолок на всякий случай: консоль читает таблицы целиком и агрегирует в
-// памяти (проект пилотный, строк немного). Если потолок когда-нибудь
-// упрётся — это сигнал переносить агрегацию в SQL-вью, а не поднимать число.
+// A ceiling just in case: the console reads whole tables and aggregates in
+// memory (the project is a pilot, there aren't many rows). If the ceiling is
+// ever hit, that's a signal to move the aggregation into an SQL view, not to
+// raise the number.
 const HARD_CAP = 100_000;
 
 export async function fetchAll<T>(
@@ -50,8 +51,8 @@ export async function countOf(
   return count ?? 0;
 }
 
-// Почта и дата последнего входа живут в auth.users, а не в public.users —
-// через PostgREST их не достать, только через админский Auth API.
+// Email and last sign-in date live in auth.users, not public.users — they
+// can't be reached through PostgREST, only through the admin Auth API.
 export type AuthUser = {
   id: string;
   email: string | null;
@@ -86,9 +87,9 @@ export async function fetchAuthUsers(): Promise<Map<string, AuthUser>> {
   return byId;
 }
 
-// Одиночный запрос без постраничного обхода — для мест, где сам запрос уже
-// ограничен (`.limit()`, `.eq()` по одному человеку). Смешивать его с
-// `fetchAll` нельзя: `range()` и `limit()` спорят за один и тот же заголовок.
+// A single request without paging — for places where the query is already
+// bounded (`.limit()`, `.eq()` on one person). It must not be mixed with
+// `fetchAll`: `range()` and `limit()` fight over the same header.
 export async function fetchOnce<T>(
   table: string,
   columns: string,

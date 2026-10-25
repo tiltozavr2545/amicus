@@ -70,10 +70,10 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'Не пропустите обновление — обновите приложение в Google Play',
       'Новая версия ждёт в Google Play, обновите приложение',
     ],
-    // Отдельный вид, а не переписанный `app_update`: обычное «вышла новая
-    // версия» уходит на каждую заметную выкладку, и если сделать его
-    // настойчивым, настойчивость перестанет что-либо значить к третьему разу.
-    // Этот — для выкладок, без которых старый клиент показывает не то.
+    // A separate kind, not a rewritten `app_update`: the ordinary "new
+    // version is out" goes out on every notable release, and if it were made
+    // insistent, the insistence would mean nothing by the third time. This
+    // one is for releases without which an old client shows the wrong thing.
     app_update_important: [
       'Важное обновление Amicus — обновитесь в Google Play',
       'Обязательно обновитесь: на старой версии часть нового работает не так',
@@ -104,13 +104,14 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       '{author_name} прокомментировал(а) в ответ вам',
       'Вам ответил(а) {author_name}',
     ],
-    // Названия комнаты в тексте нет намеренно: оно у каждого своё (у комнаты
-    // без названия — перечисление остальных участников), собирает его клиент,
-    // и вторая копия этого правила разошлась бы с первой при первом же
-    // переименовании. В payload при этом едет room_id — под будущий deep link.
-    // У заявок нет настройки-выключателя: они адресованы лично и приходят
-    // раз в несколько месяцев, а «больше никогда не узнаю, что меня позвали»
-    // — не тот выбор, который стоит предлагать.
+    // The room name is deliberately absent from the text: everyone has their
+    // own (a room without a name is the list of the other members), the client
+    // builds it, and a second copy of that rule would drift from the first at
+    // the first rename. The payload still carries room_id, for a future deep
+    // link.
+    // Requests have no on/off setting: they are addressed personally and
+    // arrive once every few months, and "I will never find out that I was
+    // invited" is not a choice worth offering.
     connection_request: [
       '{user_name} хочет добавить вас в знакомые',
       'Заявка в знакомые от {user_name}',
@@ -129,25 +130,25 @@ const TEXTS: Record<string, Record<string, string[]>> = {
       'Вам пишут в комнате: {author_name}',
       'В комнате новое сообщение от {author_name}',
     ],
-    // У модерации вариант ОДИН, в отличие от всех остальных видов. Четыре
-    // формулировки существуют, чтобы одинаковые уведомления не выглядели
-    // роботом, — а здесь ровно наоборот: человек должен видеть, что это
-    // официальное сообщение, всегда одно и то же, а не бот подбирает слова.
-    // `{note}` — то, что дописал модератор в консоли, и оно НЕОБЯЗАТЕЛЬНО:
-    // пустое значение убирается вместе с хвостовым пробелом (см. pickText).
-    // Это единственное место во всём проекте, где в текст пуша попадают
-    // слова, написанные руками, и локализовать их некому — поэтому каркас
-    // осмыслен и без них.
+    // Moderation has ONE variant, unlike every other kind. The four
+    // wordings exist so that identical notifications do not look robotic -
+    // and here it is the opposite: a person should see that this is an
+    // official message, always the same, not a bot picking words.
+    // `{note}` is what the moderator added in the console, and it is
+    // OPTIONAL: an empty value is removed together with the trailing space
+    // (see pickText). This is the only place in the whole project where
+    // hand-written words end up in push text, and nobody is there to
+    // localize them - so the frame makes sense even without them.
     moderation_notice: [
       'Модерация Amicus: ваш материал убран по жалобе. {note}',
     ],
     report_resolved: [
       'Ваша жалоба рассмотрена, меры приняты. {note}',
     ],
-    // Отдельный вид, а не переписанный `report_resolved`: исход у них разный,
-    // и человек, чью жалобу признали беспочвенной, не должен получать текст
-    // «меры приняты». Тон намеренно нейтральный — отклонённая жалоба не
-    // повод отчитывать того, кто её подал.
+    // A separate kind, not a rewritten `report_resolved`: the outcomes
+    // differ, and a person whose report was found baseless must not get the
+    // "measures taken" text. The tone is deliberately neutral - a rejected
+    // report is no reason to scold the one who filed it.
     report_rejected: [
       'Мы рассмотрели вашу жалобу и не нашли нарушения. {note}',
     ],
@@ -240,12 +241,13 @@ function pickText(
   if (!variants || variants.length === 0) return null;
   const template = variants[Math.floor(Math.random() * variants.length)];
   const filled = template.replace(/\{(\w+)\}/g, (_, key) => String(payload[key] ?? ''));
-  // Хвост подчищается ТОЛЬКО там, где подстановка необязательна и оказалась
-  // пустой, — то есть у модерационных текстов с `{note}` в конце. Первая
-  // редакция обрезала хвост у любого вида: на нынешних шаблонах это почти
-  // не видно, но правило «молча подправлять текст всех уведомлений» шире
-  // задачи, ради которой заводилось, и однажды подправило бы то, чего не
-  // просили. Точку не трогаем и здесь: она часть фразы.
+  // The tail is trimmed ONLY where the substitution is optional and came
+  // out empty - that is, for moderation texts with `{note}` at the end. The
+  // first version trimmed the tail for every kind: on the current templates
+  // that is barely visible, but the rule "silently touch up the text of all
+  // notifications" is broader than the task it was introduced for, and one
+  // day it would touch up something nobody asked it to. The period is not
+  // touched here either: it is part of the phrase.
   const noteWasEmpty =
     template.includes('{note}') && String(payload.note ?? '').trim() === '';
   return noteWasEmpty ? filled.replace(/[\s:—-]+$/, '') : filled;

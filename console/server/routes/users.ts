@@ -37,9 +37,9 @@ async function buildRows(): Promise<UserRow[]> {
       systemAccountIds(),
     ]);
 
-  // Почему у человека нет токена — единственный источник ответа на это
-  // (20260913120000). Раньше «отказал в разрешении» и «у нас упала запись»
-  // выглядели снаружи одинаково: строки просто нет.
+  // Why a person has no token: the only source of the answer to that
+  // (20260913120000). Previously "denied permission" and "our write failed"
+  // looked the same from outside: there was simply no row.
   const pushStatus = new Map(
     (
       await fetchAll<{
@@ -98,10 +98,10 @@ async function buildRows(): Promise<UserRow[]> {
       comments: commentCount.get(u.id) ?? 0,
       connections: connectionCount.get(u.id) ?? 0,
       devices: mine.length,
-      // У человека без токенов версия и платформа берутся из статуса
-      // регистрации: `device_tokens` их не знает по определению — колонки
-      // там появляются только при УСПЕШНОЙ регистрации, то есть у тех, про
-      // кого и так всё понятно.
+      // For a person without tokens, version and platform come from the
+      // registration status: `device_tokens` cannot know them by definition,
+      // since its columns are filled only on a SUCCESSFUL registration, i.e.
+      // for those about whom everything is clear anyway.
       maxBuild: builds.length ? Math.max(...builds) : (push?.app_build ?? null),
       versions: mine.length
         ? [
@@ -246,8 +246,8 @@ usersRouter.get('/users/:id', async (req, res, next) => {
     }));
 
     const deviceRows: DeviceRow[] = devices.map((d) => ({
-      // Сам токен консоли не нужен ни для чего — показываем хвост, чтобы
-      // отличать устройства друг от друга, и не держим его на экране.
+      // The console needs the token itself for nothing: we show the tail to
+      // tell devices apart and keep the full token off the screen.
       tokenTail: d.fcm_token.slice(-8),
       locale: d.locale,
       platform: d.platform,
@@ -289,7 +289,7 @@ usersRouter.get('/users/:id', async (req, res, next) => {
   }
 });
 
-// Заглушка «проверить связь»: сервер поднялся и ключ рабочий.
+// "Check connection" stub: the server is up and the key works.
 usersRouter.get('/health', async (_req, res, next) => {
   try {
     const { error } = await admin
