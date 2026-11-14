@@ -227,3 +227,12 @@ ls supabase/migrations/*.sql | sed 's#.*/##; s/_.*//'
 ```sql
 select version from supabase_migrations.schema_migrations order by version;
 ```
+
+## Android build JDK in GitHub Actions
+
+CI, Play deployment and release APK builds install Temurin 21 and explicitly
+select it with `flutter config --jdk-dir="$JAVA_HOME"`. Setting `JAVA_HOME`
+alone does not override Flutter's preference for Android Studio's bundled JBR.
+The runner's JBR can change independently; JDK 25 produces an unhelpful bare
+version-number failure with the pinned Gradle/Kotlin toolchain. Keep this choice
+consistent across all three Android workflows.
