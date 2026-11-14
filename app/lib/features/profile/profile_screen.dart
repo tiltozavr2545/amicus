@@ -4,12 +4,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/content_width.dart';
 import '../../shared/write_ban.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/media_extensions.dart';
 import '../../shared/picker_limit.dart';
 import '../../shared/refresh_after_await.dart';
-import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
 import '../settings/settings_button.dart';
@@ -85,12 +85,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           .updateName(userId: userId, name: name);
       container.invalidate(myProfileProvider);
     } catch (e) {
-      // Запрет писать теперь распространяется и на смену имени
-      // (20260924100000: `update of name` на `users`), то есть отсюда стал
-      // достижим AMB01. Без этой ветки забанённому показывалось «попробуйте
-      // ещё раз» — приглашение повторить то, что до конца срока не выйдет.
-      // Та же причина и та же форма, что у остальных шести мест с
-      // `writeBanUntil` (см. `_addPhotos` ниже про порядок строк и `ignore`).
+      // The write ban now covers name changes too (20260924100000:
+      // `update of name` on `users`), so AMB01 is now reachable from here.
+      // Without this branch a banned user was shown "please try again" — an
+      // invitation to repeat something that won't work until the ban ends.
+      // Same reason and same shape as the other six places with
+      // `writeBanUntil` (see `_addPhotos` below on line order and `ignore`).
       final bannedUntil = writeBanUntil(e);
       String message(AppLocalizations l10n) => bannedUntil != null
           ? l10n.writeRestrictedError(bannedUntil)
@@ -114,12 +114,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    // Выставляется ДО пикера — та же правка и та же причина, что у
-    // `_pickMedia` в композере: пока пикер поднимает свою activity, кнопка
-    // «Добавить фото» остаётся включённой (её `onPressed` смотрит на
-    // `_isAddingPhotos` и на `photos.length`, то и другое — доpick-овое
-    // состояние), второй тап открывает второй пикер, и оба батча режутся по
-    // одному и тому же `remaining`, посчитанному до первого выбора.
+    // Set BEFORE the picker — the same fix for the same reason as
+    // `_pickMedia` in the composer: while the picker brings up its activity,
+    // the "Add photo" button stays enabled (its `onPressed` looks at
+    // `_isAddingPhotos` and `photos.length`, both of them pre-pick state), a
+    // second tap opens a second picker, and both batches get trimmed by the
+    // same `remaining`, computed before the first pick.
     setState(() => _isAddingPhotos = true);
 
     // Not `limit: remaining`: the picker rejects a limit below 2 outright,
@@ -131,10 +131,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         limit: pickerLimit(remaining),
       );
     } catch (_) {
-      // Иначе бросок отсюда запирал бы кнопку насовсем: ProfileScreen живёт
-      // веткой StatefulShellRoute и не пересоздаётся. И это ещё
-      // необработанная асинхронная ошибка — `_addPhotos` зовут как
-      // `VoidCallback`.
+      // Otherwise a throw from here would lock the button for good:
+      // ProfileScreen lives as a StatefulShellRoute branch and is never
+      // recreated. It would also be an unhandled async error — `_addPhotos`
+      // is called as a `VoidCallback`.
       if (!mounted) return;
       setState(() => _isAddingPhotos = false);
       _showError(context, (l10n) => l10n.failedToAddPhotosError);
@@ -162,11 +162,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    // Пути, а не байты: раньше здесь стоял `await file.readAsBytes()` на
-    // каждый файл, и весь батч — до 80 фотографий при `maxWidth: 1600` —
-    // материализовался в памяти целиком и держался там всю последовательную
-    // загрузку. См. [PendingPhoto]. Заодно список перестал быть
-    // асинхронным: читать нечего.
+    // Paths, not bytes: this used to call `await file.readAsBytes()` on every
+    // file, and the whole batch — up to 80 photos at `maxWidth: 1600` — was
+    // materialized in memory at once and held there for the entire
+    // sequential upload. See [PendingPhoto]. As a bonus the list is no
+    // longer async: there's nothing to read.
     final items = [
       for (final file in usable)
         PendingPhoto(
@@ -190,71 +190,72 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _showError(context, (l10n) => l10n.unsupportedImageFormatError);
       }
     } catch (e) {
-      // Отказ по запрету писать называет себя и дату: «попробуйте ещё раз»
-      // здесь было бы приглашением повторить то, что заведомо не выйдет.
-      // Верхний catch этой правки не получает намеренно — там падает выбор
-      // файлов, до сервера дело ещё не дошло.
+      // A write-ban refusal names itself and the date: "please try again"
+      // here would invite repeating something that is certain to fail. The
+      // outer catch deliberately doesn't get this change — what fails there
+      // is file picking; the request hasn't reached the server yet.
       final bannedUntil = writeBanUntil(e);
-      // Текст выбирается до вызова, чтобы сам вызов остался однострочным:
-      // `// ignore` действует на следующую строку, а у многострочного вызова
-      // анализатор указывает на аргумент, и подавление до него не достаёт.
+      // The text is chosen before the call so the call itself stays on one
+      // line: `// ignore` applies to the next line, and for a multi-line call
+      // the analyzer points at the argument, which the suppression can't
+      // reach.
       String message(AppLocalizations l10n) => bannedUntil != null
           ? l10n.writeRestrictedError(bannedUntil)
           : l10n.failedToAddPhotosError;
       // ignore: use_build_context_synchronously
       _showError(context, message);
     } finally {
-      // Перечитывается и на ошибке тоже, а не только на успехе. `.timeout()`
-      // перестаёт ждать, не отменяя запрос, поэтому вставка в
-      // `profile_photos` могла закоммититься уже после того, как этот экран
-      // показал «не удалось добавить фото». Без инвалидации здесь
-      // `photosAsync.value` остаётся тем, чем был ДО попытки, а на нём висят
-      // и лимит в 80, и доступность обеих кнопок («Переставить» — при
-      // `length < 2`, «Удалить» — при `isEmpty`). ProfileScreen живёт веткой
-      // StatefulShellRoute и не пересоздаётся при переключении вкладок, то
-      // есть autoDispose-провайдер не умирает никогда и сам себя не
-      // перечитает.
+      // Reloaded on error too, not just on success. `.timeout()` stops
+      // waiting without cancelling the request, so the insert into
+      // `profile_photos` could commit after this screen has already shown
+      // "Failed to add photos". Without invalidating here,
+      // `photosAsync.value` stays what it was BEFORE the attempt, and both
+      // the 80-photo limit and the enabled state of both buttons hang off it
+      // ("Reorder" at `length < 2`, "Delete" at `isEmpty`). ProfileScreen
+      // lives as a StatefulShellRoute branch and isn't recreated when
+      // switching tabs, so the autoDispose provider never dies and won't
+      // reload itself.
       //
-      // Раньше цена отставшего списка была выше: от него считался `position`
-      // новых строк, так что следующее добавление целилось в занятые позиции
-      // и падало на `profile_photos_user_position_key` — насовсем, до
-      // перезапуска приложения. Позиции теперь раздаёт сервер
-      // (`append_profile_photos()`, 20260824130000), и этого тупика больше
-      // нет; перечитать список всё равно надо, чтобы человек видел, что на
-      // самом деле долетело.
+      // A stale list used to cost more: the `position` of new rows was
+      // computed from it, so the next add aimed at occupied positions and
+      // failed on `profile_photos_user_position_key` — permanently, until the
+      // app was restarted. Positions are now assigned by the server
+      // (`append_profile_photos()`, 20260824130000), so that dead end is
+      // gone; the list still has to be reloaded so the person sees what
+      // actually made it.
       //
-      // Инвалидация — безусловно, через `container`, а не `ref`: `ref`
-      // умирает вместе с этим экраном, а список, который надо перечитать,
-      // должен пережить его уход (см. [refreshAfterAwait]). `setState`
-      // трогает `context` этого экрана, поэтому остаётся под `mounted`.
+      // Invalidation is unconditional, via `container` rather than `ref`:
+      // `ref` dies with this screen, while the list that needs reloading must
+      // outlive its exit (see [refreshAfterAwait]). `setState` touches this
+      // screen's `context`, so it stays behind `mounted`.
       container.invalidate(myProfileProvider);
       container.invalidate(_profilePhotosProvider);
       if (mounted) setState(() => _isAddingPhotos = false);
     }
   }
 
-  /// Открывает экран, который может изменить галерею, и перечитывает её после
-  /// возврата.
+  /// Opens a screen that may change the gallery, and reloads the gallery
+  /// after returning.
   ///
-  /// Безусловно, а не по `changed == true`, как было у обоих вызовов до этого.
-  /// `true` возвращается только когда мутация ДОШЛА до конца: и
-  /// [ProfilePhotoDeleteScreen], и [ProfilePhotoReorderScreen] на ошибке
-  /// показывают снекбар и остаются открытыми, а `pop(true)` не выполняют. Но
-  /// «ошибка» и «ничего не произошло» — не одно и то же: `.timeout()`
-  /// перестаёт ждать, не отменяя запрос, а удаление фотографий вдобавок
-  /// устроено как [deleteRowsThenObjects] — сначала строки, потом объекты, —
-  /// так что строк в `profile_photos` может уже не быть.
+  /// Unconditionally, not on `changed == true` as both call sites used to.
+  /// `true` is returned only when the mutation made it ALL the way through:
+  /// both [ProfilePhotoDeleteScreen] and [ProfilePhotoReorderScreen] show a
+  /// snackbar on error and stay open, without calling `pop(true)`. But
+  /// "error" and "nothing happened" are not the same thing: `.timeout()`
+  /// stops waiting without cancelling the request, and photo deletion is
+  /// additionally built as [deleteRowsThenObjects] — rows first, then
+  /// objects — so the rows in `profile_photos` may already be gone.
   ///
-  /// Сюда тогда возвращаются с `null`, список на экране профиля остаётся со
-  /// строками, которых больше нет, и это запирает перестановку насовсем:
-  /// `reorder_profile_photos()` требует ВЕСЬ набор, удалённые id отваливаются
-  /// на join'е внутри, длины не сходятся — и функция отвечает `PT422` при
-  /// каждой попытке. Экран профиля живёт веткой StatefulShellRoute, то есть
-  /// autoDispose-провайдер не умирает при переключении вкладок и сам себя не
-  /// перечитает.
+  /// We then come back here with `null`, the list on the profile screen keeps
+  /// rows that no longer exist, and that locks reordering for good:
+  /// `reorder_profile_photos()` requires the WHOLE set, deleted ids drop out
+  /// on the join inside, the lengths don't match — and the function answers
+  /// `PT422` on every attempt. The profile screen lives as a
+  /// StatefulShellRoute branch, so the autoDispose provider doesn't die when
+  /// switching tabs and won't reload itself.
   ///
-  /// Цена — один лишний запрос галереи, когда человек зашёл на экран и вышел,
-  /// ничего не поменяв.
+  /// The cost is one extra gallery query when the person opened the screen
+  /// and left without changing anything.
   Future<void> _openGalleryEditor(Widget screen) async {
     // Captured before the await — see [refreshAfterAwait]. A `mounted` check
     // ahead of the `ref` calls used to gate the refresh itself: if this
@@ -266,13 +267,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final container = refreshAfterAwait(context);
     await Navigator.of(
       context,
+      rootNavigator: true,
     ).push<bool>(MaterialPageRoute(builder: (_) => screen));
     container.invalidate(myProfileProvider);
     container.invalidate(_profilePhotosProvider);
   }
 
   void _openViewer(List<ProfilePhoto> photos) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) =>
@@ -291,180 +293,197 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.profileTitle),
-        actions: [const ThemeToggleSwitch(), const SettingsButton()],
+        actions: [const SettingsButton()],
       ),
-      body: profileAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) =>
-            Center(child: Text(l10n.failedToLoadProfileError)),
-        data: (profile) {
-          // Seeded once, tracked by a flag rather than by the field being
-          // empty. The listener registered in initState rebuilds on every
-          // keystroke, so an emptiness test ran again the instant the user
-          // cleared the field — and put the old name straight back, caret and
-          // all. Selecting all and pressing backspace to retype a name was
-          // therefore impossible; the field could only be edited around its
-          // existing text. Same seed-once shape SettingsScreen uses for
-          // `_prefs`.
-          if (!_nameSeeded) {
-            _nameSeeded = true;
-            _nameController.text = profile.name;
-          }
-          final avatarBytes = profile.avatarPath == null
-              ? null
-              : ref.watch(avatarBytesProvider(profile.avatarPath!)).value;
-          // Buttons that mutate the gallery need the *current* list (to
-          // compute next positions, or to know what's selectable) — holding
-          // them off until the list has actually loaded avoids an add/reorder
-          // racing ahead of a fetch still in flight and computing positions
-          // against a stale (empty) view of the gallery.
-          final photosLoaded = photosAsync.hasValue;
-          final photos = photosAsync.value ?? const <ProfilePhoto>[];
-          final nameChanged = _nameController.text.trim() != profile.name;
+      body: ContentWidth(
+        child: profileAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) =>
+              Center(child: Text(l10n.failedToLoadProfileError)),
+          data: (profile) {
+            // Seeded once, tracked by a flag rather than by the field being
+            // empty. The listener registered in initState rebuilds on every
+            // keystroke, so an emptiness test ran again the instant the user
+            // cleared the field — and put the old name straight back, caret and
+            // all. Selecting all and pressing backspace to retype a name was
+            // therefore impossible; the field could only be edited around its
+            // existing text. Same seed-once shape SettingsScreen uses for
+            // `_prefs`.
+            if (!_nameSeeded) {
+              _nameSeeded = true;
+              _nameController.text = profile.name;
+            }
+            final avatarBytes = profile.avatarPath == null
+                ? null
+                : ref.watch(avatarBytesProvider(profile.avatarPath!)).value;
+            // Buttons that mutate the gallery need the *current* list (to
+            // compute next positions, or to know what's selectable) — holding
+            // them off until the list has actually loaded avoids an add/reorder
+            // racing ahead of a fetch still in flight and computing positions
+            // against a stale (empty) view of the gallery.
+            final photosLoaded = photosAsync.hasValue;
+            final photos = photosAsync.value ?? const <ProfilePhoto>[];
+            final nameChanged = _nameController.text.trim() != profile.name;
 
-          final header = Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Each half of the row is exactly W/2 wide, so centering
-                    // a child within its half puts that child's own center at
-                    // exactly a quarter of the *whole* row's width from that
-                    // half's outer edge — W/4 from the left for the avatar,
-                    // W/4 from the right for the buttons — regardless of
-                    // either child's actual size.
-                    Expanded(
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: photos.isEmpty
+            final header = Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: .45),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final avatar = GestureDetector(
+                        onTap: photos.isEmpty
+                            ? null
+                            : () => _openViewer(photos),
+                        child: CircleAvatar(
+                          radius: 56,
+                          backgroundImage: avatarBytes != null
+                              ? sizedMemoryImage(
+                                  context,
+                                  avatarBytes,
+                                  logicalWidth: 112,
+                                )
+                              : null,
+                          child: avatarBytes == null
+                              ? const Icon(Icons.person, size: 46)
+                              : null,
+                        ),
+                      );
+                      final actions = <Widget>[
+                        _PhotoActionButton(
+                          icon: Icons.add_photo_alternate_outlined,
+                          label: l10n.addPhotoButton,
+                          loading: _isAddingPhotos,
+                          onPressed:
+                              !photosLoaded ||
+                                  _isAddingPhotos ||
+                                  photos.length >= _maxProfilePhotos
                               ? null
-                              : () => _openViewer(photos),
-                          child: CircleAvatar(
-                            radius: 72,
-                            backgroundImage: avatarBytes != null
-                                ? sizedMemoryImage(
-                                    context,
-                                    avatarBytes,
-                                    logicalWidth: 144,
-                                  )
-                                : null,
-                            child: avatarBytes == null
-                                ? const Icon(Icons.person, size: 58)
-                                : null,
-                          ),
+                              : () => _addPhotos(userId!, photos),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _PhotoActionButton(
-                              icon: Icons.add_photo_alternate_outlined,
-                              label: l10n.addPhotoButton,
-                              loading: _isAddingPhotos,
-                              onPressed:
-                                  !photosLoaded ||
-                                      _isAddingPhotos ||
-                                      photos.length >= _maxProfilePhotos
-                                  ? null
-                                  : () => _addPhotos(userId!, photos),
-                            ),
-                            _PhotoActionButton(
-                              icon: Icons.swap_vert,
-                              label: l10n.reorderPhotosButton,
-                              onPressed: !photosLoaded || photos.length < 2
-                                  ? null
-                                  : () => _openGalleryEditor(
-                                      ProfilePhotoReorderScreen(photos: photos),
-                                    ),
-                            ),
-                            _PhotoActionButton(
-                              icon: Icons.delete_outline,
-                              label: l10n.deletePhotoButton,
-                              onPressed: !photosLoaded || photos.isEmpty
-                                  ? null
-                                  : () => _openGalleryEditor(
-                                      ProfilePhotoDeleteScreen(photos: photos),
-                                    ),
-                            ),
-                          ],
+                        _PhotoActionButton(
+                          icon: Icons.swap_vert,
+                          label: l10n.reorderPhotosButton,
+                          onPressed: !photosLoaded || photos.length < 2
+                              ? null
+                              : () => _openGalleryEditor(
+                                  ProfilePhotoReorderScreen(photos: photos),
+                                ),
                         ),
+                        _PhotoActionButton(
+                          icon: Icons.delete_outline,
+                          label: l10n.deletePhotoButton,
+                          onPressed: !photosLoaded || photos.isEmpty
+                              ? null
+                              : () => _openGalleryEditor(
+                                  ProfilePhotoDeleteScreen(photos: photos),
+                                ),
+                        ),
+                      ];
+                      final stacked =
+                          constraints.maxWidth < 340 ||
+                          MediaQuery.textScalerOf(context).scale(15) > 18;
+                      return stacked
+                          ? Column(
+                              children: [
+                                avatar,
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  alignment: WrapAlignment.center,
+                                  spacing: 8,
+                                  children: actions,
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(child: Center(child: avatar)),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: actions,
+                                  ),
+                                ),
+                              ],
+                            );
+                    },
+                  ),
+                  // A failed gallery load is otherwise indistinguishable from
+                  // having no photos: the three buttons above just sit disabled
+                  // (they key off `photosLoaded`, which is false on error too)
+                  // and the avatar falls back to the person icon. The string for
+                  // this existed in both locales from the start and was never
+                  // wired to anything — the audit found it as an unused ARB key,
+                  // which is what led back here.
+                  if (photosAsync.hasError) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.failedToLoadPhotosError,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
                       ),
                     ),
                   ],
-                ),
-                // A failed gallery load is otherwise indistinguishable from
-                // having no photos: the three buttons above just sit disabled
-                // (they key off `photosLoaded`, which is false on error too)
-                // and the avatar falls back to the person icon. The string for
-                // this existed in both locales from the start and was never
-                // wired to anything — the audit found it as an unused ARB key,
-                // which is what led back here.
-                if (photosAsync.hasError) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.failedToLoadPhotosError,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: _nameController,
+                    // Matches the `users_name_length` CHECK added in
+                    // 20260820140000, so the cap reads as a full field rather
+                    // than as a database error on save. No counter: unlike the
+                    // composer's 5000, nobody writes a name near this limit.
+                    maxLength: 100,
+                    buildCounter:
+                        (
+                          _, {
+                          required currentLength,
+                          required isFocused,
+                          maxLength,
+                        }) => null,
+                    decoration: InputDecoration(labelText: l10n.nameLabel),
+                  ),
+                  if (nameChanged) ...[
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _isSaving ? null : () => _saveName(userId!),
+                      child: _isSaving
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(l10n.saveButton),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      l10n.myPostsTitle,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _nameController,
-                  // Matches the `users_name_length` CHECK added in
-                  // 20260820140000, so the cap reads as a full field rather
-                  // than as a database error on save. No counter: unlike the
-                  // composer's 5000, nobody writes a name near this limit.
-                  maxLength: 100,
-                  buildCounter:
-                      (
-                        _, {
-                        required currentLength,
-                        required isFocused,
-                        maxLength,
-                      }) => null,
-                  decoration: InputDecoration(labelText: l10n.nameLabel),
-                ),
-                if (nameChanged) ...[
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _isSaving ? null : () => _saveName(userId!),
-                    child: _isSaving
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(l10n.saveButton),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                const Divider(height: 1),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    l10n.myPostsTitle,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-          );
+              ),
+            );
 
-          return PostListView(
-            authorId: userId,
-            header: header,
-            emptyState: (context) => Text(l10n.noOwnPostsYetMessage),
-          );
-        },
+            return PostListView(
+              authorId: userId,
+              header: header,
+              emptyState: (context) => Text(l10n.noOwnPostsYetMessage),
+            );
+          },
+        ),
       ),
     );
   }
@@ -489,7 +508,7 @@ class _PhotoActionButton extends StatelessWidget {
       onPressed: onPressed,
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        textStyle: const TextStyle(fontSize: 16),
+        textStyle: Theme.of(context).textTheme.labelLarge,
       ),
       icon: loading
           ? const SizedBox(

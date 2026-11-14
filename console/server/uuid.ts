@@ -1,21 +1,21 @@
-/// Похожа ли строка на uuid настолько, чтобы её стоило посылать в базу.
+/// Whether a string looks enough like a uuid to be worth sending to the DB.
 ///
-/// Существует ровно потому, что PostgREST — не то место, где стоит выяснять
-/// форму идентификатора. Кривой id доезжает до Postgres, тот отвечает
-/// `22P02 invalid input syntax for type uuid`, `db.ts` заворачивает это в
-/// `Error`, а обработчик в `index.ts` превращает ЛЮБОЙ бросок в 500 с текстом
-/// драйвера. То есть опечатка в id выглядела так же, как упавший сервер, — и
-/// та же ручка, которая на нормальный несуществующий id честно отвечает 404,
-/// на мусорный отвечала 500 с кусками внутренностей.
+/// It exists precisely because PostgREST is not the place to find out the
+/// shape of an identifier. A malformed id reaches Postgres, which answers
+/// `22P02 invalid input syntax for type uuid`, `db.ts` wraps that in an
+/// `Error`, and the handler in `index.ts` turns ANY throw into a 500 with the
+/// driver's text. So a typo in an id looked the same as a crashed server — and
+/// the very same endpoint that honestly answers 404 for a normal nonexistent
+/// id answered 500 with bits of internals for a garbage one.
 ///
-/// Это не про безопасность: id уходит параметром фильтра PostgREST, а не
-/// склейкой в SQL, и мусорный просто не находит строк. Это про то, чтобы
-/// ответ означал то, что означает.
+/// This isn't about security: the id goes as a PostgREST filter parameter, not
+/// spliced into SQL, and a garbage one simply finds no rows. It's about making
+/// the response mean what it says.
 ///
-/// Форму проверяем каноническую (8-4-4-4-12), без фигурных скобок и без
-/// urn-префикса: ничто в этом проекте таких не порождает, а принимать больше,
-/// чем порождаешь, — это принимать за базу решение, которого она не просила.
-/// Регистр не важен: Postgres сравнивает uuid по значению, не по написанию.
+/// We check the canonical shape (8-4-4-4-12), without braces and without the
+/// urn prefix: nothing in this project produces those, and accepting more than
+/// you produce means making a decision for the DB that it didn't ask for.
+/// Case doesn't matter: Postgres compares uuids by value, not by spelling.
 import type { RequestParamHandler } from 'express';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,11 +24,11 @@ export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
 }
 
-/// `router.param('id', uuidParam)` — проверка `:id` один раз на роутер, а не
-/// копией в каждом обработчике. Копия держится, пока её не забудут в новой
-/// ручке, и забытая молча возвращает ровно тот 500 с текстом драйвера, ради
-/// которого `isUuid` и заведён. Срабатывает для каждого маршрута роутера, в
-/// пути которого есть `:id`, включая те, что появятся потом.
+/// `router.param('id', uuidParam)` — checks `:id` once per router, not as a
+/// copy in every handler. A copy lasts until someone forgets it in a new
+/// endpoint, and the forgotten one silently returns exactly that 500 with the
+/// driver's text that `isUuid` was introduced to prevent. It fires for every
+/// route of the router whose path has `:id`, including ones added later.
 export const uuidParam: RequestParamHandler = (_req, res, next, value) => {
   if (!isUuid(value)) {
     res.status(400).json({ error: 'id должен быть uuid' });

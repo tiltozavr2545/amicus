@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
-// Порт API берётся из того же .env, что читает сервер: держать два места,
-// где записан один и тот же номер, — гарантированный способ их разъединить.
+// The API port comes from the same .env the server reads: keeping the same
+// number written down in two places is a guaranteed way to make them diverge.
 import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      // Консоль локальная: слушать только петлю, не раздавать себя в сеть.
+      // The console is local: listen on loopback only, don't serve to the network.
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,

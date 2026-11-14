@@ -5,13 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/bottom_navigation_inset.dart';
 import '../../shared/refresh_after_await.dart';
+import '../../shared/sized_memory_image.dart';
 import '../../shared/write_ban.dart';
 import '../moderation/report_repository.dart';
 import '../moderation/report_sheet.dart';
 import '../../shared/media_gallery.dart';
 import '../auth/auth_providers.dart';
 import '../connections/connections_repository.dart';
+import '../connections/friend_profile_screen.dart';
+import '../profile/profile_repository.dart';
 import 'carousel_position_cache.dart';
 import 'comments_screen.dart';
 import 'create_post_screen.dart';
@@ -325,20 +329,20 @@ class _PostListViewState extends ConsumerState<PostListView> {
       await ref
           .read(feedRepositoryProvider)
           .deletePost(postId: post.id, mediaStoragePaths: mediaPaths);
-      // Убрать из СВОЕГО списка мало. Живых PostListView одновременно
-      // несколько: лента и профиль — две ветки shell'а в IndexedStack, плюс
-      // FriendProfileScreen сверху. Удалили пост из профиля — во вкладке
-      // ленты он остаётся, и остаётся кликабельным: реакцию по нему RLS
-      // отбивает («Users can like posts they can see» требует существования
-      // строки в posts), а [_react] эту ошибку молча откатывает, комментарии
-      // открываются пустыми, повторное «Удалить» задевает ноль строк и
-      // считается успехом.
+      // Removing it from your OWN list is not enough. Several live
+      // PostListViews exist at once: the feed and the profile are two shell
+      // branches in an IndexedStack, plus FriendProfileScreen on top. Delete a
+      // post from the profile and it stays in the feed tab, still tappable: RLS
+      // rejects a reaction on it ("Users can like posts they can see" requires
+      // the row to exist in posts), and [_react] silently rolls that error
+      // back, comments open empty, and a repeated "Delete" touches zero rows
+      // and counts as success.
       //
-      // Ровно та несогласованность, ради которой заведён
-      // [feedRefreshTickProvider] — и правка поста, и mute/block, и новый
-      // пост через него уже проходят. Удаление было единственной мутацией
-      // ленты, которая его не дёргала. Локальное removeWhere ниже при этом
-      // остаётся: оно убирает карточку сразу, не дожидаясь перезапроса.
+      // This is exactly the inconsistency [feedRefreshTickProvider] exists for
+      // — editing a post, mute/block, and a new post already go through it.
+      // Deletion was the only feed mutation that didn't poke it. The local
+      // removeWhere below stays anyway: it removes the card immediately,
+      // without waiting for the refetch.
       container.read(feedRefreshTickProvider.notifier).bump();
       if (!mounted) return;
       // Remove by id, not the captured index: the list may have shifted (a
@@ -354,7 +358,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 
   Future<void> _editPost(Post post) async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context, rootNavigator: true).push<bool>(
       MaterialPageRoute(builder: (_) => CreatePostScreen(existingPost: post)),
     );
     // The post's text/media may have changed — simplest correct thing is to
@@ -365,19 +369,19 @@ class _PostListViewState extends ConsumerState<PostListView> {
     }
   }
 
-  /// Ставит на карточку то число комментариев, которое [CommentsScreen] только
-  /// что увидел у сервера.
+  /// Sets on the card the comment count that [CommentsScreen] has just seen on
+  /// the server.
   ///
-  /// Без этого счётчик не менялся вообще никогда: экран комментариев
-  /// открывался без `.then`, ничего не возвращал и тик обновления не дёргал,
-  /// так что человек писал комментарий, возвращался — и видел прежнее число.
-  /// Удаление своего комментария оставляло число завышенным. До первого
+  /// Without this the counter never changed at all: the comments screen was
+  /// opened without `.then`, returned nothing and didn't poke the refresh tick,
+  /// so a person would write a comment, come back — and see the old number.
+  /// Deleting your own comment left the number too high. Until the first
   /// pull-to-refresh.
   ///
-  /// По id, а не по индексу, и с проверкой [mounted] — экран висит поверх
-  /// списка сколько угодно долго, за это время список мог обновиться целиком
-  /// или уехать вместе с вкладкой (та же причина, что у [_deletePost] и
-  /// [_react]).
+  /// By id, not by index, and with a [mounted] check — the screen sits on top
+  /// of the list for as long as it likes, and in that time the list may have
+  /// been refreshed entirely or gone away with its tab (same reason as in
+  /// [_deletePost] and [_react]).
   void _updateCommentCount(String postId, int count) {
     if (!mounted) return;
     final at = _posts.indexWhere((p) => p.id == postId);
@@ -437,10 +441,11 @@ class _PostListViewState extends ConsumerState<PostListView> {
       // Superseded: a newer tap owns the card now, and this request has no idea
       // what has happened since it went out. Staying quiet is the whole fix.
       if (_reactionSeq[post.id] != seq) return;
-      // Запрет писать — единственный отказ здесь, о котором надо сказать
-      // вслух. Остальные молчат намеренно: реакция откатится, и повторный
-      // тап стоит ничего. Но забанённому откат без объяснения выглядит как
-      // «кнопка сломалась», а он ровно тот человек, которому причина нужна.
+      // A write ban is the only refusal here that has to be said out loud. The
+      // others stay quiet on purpose: the reaction rolls back, and tapping
+      // again costs nothing. But to a banned person a rollback without
+      // explanation looks like "the button is broken", and they are exactly the
+      // person who needs the reason.
       final bannedUntil = writeBanUntil(e);
       if (bannedUntil != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -480,7 +485,12 @@ class _PostListViewState extends ConsumerState<PostListView> {
       child: _posts.isEmpty && !_isLoading
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + BottomNavigationInset.of(context),
+              ),
               children: [
                 if (header != null) header,
                 if (_errorMessage != null)
@@ -500,7 +510,12 @@ class _PostListViewState extends ConsumerState<PostListView> {
           : ListView.separated(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + BottomNavigationInset.of(context),
+              ),
               itemCount: _posts.length + 1 + (header != null ? 1 : 0),
               separatorBuilder: (context, index) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
@@ -537,15 +552,16 @@ class _PostListViewState extends ConsumerState<PostListView> {
                     kind: ReportTargetKind.post,
                     targetId: post.id,
                   ),
-                  onOpenComments: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CommentsScreen(
-                        postId: post.id,
-                        onCountChanged: (count) =>
-                            _updateCommentCount(post.id, count),
+                  onOpenComments: () =>
+                      Navigator.of(context, rootNavigator: true).push(
+                        MaterialPageRoute(
+                          builder: (_) => CommentsScreen(
+                            postId: post.id,
+                            onCountChanged: (count) =>
+                                _updateCommentCount(post.id, count),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
                 );
               },
             ),
@@ -553,7 +569,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 }
 
-class _PostCard extends StatelessWidget {
+class _PostCard extends ConsumerWidget {
   const _PostCard({
     required this.post,
     required this.isOwnPost,
@@ -573,55 +589,90 @@ class _PostCard extends StatelessWidget {
   final VoidCallback onOpenComments;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    final avatarPath = post.authorAvatarPath;
+    final avatarBytes = avatarPath == null
+        ? null
+        : ref.watch(avatarBytesProvider(avatarPath)).value;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    post.authorName,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                // Only on one's own posts, and only on the narrowed ones: it
-                // is a reminder of a choice the author made, not information
-                // about the post for its readers. Whoever sees the post can
-                // already see it — telling them it is "for favourites only"
-                // would say something about the author's list, which is
-                // private.
-                if (isOwnPost && post.visibility == PostVisibility.favorites)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Chip(
-                      avatar: const Icon(Icons.star_outline, size: 16),
-                      label: Text(l10n.visibilityFavoritesBadge),
-                      labelStyle: Theme.of(context).textTheme.labelSmall,
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  child: InkWell(
+                    onTap: () =>
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(
+                            builder: (_) => FriendProfileScreen(
+                              friendId: post.authorId,
+                              friendName: post.authorName,
+                              avatarPath: post.authorAvatarPath,
+                            ),
+                          ),
+                        ),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 21,
+                          backgroundImage: avatarBytes == null
+                              ? null
+                              : sizedMemoryImage(
+                                  context,
+                                  avatarBytes,
+                                  logicalWidth: 42,
+                                ),
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primaryContainer,
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                          child: avatarBytes == null
+                              ? Text(
+                                  post.authorName.trim().isEmpty
+                                      ? '?'
+                                      : post.authorName
+                                            .trim()
+                                            .characters
+                                            .first
+                                            .toUpperCase(),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                post.authorName,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                DateFormat(
+                                  'd MMM y, HH:mm',
+                                  l10n.localeName,
+                                ).format(post.createdAt),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                // Меню есть у каждого поста, но пункты в нём зависят от того,
-                // чей он: своим постом управляют, на чужой жалуются. Пункт
-                // «пожаловаться» на собственном посте был бы не просто
-                // лишним — жалоба на себя отбивается сервером (AMR02), и
-                // предлагать действие, которое заведомо не сработает, хуже,
-                // чем не предлагать его вовсе.
-                // Размер задан рамкой снаружи, а не свойством кнопки:
-                // `PopupMenuButton` не принимает `visualDensity`, а
-                // дефолтный тап-таргет в 48px приносит в шапку КАЖДОЙ
-                // карточки лишние ~28px высоты. Пока меню было только у
-                // своих постов, это касалось единиц из списка; теперь оно у
-                // всех, и лента заметно вытянулась бы. Мельче соседнего
-                // чипа не делаем — по нему и выровнено.
+                ),
+                // Keep the menu's full tap target without changing the header height.
                 SizedBox(
-                  height: 32,
-                  width: 32,
+                  height: 48,
+                  width: 48,
                   child: PopupMenuButton<void>(
                     icon: const Icon(Icons.more_vert),
                     padding: EdgeInsets.zero,
@@ -647,31 +698,43 @@ class _PostCard extends StatelessWidget {
                 ),
               ],
             ),
-            Text(
-              DateFormat(
-                'd MMM y, HH:mm',
-                l10n.localeName,
-              ).format(post.createdAt),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            // Only on one's own posts, and only on the narrowed ones: it
+            // is a reminder of a choice the author made, not information
+            // about the post for its readers. Whoever sees the post can
+            // already see it — telling them it is "for favourites only"
+            // would say something about the author's list, which is
+            // private.
+            if (isOwnPost && post.visibility == PostVisibility.favorites)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Chip(
+                  avatar: const Icon(Icons.star_outline, size: 16),
+                  label: Text(l10n.visibilityFavoritesBadge),
+                  labelStyle: Theme.of(context).textTheme.labelSmall,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             if (post.text != null) ...[
-              const SizedBox(height: 8),
-              Text(post.text!),
+              const SizedBox(height: 18),
+              Text(post.text!, style: Theme.of(context).textTheme.bodyLarge),
             ],
             if (post.media.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 child: _MediaCarousel(postId: post.id, media: post.media),
               ),
             ],
-            const SizedBox(height: 4),
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 6),
             Row(
               children: [
                 _ReactionButton(
                   selectedIcon: Icons.thumb_up,
                   unselectedIcon: Icons.thumb_up_outlined,
-                  color: Colors.green,
+                  color: Theme.of(context).colorScheme.primary,
                   tooltip: l10n.likeTooltip,
                   count: post.likeCount,
                   selected: post.myReaction == ReactionType.like,
@@ -680,7 +743,7 @@ class _PostCard extends StatelessWidget {
                 _ReactionButton(
                   selectedIcon: Icons.sentiment_neutral,
                   unselectedIcon: Icons.sentiment_neutral_outlined,
-                  color: Colors.amber,
+                  color: Theme.of(context).colorScheme.tertiary,
                   tooltip: l10n.neutralTooltip,
                   count: post.neutralCount,
                   selected: post.myReaction == ReactionType.neutral,
@@ -693,7 +756,7 @@ class _PostCard extends StatelessWidget {
                   _ReactionButton(
                     selectedIcon: Icons.thumb_down,
                     unselectedIcon: Icons.thumb_down_outlined,
-                    color: Colors.red,
+                    color: Theme.of(context).colorScheme.error,
                     tooltip: l10n.dislikeTooltip,
                     count: post.dislikeCount,
                     selected: post.myReaction == ReactionType.dislike,
@@ -702,7 +765,7 @@ class _PostCard extends StatelessWidget {
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.mode_comment_outlined),
-                  visualDensity: VisualDensity.compact,
+                  tooltip: l10n.commentsTitle,
                   onPressed: onOpenComments,
                 ),
                 Text('${post.commentCount}'),
@@ -845,7 +908,7 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
   }
 
   void _openFullscreen(int index) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => FullscreenMediaViewer(

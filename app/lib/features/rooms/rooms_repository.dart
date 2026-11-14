@@ -120,7 +120,7 @@ class Room {
   /// "nobody can". Closing it means a per-column grant, and `room_members` is
   /// in the realtime publication that carries the delivered/read marks, so
   /// that change needs verifying against a live client first; see the header
-  /// of migration 20260924100000 and "Комнаты" in docs/data-model.md.
+  /// of migration 20260924100000 and "Rooms" in docs/data-model.md.
   ///
   /// Pushes only. [unreadCount] keeps counting and the badge keeps showing —
   /// silencing a room is not the same as no longer reading it.

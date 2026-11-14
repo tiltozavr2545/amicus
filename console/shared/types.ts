@@ -1,5 +1,5 @@
-// Контракт между локальным API консоли и её же фронтендом. Один файл на оба
-// конца, чтобы поля не разъехались.
+// Contract between the console's local API and its own frontend. One file
+// for both ends so the fields don't drift apart.
 
 export type Totals = {
   users: number;
@@ -64,8 +64,8 @@ export type UserRow = {
   versions: string[];
   locales: string[];
   platforms: string[];
-  /** Чем закончилась последняя попытка зарегистрировать пуш-токен.
-   *  null — человек ещё не открывал версию, которая это сообщает. */
+  /** How the latest attempt to register a push token ended.
+   *  null — the person hasn't opened a version that reports it yet. */
   pushStatus: string | null;
   pushStatusAt: string | null;
   pushStatusDetail: string | null;
@@ -126,11 +126,11 @@ export type ApiError = { error: string };
 export type ModerationTargetKind = 'post' | 'comment' | 'room_message';
 
 export type ReportMedia = {
-  /** image | video — чем рисовать превью. */
+  /** image | video — how to render the preview. */
   kind: string;
-  /** Подписанная ссылка на сам объект. Живёт час. */
+  /** Signed URL to the object itself. Lives for an hour. */
   url: string | null;
-  /** Постер видео, если он есть: само видео в карточке не проигрывается. */
+  /** Video poster, if any: the video itself isn't played in the card. */
   posterUrl: string | null;
   path: string;
 };
@@ -145,15 +145,15 @@ export type ReportRow = {
   targetAuthorName: string | null;
   targetAuthorBanned: boolean;
   targetSnapshot: string | null;
-  /** Медиа объекта, на который жалуются: у поста — из post_media, у
-   *  сообщения — из его jsonb. У комментария медиа не бывает. */
+  /** Media of the reported object: for a post — from post_media, for a
+   *  message — from its jsonb. Comments never have media. */
   media: ReportMedia[];
-  /** Жив ли объект: автор мог снести его раньше разбора. */
+  /** Whether the object still exists: the author may have deleted it before review. */
   targetExists: boolean;
   targetHidden: boolean;
-  /** Сколько всего жалоб на этот же объект — одна и семь читаются по-разному. */
+  /** Total reports on the same object — one and seven read differently. */
   reportsOnTarget: number;
-  /** Сколько жалоб подал сам жалобщик за всё время и сколько отклонили. */
+  /** How many reports the reporter has filed in total, and how many were rejected. */
   reporterTotal: number;
   reporterRejected: number;
   reason: string;
@@ -173,15 +173,17 @@ export type ReportsResponse = {
 export type NewsMedia = {
   mediaType: string;
   /**
-   * Путь объекта в бакете — у всего, что уже опубликовано. У ещё не
-   * опубликованного это `staged:<имя>`: файл лежит на диске консоли и уедет в
-   * бакет при публикации (см. STAGING в `server/news.ts`).
+   * Object path in the bucket — for everything already published. For
+   * something not yet published it's `staged:<name>`: the file sits on the
+   * console's disk and moves to the bucket on publish (see STAGING in
+   * `server/news.ts`).
    */
   storagePath: string;
   posterPath: string | null;
   /**
-   * Чем это показать. Для объекта в бакете — подписанная ссылка, живёт час;
-   * для staged-файла — `/api/news/media/<имя>`, и она не протухает.
+   * What to display it with. For an object in the bucket — a signed URL that
+   * lives for an hour; for a staged file — `/api/news/media/<name>`, which
+   * doesn't expire.
    */
   url?: string | null;
   posterUrl?: string | null;
@@ -214,7 +216,7 @@ export type NewsResponse = {
 export type BroadcastTarget = {
   userId: string;
   name: string;
-  /** Максимальный app_build среди устройств; null — ни одно не сообщило. */
+  /** Highest app_build across devices; null — none has reported one. */
   maxBuild: number | null;
   locale: string;
 };
@@ -224,11 +226,11 @@ export type BroadcastResponse = {
   repoVersion: { name: string; build: number } | null;
   targetBuild: number;
   willReceive: BroadcastTarget[];
-  /** Отсеяны защитой от повтора: про эту сборку им уже клали уведомление. */
+  /** Filtered out by the repeat guard: already notified about this build. */
   skippedAlready: BroadcastTarget[];
-  /** Отсеяны своей настройкой notify_system_account. */
+  /** Filtered out by their own notify_system_account setting. */
   skippedOptOut: BroadcastTarget[];
-  /** У скольких людей нет устройств вовсе — до них не дойдёт ничто. */
+  /** How many people have no devices at all — nothing will reach them. */
   withoutDevices: number;
   history: { build: string; kind: string; users: number }[];
 };

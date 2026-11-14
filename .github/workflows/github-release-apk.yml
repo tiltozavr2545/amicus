@@ -60,6 +60,13 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Select the Android build JDK explicitly
+        run: flutter config --jdk-dir="$JAVA_HOME"
+
       - run: flutter pub get --enforce-lockfile
 
       - name: Validate signing secrets

@@ -16,22 +16,22 @@ void main() {
       _error(code: 'AMB01', details: '2026-09-20T12:30:00Z'),
     );
     expect(until, isNotNull);
-    // Хранится и едет в UTC, показывается в местной зоне — конвертация на
-    // границе, как и у всех остальных timestamptz в этом клиенте.
+    // Stored and transported in UTC, shown in the local zone — converted at
+    // the boundary, like every other timestamptz in this client.
     expect(until!.isUtc, isFalse);
     expect(until.toUtc(), DateTime.utc(2026, 9, 20, 12, 30));
   });
 
-  group('всё, что не наш бан, читается как отсутствие бана', () {
-    test('отказ политики (42501) — обычная ошибка, не бан', () {
+  group('anything that is not our ban reads as no ban', () {
+    test('a policy denial (42501) is an ordinary error, not a ban', () {
       expect(writeBanUntil(_error(code: '42501', details: 'whatever')), isNull);
     });
 
-    test('не PostgrestException вовсе', () {
+    test('not a PostgrestException at all', () {
       expect(writeBanUntil(Exception('no network')), isNull);
     });
 
-    test('бан без разбираемой даты — не выдумываем дату', () {
+    test('a ban without a parseable date — we don\'t invent a date', () {
       expect(
         writeBanUntil(_error(code: 'AMB01', details: 'позавчера')),
         isNull,

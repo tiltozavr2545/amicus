@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reorderables/reorderables.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/bottom_navigation_inset.dart';
 import 'profile_repository.dart';
 import '../../shared/sized_memory_image.dart';
 
@@ -51,11 +52,14 @@ class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: widget.photos.length,
-        itemBuilder: (context, index) =>
-            _ViewerPage(path: widget.photos[index].storagePath),
+      body: SafeArea(
+        top: false,
+        child: PageView.builder(
+          controller: _pageController,
+          itemCount: widget.photos.length,
+          itemBuilder: (context, index) =>
+              _ViewerPage(path: widget.photos[index].storagePath),
+        ),
       ),
     );
   }
@@ -167,7 +171,12 @@ class _ProfilePhotoReorderScreenState
       // `.builder`, so only a screenful of thumbnails is built (and only that
       // many downloads started) however long the gallery is.
       body: ReorderableListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          16 + BottomNavigationInset.of(context),
+        ),
         itemCount: _order.length,
         onReorder: _reorder,
         // The default proxy is a bare elevation bump — real on a light
@@ -331,7 +340,12 @@ class _ProfilePhotoDeleteScreenState
       // cache extent), which is also what makes `avatarBytesProvider`'s
       // per-path fetches arrive a screenful at a time.
       body: GridView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          16 + BottomNavigationInset.of(context),
+        ),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: _thumbSize,
           mainAxisSpacing: 8,

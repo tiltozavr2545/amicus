@@ -126,21 +126,22 @@ Future<MediaPickResult> pickMediaFiles({required int remaining}) async {
     final token = const Uuid().v4();
     try {
       if (_looksLikeVideo(file)) {
-        // Первым делом, до инициализации плеера и до извлечения постера — и по
-        // той же причине, по которой ветка изображений ниже проверяет
-        // [imageExtensions]: content type объекта Storage берёт из РАСШИРЕНИЯ
-        // в его имени (`lookupMimeType()` в storage_client/src/fetch.dart), а
-        // имя строит вызывающий из расширения выбранного файла. Формата,
-        // которого нет в `allowed_mime_types` бакета (20260822260000), не
-        // будет и после ретрая, так что `.avi`/`.mpg`/`.wmv` уходил в общее
-        // «не удалось опубликовать» — и уходил ПОСЛЕ того, как клип целиком
-        // прочитали в память и отправили по сети.
+        // First thing, before initializing the player and before extracting the
+        // poster — and for the same reason the image branch below checks
+        // [imageExtensions]: Storage takes an object's content type from the
+        // EXTENSION in its name (`lookupMimeType()` in
+        // storage_client/src/fetch.dart), and the caller builds the name from
+        // the picked file's extension. A format that isn't in the bucket's
+        // `allowed_mime_types` (20260822260000) won't be accepted after a retry
+        // either, so `.avi`/`.mpg`/`.wmv` ended up in the generic "failed to
+        // publish" — and ended up there AFTER the whole clip had been read into
+        // memory and sent over the network.
         //
-        // Проверка нужна и на втором, менее очевидном исходе: у файла без
-        // расширения в имени [fileExtension] отдаёт свой дефолтный `jpg`,
-        // бакет принимает клип как `image/jpeg` — и остаётся слайд с
-        // `media_type = 'video'`, постером и кнопкой play, которая не
-        // проигрывает ничего.
+        // The check is also needed for a second, less obvious outcome: for a
+        // file with no extension in its name [fileExtension] returns its
+        // default `jpg`, the bucket accepts the clip as `image/jpeg` — and what
+        // remains is a slide with `media_type = 'video'`, a poster and a play
+        // button that plays nothing.
         if (!videoExtensions.contains(fileExtension(file.name))) {
           problems.add(MediaPickProblem.unsupportedVideo);
           continue;

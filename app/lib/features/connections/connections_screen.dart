@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/bottom_navigation_inset.dart';
+import '../../shared/content_width.dart';
 import '../../shared/write_ban.dart';
 import '../../shared/refresh_after_await.dart';
-import '../../theme/theme_toggle_switch.dart';
 import '../auth/auth_providers.dart';
 import '../feed/feed_repository.dart';
 import '../profile/profile_repository.dart';
@@ -25,13 +26,14 @@ class FriendAvatar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (avatarPath == null) {
-      return const CircleAvatar(child: Icon(Icons.person));
+      return const CircleAvatar(radius: 24, child: Icon(Icons.person_outline));
     }
 
     final avatarAsync = ref.watch(avatarBytesProvider(avatarPath!));
     return CircleAvatar(
+      radius: 24,
       backgroundImage: avatarAsync.value != null
-          ? sizedMemoryImage(context, avatarAsync.value!, logicalWidth: 40)
+          ? sizedMemoryImage(context, avatarAsync.value!, logicalWidth: 48)
           : null,
       child: avatarAsync.value == null ? const Icon(Icons.person) : null,
     );
@@ -113,8 +115,17 @@ class _FriendListItem extends ConsumerWidget {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
+      onTap: () => Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => FriendProfileScreen(
+            friendId: friend.userId,
+            friendName: friend.name,
+            avatarPath: friend.avatarPath,
+          ),
+        ),
+      ),
       leading: GestureDetector(
-        onTap: () => Navigator.of(context).push(
+        onTap: () => Navigator.of(context, rootNavigator: true).push(
           MaterialPageRoute(
             builder: (_) => FriendProfileScreen(
               friendId: friend.userId,
@@ -388,124 +399,144 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           IconButton(
             icon: const Icon(Icons.block),
             tooltip: l10n.blockedUsersTooltip,
-            onPressed: () => Navigator.of(context).push(
+            onPressed: () => Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
             ),
           ),
-          const ThemeToggleSwitch(),
           const SettingsButton(),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text(
-            l10n.inviteSectionTitle,
-            style: Theme.of(context).textTheme.titleMedium,
+      body: ContentWidth(
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            24 + BottomNavigationInset.of(context),
           ),
-          const SizedBox(height: 12),
-          if (_myInviteCode != null)
+          children: [
             Row(
               children: [
+                Icon(
+                  Icons.person_add_alt_1_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: SelectableText(
-                    _myInviteCode!,
+                  child: Text(
+                    l10n.inviteSectionTitle,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.copy),
-                  tooltip: l10n.copyTooltip,
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: _myInviteCode!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l10n.codeCopiedMessage)),
-                    );
-                  },
-                ),
               ],
             ),
-          const SizedBox(height: 8),
-          if (_createLinkError != null) ...[
-            Text(
-              _createLinkError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            const SizedBox(height: 8),
-          ],
-          FilledButton(
-            onPressed: _isCreatingLink ? null : _createInviteLink,
-            child: _isCreatingLink
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(
-                    _myInviteCode == null
-                        ? l10n.createInviteCodeButton
-                        : l10n.createNewCodeButton,
+            const SizedBox(height: 12),
+            if (_myInviteCode != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      _myInviteCode!,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            l10n.haveCodeSectionTitle,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _codeController,
-            decoration: InputDecoration(labelText: l10n.inviteCodeLabel),
-          ),
-          const SizedBox(height: 12),
-          if (_activationMessage != null) ...[
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    tooltip: l10n.copyTooltip,
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: _myInviteCode!));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.codeCopiedMessage)),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            const SizedBox(height: 8),
+            if (_createLinkError != null) ...[
+              Text(
+                _createLinkError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              const SizedBox(height: 8),
+            ],
+            FilledButton(
+              onPressed: _isCreatingLink ? null : _createInviteLink,
+              child: _isCreatingLink
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      _myInviteCode == null
+                          ? l10n.createInviteCodeButton
+                          : l10n.createNewCodeButton,
+                    ),
+            ),
+            const SizedBox(height: 32),
             Text(
-              _activationMessage!,
-              style: TextStyle(
-                color: _activationSucceeded
-                    ? Colors.green
-                    : Theme.of(context).colorScheme.error,
+              l10n.haveCodeSectionTitle,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _codeController,
+              decoration: InputDecoration(
+                labelText: l10n.inviteCodeLabel,
+                prefixIcon: const Icon(Icons.key_outlined),
               ),
             ),
             const SizedBox(height: 12),
+            if (_activationMessage != null) ...[
+              Text(
+                _activationMessage!,
+                style: TextStyle(
+                  color: _activationSucceeded
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            FilledButton(
+              onPressed: _isActivating ? null : _activate,
+              child: _isActivating
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.activateButton),
+            ),
+            // Incoming asks come first: they are the only thing on this screen
+            // that is waiting on the viewer, and an unanswered one is somebody
+            // standing at the door. Nothing is drawn when there are none.
+            const _IncomingRequests(),
+            const SizedBox(height: 32),
+            Text(
+              l10n.myConnectionsTitle,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            friendsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => Text(l10n.failedToLoadConnectionsError),
+              data: (friends) => friends.isEmpty
+                  ? Text(l10n.noConnectionsYetMessage)
+                  : Column(
+                      children: friends
+                          .map(
+                            (friend) => _FriendListItem(
+                              friend: friend,
+                              currentUserId: userId!,
+                            ),
+                          )
+                          .toList(),
+                    ),
+            ),
           ],
-          FilledButton(
-            onPressed: _isActivating ? null : _activate,
-            child: _isActivating
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.activateButton),
-          ),
-          // Incoming asks come first: they are the only thing on this screen
-          // that is waiting on the viewer, and an unanswered one is somebody
-          // standing at the door. Nothing is drawn when there are none.
-          const _IncomingRequests(),
-          const SizedBox(height: 32),
-          Text(
-            l10n.myConnectionsTitle,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          friendsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Text(l10n.failedToLoadConnectionsError),
-            data: (friends) => friends.isEmpty
-                ? Text(l10n.noConnectionsYetMessage)
-                : Column(
-                    children: friends
-                        .map(
-                          (friend) => _FriendListItem(
-                            friend: friend,
-                            currentUserId: userId!,
-                          ),
-                        )
-                        .toList(),
-                  ),
-          ),
-        ],
+        ),
       ),
     );
   }

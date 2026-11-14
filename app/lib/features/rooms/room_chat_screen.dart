@@ -1045,7 +1045,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     await _itemScrollController.scrollTo(
       index: index,
       alignment: 0.5,
-      duration: const Duration(milliseconds: 300),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
       curve: Curves.easeOut,
     );
     if (!mounted) return;
@@ -1126,7 +1128,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           IconButton(
             icon: const Icon(Icons.group_outlined),
             tooltip: l10n.roomMembersTitle,
-            onPressed: () => Navigator.of(context).push(
+            onPressed: () => Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(
                 builder: (_) => RoomDetailsScreen(roomId: widget.roomId),
               ),
@@ -1288,7 +1290,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -1308,7 +1310,6 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: l10n.messageHint,
-                        border: const OutlineInputBorder(),
                         // The counter only matters as one approaches the
                         // limit, and a chat field with a permanent "0/5000"
                         // under it looks like a form.
@@ -1316,7 +1317,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                       ),
                     ),
                   ),
-                  IconButton(
+                  IconButton.filled(
                     icon: _isSending
                         ? const SizedBox(
                             height: 16,
@@ -1916,8 +1917,9 @@ class _MessageBubble extends StatelessWidget {
                   onDelete!();
                 },
               ),
-            // Чужое живое сообщение. На заглушку удалённого жаловаться не на
-            // что, на своё — некому: сервер отбивает жалобу на себя (AMR02).
+            // Someone else's live message. There is nothing to report on the
+            // placeholder of a deleted one, and nobody to report on your own: the
+            // server rejects a report against yourself (AMR02).
             if (!isMine && !message.isDeleted)
               ListTile(
                 leading: const Icon(Icons.flag_outlined),
@@ -1955,9 +1957,11 @@ class _MessageBubble extends StatelessWidget {
       child: GestureDetector(
         onTap: hasActions ? () => _showActions(context, l10n) : null,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
           margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           constraints: BoxConstraints(
             // `sizeOf`, not `of`: the latter is a dependency on the whole
             // `MediaQueryData`, so opening the keyboard — which only moves
@@ -1969,8 +1973,13 @@ class _MessageBubble extends StatelessWidget {
                 ? scheme.primary.withValues(alpha: 0.25)
                 : (isMine
                       ? scheme.primaryContainer
-                      : scheme.surfaceContainerHighest),
-            borderRadius: BorderRadius.circular(16),
+                      : scheme.surfaceContainerLowest),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(20),
+              topRight: const Radius.circular(20),
+              bottomLeft: Radius.circular(isMine ? 20 : 6),
+              bottomRight: Radius.circular(isMine ? 6 : 20),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2315,7 +2324,7 @@ class _MessageMediaState extends ConsumerState<_MessageMedia> {
   }
 
   void _openFullscreen(int index) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => FullscreenMediaViewer(

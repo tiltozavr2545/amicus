@@ -4,10 +4,10 @@
 # Secrets
 .env
 .env.*
-# ...кроме шаблонов: они и заводятся для того, чтобы лежать в репозитории.
-# Без этой строки `console/.env.example` молча не коммитился, хотя README
-# велит с него копировать (`app/.env.example` уцелел только потому, что его
-# добавили до появления правила выше).
+# ...except templates: they exist precisely to live in the repository.
+# Without this line `console/.env.example` was silently not committed, even
+# though the README says to copy from it (`app/.env.example` survived only
+# because it was added before the rule above appeared).
 !.env.example
 .serena
 

@@ -10,62 +10,66 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
-  # Не Dart-код: `build/` — генерат, `android/`/`ios/` — нативные половины,
-  # в которых из разбираемого анализатором лежат только сгенерированные
-  # плагинные файлы. Пришло вместе с переводом Firebase на SPM
-  # (20260924, `iOS: перевод Firebase с CocoaPods на SPM` в CHANGELOG):
-  # `flutter build ios` дописывает эти исключения сам.
+  # Not Dart code: `build/` is generated, `android/`/`ios/` are the native
+  # halves, where the only things the analyzer would parse are generated
+  # plugin files. Came along with moving Firebase to SPM
+  # (20260924, the "iOS: move Firebase from CocoaPods to Swift Package
+  # Manager" entry in the CHANGELOG):
+  # `flutter build ios` adds these exclusions itself.
   #
-  # Ключ `analyzer` в этом файле обязан быть ОДИН. Слияние двух веток, каждая
-  # из которых завела свой, git проводит без конфликта — строки-то разные, —
-  # а YAML на дубль ключа отвечает тем, что молча оставляет последний: то есть
-  # либо исключения, либо strict-режимы ниже, и какие именно — как повезёт с
-  # порядком. Поймано ровно на таком слиянии.
+  # There must be exactly ONE `analyzer` key in this file. Git merges two
+  # branches that each added their own without a conflict (the lines differ,
+  # after all), and YAML answers a duplicate key by silently keeping the last
+  # one: so either the exclusions or the strict modes below survive, and
+  # which ones depends on the ordering. Caught on exactly such a merge.
   exclude:
     - build/**
     - android/**
     - ios/**
 
-  # Два режима, которые по умолчанию выключены и каждый из которых закрывает
-  # класс ошибок, уже встречавшийся в этом проекте на границе «строка из
-  # PostgREST → модель»:
+  # Two modes that are off by default, each of which closes off a class of
+  # bugs this project has already hit at the "PostgREST row → model"
+  # boundary:
   #
-  #   strict-casts     — запрещает неявное `dynamic` -> T. Каждая строка от
-  #                      PostgREST приходит как `Map<String, dynamic>`, и без
-  #                      этого режима `row['position']` молча сходит за `int`,
-  #                      а падает уже в рантайме на первом `num`, который
-  #                      приехал как `double`. Отсюда весь явный
-  #                      `(row['position'] as num).toInt()` в feed_repository —
-  #                      режим делает это правило обязательным, а не привычкой.
-  #   strict-raw-types — запрещает `List`/`Map` без параметров типа, то есть
-  #                      ещё один способ вернуть `dynamic` в код, который от
-  #                      него избавились.
+  #   strict-casts     — forbids implicit `dynamic` -> T. Every row from
+  #                      PostgREST arrives as `Map<String, dynamic>`, and
+  #                      without this mode `row['position']` silently passes
+  #                      for an `int`, then crashes at runtime on the first
+  #                      `num` that arrived as a `double`. Hence all the
+  #                      explicit `(row['position'] as num).toInt()` in
+  #                      feed_repository: the mode makes that rule mandatory
+  #                      rather than a habit.
+  #   strict-raw-types — forbids `List`/`Map` without type arguments, i.e.
+  #                      one more way to bring `dynamic` back into code that
+  #                      got rid of it.
   #
-  # Оба включены бесплатно: на момент включения ни одного нарушения в проекте
-  # не было, то есть это не разбор долга, а запрет на его появление.
+  # Both came for free: when they were enabled there wasn't a single
+  # violation in the project, so this isn't paying down debt but forbidding
+  # it from appearing.
   #
-  # `strict-inference` НЕ включён, и это решение, а не недосмотр. Он даёт 20
-  # предупреждений, и все они — про отсутствующий параметр типа у чужого API:
-  # `MaterialPageRoute` (пустой `<T>` у маршрута, с которого ничего не
-  # возвращают) и `SupabaseClient.rpc` (13 мест). Первое — чистая церемония.
-  # Второе хуже: чтобы проставить `rpc<T>`, надо выбрать T по фактическому
-  # ответу сервера, и ошибка в выборе превращается в падение приведения там,
-  # где сегодня его нет вовсе — граница и так разбирается явными `as` на месте
-  # использования. Режим, который заставляет добавить риск, чтобы стало
-  # строже, свою цену не оправдывает.
+  # `strict-inference` is NOT enabled, and that is a decision, not an
+  # oversight. It produces 20 warnings, all about a missing type argument on
+  # someone else's API: `MaterialPageRoute` (an empty `<T>` on a route that
+  # returns nothing) and `SupabaseClient.rpc` (13 places). The first is pure
+  # ceremony. The second is worse: to write `rpc<T>`, you have to pick T from
+  # the server's actual response, and a wrong pick turns into a cast failure
+  # where today there is none at all; the boundary is already handled by
+  # explicit `as` at the point of use. A mode that forces you to add risk in
+  # order to be stricter isn't worth its cost.
   language:
     strict-casts: true
     strict-raw-types: true
 
   errors:
-    # Забытый `await` в этом коде — не стилистика. Он уже стоил бага: на
-    # неожиданной ошибке незавершённый Future уходит в
-    # `FlutterError.onError` необработанным, и именно так «тихо не работала»
-    # запись пуш-токена (см. `registerDevice`). Из подсказки в предупреждение.
+    # A forgotten `await` in this code is not a style issue. It has already
+    # cost a bug: on an unexpected error the unfinished Future goes to
+    # `FlutterError.onError` unhandled, and that is exactly how push-token
+    # registration "quietly didn't work" (see `registerDevice`). Promoted
+    # from a hint to an error.
     unawaited_futures: error
-    # `context` после `await` без проверки `mounted` — тринадцатый аудит
-    # закрывал ровно это на трёх экранах. Пусть в следующий раз падает CI, а
-    # не экран.
+    # `context` after `await` without a `mounted` check: the thirteenth audit
+    # fixed exactly this on three screens. Next time let CI fail, not the
+    # screen.
     use_build_context_synchronously: error
 
 linter:
@@ -80,20 +84,20 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # Ниже — только то, что ловит ошибки, а не расставляет запятые:
-    # форматирование целиком отдано `dart format`, и правила про стиль тут
-    # просто дублировали бы его.
+    # Below is only what catches bugs, not what places commas: formatting is
+    # left entirely to `dart format`, and style rules here would just
+    # duplicate it.
     - always_declare_return_types
     - avoid_dynamic_calls
     - avoid_slow_async_io
     - cancel_subscriptions
     - close_sinks
-    # `discarded_futures` намеренно НЕ включён. Он ругается на любой вызов,
-    # возвращающий Future, из не-async функции — то есть на `onPressed: () =>
-    # _send()`, самую обычную форму обработчика во Flutter (25 мест). Опасный
-    # случай — брошенный Future в async-функции, чьё исключение уходит в
-    # `FlutterError.onError`, — ловит `unawaited_futures` выше, и он ловит его
-    # без этих двадцати пяти.
+    # `discarded_futures` is deliberately NOT enabled. It complains about any
+    # call returning a Future from a non-async function, i.e. about
+    # `onPressed: () => _send()`, the most ordinary handler form in Flutter
+    # (25 places). The dangerous case, a dropped Future in an async function
+    # whose exception goes to `FlutterError.onError`, is caught by
+    # `unawaited_futures` above, and it catches it without those twenty-five.
     - only_throw_errors
     - test_types_in_equals
     - throw_in_finally

@@ -44,7 +44,7 @@ class RoomAvatar extends ConsumerWidget {
     if (path == null) {
       final person = personBehind(room, viewerId);
       return person == null
-          ? CircleAvatar(radius: radius, child: const Icon(Icons.group))
+          ? CircleAvatar(radius: radius ?? 24, child: const Icon(Icons.group))
           : FriendAvatar(avatarPath: person.avatarPath);
     }
 
@@ -52,9 +52,9 @@ class RoomAvatar extends ConsumerWidget {
     // same bucket and keeps the bytes briefly after the last widget lets go,
     // which is exactly the scroll-back-up case in the room list.
     final bytes = ref.watch(avatarBytesProvider(path)).value;
-    final size = radius ?? 20;
+    final size = radius ?? 24;
     return CircleAvatar(
-      radius: radius,
+      radius: size,
       backgroundImage: bytes == null
           ? null
           : sizedMemoryImage(context, bytes, logicalWidth: size * 2),

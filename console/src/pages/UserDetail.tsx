@@ -11,9 +11,9 @@ const PUSH_STATUS: Record<string, string> = {
   error: 'запись токена падает с ошибкой',
 };
 
-// Виды, которые осмысленно послать одному человеку руками. Событийных здесь
-// нет намеренно: «у вас новый комментарий» там, где его не было, — враньё
-// голосом приложения.
+// Kinds that make sense to send to one person by hand. Event-driven ones are
+// deliberately absent: "you have a new comment" where there was none is the
+// app lying in its own voice.
 const MANUAL_KINDS = [
   {
     kind: 'app_update',

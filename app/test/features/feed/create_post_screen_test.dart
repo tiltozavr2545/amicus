@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/feed/create_post_screen.dart';
 import 'package:amicus/features/feed/feed_repository.dart';
+import 'package:amicus/features/feed/post_draft_store.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 
 /// Only the member CreatePostScreen calls needs real behaviour; the rest
@@ -77,11 +78,27 @@ class _FakeFeedRepository implements FeedRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Widget _wrap(_FakeFeedRepository repo, {Post? existingPost}) {
+class _Drafts extends PostDraftStore {
+  PostDraft? value;
+  @override
+  Future<PostDraft?> load(String user) async => value;
+  @override
+  Future<void> save(String user, PostDraft draft) async {
+    value = draft;
+  }
+
+  @override
+  Future<void> clear(String user) async {
+    value = null;
+  }
+}
+
+Widget _wrap(_FakeFeedRepository repo, {Post? existingPost, _Drafts? drafts}) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
+      postDraftStoreProvider.overrideWithValue(drafts ?? _Drafts()),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -92,6 +109,7 @@ Widget _wrap(_FakeFeedRepository repo, {Post? existingPost}) {
 }
 
 Future<void> _tapPublish(WidgetTester tester) async {
+  await tester.pumpAndSettle();
   await tester.tap(find.widgetWithText(FilledButton, 'Publish'));
   await tester.pump();
 }
@@ -102,6 +120,50 @@ Future<void> _tapSave(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'A new composer restores text, audience and token, then clears after publication',
+    (tester) async {
+      final drafts = _Drafts()
+        ..value = const PostDraft(
+          token: 'restored-token',
+          text: 'Saved story',
+          visibility: PostVisibility.favorites,
+          media: [],
+        );
+      final repo = _FakeFeedRepository();
+      await tester.pumpWidget(_wrap(repo, drafts: drafts));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Saved story',
+      );
+      await _tapPublish(tester);
+      await tester.pumpAndSettle();
+      expect(repo.tokens.single, 'restored-token');
+      expect(repo.visibilities.single, PostVisibility.favorites);
+      expect(drafts.value, isNull);
+    },
+  );
+
+  testWidgets(
+    'Leaving the composer flushes the last text without waiting for debounce',
+    (tester) async {
+      final drafts = _Drafts();
+      await tester.pumpWidget(_wrap(_FakeFeedRepository(), drafts: drafts));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Just typed');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(drafts.value!.text, 'Just typed');
+      await tester.pumpWidget(_wrap(_FakeFeedRepository(), drafts: drafts));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Just typed',
+      );
+    },
+  );
+
   testWidgets('An empty post is rejected before anything is sent', (
     tester,
   ) async {

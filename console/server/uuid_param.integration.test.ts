@@ -4,11 +4,12 @@ import { after, before, describe, it } from 'node:test';
 import express, { Router } from 'express';
 import { uuidParam } from './uuid.ts';
 
-// `uuid.test.ts` проверяет форму, этот — что `router.param` вообще стоит на
-// пути запроса: мусорный `:id` отбивается 400 и до обработчика не доходит,
-// причём для любого маршрута роутера с `:id`, а не только для перечисленных.
-// Роутер собирается так же, как в `routes/*.ts`, на эфемерном порту.
-describe('uuidParam в express', () => {
+// `uuid.test.ts` checks the shape, this one checks that `router.param` is
+// actually on the request path: a garbage `:id` is rejected with 400 and never
+// reaches the handler, for any router route with `:id`, not only the listed
+// ones. The router is assembled the same way as in `routes/*.ts`, on an
+// ephemeral port.
+describe('uuidParam in express', () => {
   let base: string;
   let server: ReturnType<express.Express['listen']>;
   let reached = 0;
@@ -44,7 +45,7 @@ describe('uuidParam в express', () => {
     });
   });
 
-  it('пропускает uuid до обработчика', async () => {
+  it('lets a uuid through to the handler', async () => {
     reached = 0;
     const id = 'e5110c16-91e7-44ca-8075-348bca3efedd';
     const response = await fetch(`${base}/items/${id}`);
@@ -53,7 +54,7 @@ describe('uuidParam в express', () => {
     assert.equal(reached, 1);
   });
 
-  it('отбивает 400 на мусорный id во всех маршрутах с `:id`', async () => {
+  it('rejects a garbage id with 400 on all routes with `:id`', async () => {
     reached = 0;
     for (const [method, path] of [
       ['GET', '/items/not-a-uuid'],
@@ -66,7 +67,7 @@ describe('uuidParam в express', () => {
     assert.equal(reached, 0);
   });
 
-  it('не трогает параметры с другим именем', async () => {
+  it('leaves parameters with another name alone', async () => {
     reached = 0;
     const response = await fetch(`${base}/media/poster.jpg`);
     assert.equal(response.status, 200);

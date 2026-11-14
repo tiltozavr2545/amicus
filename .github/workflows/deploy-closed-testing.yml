@@ -54,7 +54,7 @@ jobs:
       # Node 24 and said so in an annotation — but only until GitHub drops
       # that fallback, at which point this workflow is what breaks. Nothing
       # in the jump touches how they are used here: `fetch-depth`,
-      # `distribution` and `java-version` are unchanged, and the only
+      # the setup inputs retain their meanings, and the only
       # breaking change in either is the Node bump itself (plus a runner
       # floor of v2.327.1, far below what ubuntu-latest ships).
       #
@@ -65,7 +65,10 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
+
+      - name: Select the Android build JDK explicitly
+        run: flutter config --jdk-dir="$JAVA_HOME"
 
       - name: Configure Android SDK tools
         working-directory: ${{ github.workspace }}

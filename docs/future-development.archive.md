@@ -1,171 +1,171 @@
-# Архив: отложенные фичи на момент MVP
+# Archive: deferred features as of the MVP
 
-**Документ исторический.** Снимок [future-development.md](future-development.md)
-той поры, когда MVP ещё не был закрыт, — оставлен, чтобы было видно, что
-планировалось до MVP и как этот список выглядел до того, как его переписали.
-Живой список отложенного — в [future-development.md](future-development.md), и
-разойтись с ним этот файл уже успел: часть перечисленного ниже давно сделана.
+**This document is historical.** A snapshot of [future-development.md](future-development.md)
+from the time the MVP wasn't closed yet — kept to show what was planned before
+the MVP and what this list looked like before it was rewritten.
+The live list of deferred work is in [future-development.md](future-development.md), and
+this file has already drifted from it: some of what's listed below was done long ago.
 
-Сделано с тех пор, хотя ниже значится как отложенное: новостной аккаунт Amicus,
-собственная стена (посты одного человека), таймауты на сетевых вызовах,
-серверный счётчик комментариев (`comment_summary()`), приватность бакета
-`media` (теперь ещё и прибита миграцией). Что появилось в какой версии — в
+Done since then, although listed below as deferred: the Amicus news account,
+your own wall (one person's posts), timeouts on network calls,
+the server-side comment counter (`comment_summary()`), the `media` bucket being
+private (now also pinned by a migration). What appeared in which version — see
 [../CHANGELOG.md](../CHANGELOG.md).
 
-Сверять по нему ничего не нужно; на него не ссылается ничто, кроме живого
-`future-development.md` и индекса в [../README.md](../README.md).
+Nothing needs to be checked against it; nothing links to it except the live
+`future-development.md` and the index in [../README.md](../README.md).
 
 ---
 
-Всё, что сознательно отложено за пределы MVP (0.1), чтобы не утонуть на старте. См. основной план в [project-brief.md](project-brief.md).
+Everything deliberately deferred past the MVP (0.1) so as not to drown at the start. See the main plan in [project-brief.md](project-brief.md).
 
-Возвращаться к этому списку стоит только после того, как MVP заработал целиком (прошли Этап 5 из дорожной карты).
+It's worth coming back to this list only after the MVP works end to end (Stage 5 of the roadmap is done).
 
 ---
 
-## Комнаты (Rooms)
+## Rooms
 
-Приватные под-пространства внутри общего круга — изначально были частью общей идеи проекта, но вынесены за пределы MVP, чтобы не увеличивать объём первой версии.
+Private sub-spaces inside the shared circle — originally part of the overall project idea, but moved out of the MVP so as not to grow the scope of the first version.
 
-**Механика:**
-- Создать комнату может любой пользователь.
-- Комнату наполняют только те, кого создатель туда добавил (из числа своих Connections).
-- У комнаты своя изолированная лента — посты, помеченные «только для этой комнаты», не попадают в общую ленту и не видны вне комнаты.
-- Пост можно опубликовать: (а) в общую ленту, (б) в одну или несколько комнат сразу.
+**Mechanics:**
+- Any user can create a room.
+- A room is populated only by those its creator added (from among their Connections).
+- A room has its own isolated feed — posts marked "only for this room" don't get into the shared feed and aren't visible outside the room.
+- A post can be published: (a) to the shared feed, (b) to one or several rooms at once.
 
-**Модель данных (черновик):**
+**Data model (draft):**
 
-| Сущность | Ключевые поля | Комментарий |
+| Entity | Key fields | Comment |
 |---|---|---|
-| **Room** | id, name, creator_id, created_at | Комната |
-| **RoomMember** | room_id, user_id, joined_at | Кто состоит в комнате (many-to-many) |
-| **PostTarget** | post_id, room_id (nullable) | Куда опубликован пост: NULL = общая лента, иначе — конкретная комната. Один пост может иметь несколько строк (несколько комнат) |
+| **Room** | id, name, creator_id, created_at | The room |
+| **RoomMember** | room_id, user_id, joined_at | Who is in the room (many-to-many) |
+| **PostTarget** | post_id, room_id (nullable) | Where the post is published: NULL = shared feed, otherwise a specific room. One post can have several rows (several rooms) |
 
-Когда дойдёт очередь до этой фичи — `Post` из MVP нужно будет связать с `PostTarget` вместо прямой видимости через Connections.
+When this feature's turn comes, the MVP's `Post` will need to be linked to `PostTarget` instead of direct visibility through Connections.
 
-**Отдельный этап дорожной карты (после MVP):** создание комнаты, добавление участников, лента комнаты, выбор при публикации — куда отправить пост.
+**A separate roadmap stage (after the MVP):** creating a room, adding members, the room feed, choosing where to send a post when publishing.
 
-## Видео-сообщения («кружочки», как в Telegram)
+## Video messages ("circles", like in Telegram)
 
-Круглые видео-сообщения, записываемые с камеры прямо в приложении — как альтернатива/дополнение к фото в посте или комментарии.
+Round video messages recorded with the camera right in the app — as an alternative/addition to a photo in a post or comment.
 
-**Механика (черновик):**
-- Запись через камеру устройства (обычно фронтальную), с ограничением по длительности (например, 60 сек, как в Telegram).
-- Круглая маска — скорее клиентское отображение (`ClipPath`/оверлей), а не перекодировка самого видеофайла в круглую форму.
-- Хранение — Storage (тот же бакет, что и фото, либо отдельный), видимость по тем же правилам приватности, что уже действуют для фото/аватарок (Connections-only, см. 0.4.0/0.5.0 в CHANGELOG.md).
+**Mechanics (draft):**
+- Record with the device camera (usually the front one), with a duration limit (e.g. 60 sec, like in Telegram).
+- The round mask is more likely a client-side rendering (`ClipPath`/overlay) than re-encoding the video file itself into a round shape.
+- Storage — Storage (the same bucket as photos, or a separate one), visibility under the same privacy rules that already apply to photos/avatars (Connections-only, see 0.4.0/0.5.0 in CHANGELOG.md).
 
-**Открытые вопросы:**
-- Отдельный тип вложения к посту, или только к комментарию (либо и то, и другое)?
-- Лимит размера/длительности и нужна ли перекодировка/сжатие на клиенте перед загрузкой.
-- Автовоспроизведение в ленте (со звуком или без) — вопрос UX, решать отдельно.
+**Open questions:**
+- A separate attachment type for posts, or only for comments (or both)?
+- Size/duration limit, and whether client-side re-encoding/compression is needed before upload.
+- Autoplay in the feed (with or without sound) — a UX question, to be decided separately.
 
-## Загрузка GPS-треков (маршруты бега/вело, как в Strava)
+## GPS track upload (running/cycling routes, Strava-style)
 
-Возможность записать маршрут пробежки/велозаезда через GPS телефона или загрузить готовый трек-файл (GPX/TCX/FIT — форматы, которыми оперируют Strava, Garmin и большинство спортивных часов), с последующим отображением маршрута на карте в посте.
+The ability to record a run/ride route with the phone's GPS or upload a ready track file (GPX/TCX/FIT — the formats Strava, Garmin and most sports watches work with), and then show the route on a map in a post.
 
-**Механика (черновик):**
-- Запись трека на устройстве (фоновый GPS-трекинг во время активности) либо импорт готового файла.
-- Разбор трека → ряд координат (lat/lon/timestamp, возможно высота) + агрегаты (дистанция, длительность, средняя скорость/темп).
-- Отображение маршрута на карте в посте — нужен картографический SDK (Google Maps / Mapbox / что-то на OpenStreetMap) — у каждого свои лимиты бесплатного тарифа и стоимость, выбор отдельным вопросом.
+**Mechanics (draft):**
+- Record the track on the device (background GPS tracking during the activity) or import a ready file.
+- Parse the track → a series of coordinates (lat/lon/timestamp, maybe elevation) + aggregates (distance, duration, average speed/pace).
+- Show the route on a map in the post — needs a mapping SDK (Google Maps / Mapbox / something OpenStreetMap-based) — each has its own free-tier limits and pricing; choosing one is a separate question.
 
-**Модель данных (черновик):**
+**Data model (draft):**
 
-| Сущность | Ключевые поля | Комментарий |
+| Entity | Key fields | Comment |
 |---|---|---|
-| **Route** (или Activity) | id, post_id, type (run/ride), distance_m, duration_s, started_at | Агрегаты маршрута, привязка к посту |
-| **RoutePoint** | route_id, seq, lat, lon, elevation_m?, recorded_at | Точки трека — либо нормализовать так, либо хранить сырой GPX/FIT-файл в Storage и парсить на лету, вопрос открыт |
+| **Route** (or Activity) | id, post_id, type (run/ride), distance_m, duration_s, started_at | Route aggregates, tied to a post |
+| **RoutePoint** | route_id, seq, lat, lon, elevation_m?, recorded_at | Track points — either normalize like this, or keep the raw GPX/FIT file in Storage and parse on the fly; open question |
 
-**Открытые вопросы:**
-- Хранить трек как файл в Storage и парсить на лету, или нормализовать в таблицу точек в БД — компромисс между простотой и возможностью запросов/агрегации по трекам.
-- Какой картографический сервис использовать (стоимость, лимиты бесплатного тарифа, доступность на Android без лишней настройки).
-- В первой итерации — только загрузка готового файла, или сразу и live-запись GPS во время самой активности?
+**Open questions:**
+- Store the track as a file in Storage and parse on the fly, or normalize it into a points table in the DB — a trade-off between simplicity and the ability to query/aggregate over tracks.
+- Which mapping service to use (cost, free-tier limits, availability on Android without extra setup).
+- First iteration: only uploading a ready file, or live GPS recording during the activity right away?
 
 ## iOS
 
-MVP (0.1) задеплоен только на Android (Google Play, Internal Testing track). iOS-сборка сознательно отложена — изначально из-за dev-машины на macOS 12.7.6 (Xcode требует macOS 14+, см. CLAUDE.md), теперь просто как отдельная задача после портфолио-релиза на Android.
+The MVP (0.1) is deployed on Android only (Google Play, Internal Testing track). The iOS build is deliberately deferred — originally because of the dev machine on macOS 12.7.6 (Xcode requires macOS 14+, see CLAUDE.md), now simply as a separate task after the portfolio release on Android.
 
-Когда дойдёт очередь:
-1. Обновить dev-машину до macOS 14+ (или собирать на другой машине/CI) и установить Xcode.
-2. Apple Developer аккаунт (платный, $99/год — единственная точка, где потребуются деньги).
-3. Прогнать `flutter create --platforms=ios` конфигурацию (уже подключена изначально) через `flutter run`/`flutter build ios` на реальном устройстве или симуляторе, поймать платформенные баги, которых не было на Android.
-4. Xcode archive → App Store Connect → TestFlight, добавить себя/друзей как тестеров.
+When its turn comes:
+1. Upgrade the dev machine to macOS 14+ (or build on another machine/CI) and install Xcode.
+2. An Apple Developer account (paid, $99/year — the only point where money will be needed).
+3. Run the `flutter create --platforms=ios` configuration (wired up from the start) through `flutter run`/`flutter build ios` on a real device or simulator, catch platform bugs that didn't show up on Android.
+4. Xcode archive → App Store Connect → TestFlight, add myself/friends as testers.
 
-## 1.0 — после того как MVP заработал
+## 1.0 — after the MVP works
 
-- ~~Тёмная тема~~ — реализовано вне очереди в 0.8.0 (тумблер light/dark в `AppBar` трёх основных вкладок, по умолчанию следует системной теме устройства), см. CHANGELOG.md
-- ~~«Забыл пароль» на экране входа~~ — реализовано вне очереди в 0.6.0 (ссылка «Забыли пароль?» на экране входа → `auth.resetPasswordForEmail()` → интерактивная `reset-password.html` на GitHub Pages, `AuthFlowType.implicit` вместо PKCE), см. CHANGELOG.md
-- Счётчик просмотров поста. Формулировка задачи «своеобразная» (по словам автора) — перед началом реализации агент должен уточнить у пользователя, как именно считать просмотр (при показе карточки в ленте / при полном раскрытии / только уникальные юзеры / что с повторными просмотрами и т.п.), не додумывать самостоятельно
-- ~~Несколько типов реакций — как минимум лайк, нейтральная реакция и дизлайк (не только лайк)~~ — реализовано вне очереди в 0.3.0 (колонка `type` в `reactions` + UPDATE RLS-политика для смены реакции, три взаимоисключающие реакции в UI), см. CHANGELOG.md
-- ~~Вложенные комментарии (ответ на комментарий) — поле `parent_comment_id` в таблице `Comment` уже заложено в схему на будущее~~ — реализовано вне очереди в 0.10.0 (один уровень вложенности, `parent_comment_id`/`reply_to_id`/`deleted_at` + триггер на глубину + RPC `delete_own_comment`), см. CHANGELOG.md. Уточнение к зачёркнутому: `parent_comment_id` в схеме на самом деле **не было** — поле осталось только в черновике модели данных в брифе и до миграции MVP не доехало, так что в 0.10.0 колонка добавлялась с нуля
-- ~~Удаление своих постов и комментариев~~ — реализовано вне очереди в 0.2.0 (DELETE RLS-политики на `posts`/`comments`/фото поста + UI), см. CHANGELOG.md
-- Удаление аккаунта целиком — сейчас в MVP этого нет вообще (нет ни UPDATE policy на posts/comments для редактирования, ни экрана удаления аккаунта); аккаунт пока удаляется вручную админом по письму (см. privacy policy на GitHub Pages)
-- Редактирование поста — сейчас можно только удалить, править текст после публикации нельзя
-- Несколько фото в одном посте — сейчас жёстко одно фото на пост
-- ~~«Мы знакомы N дней/месяцев»~~ — реализовано вне очереди в 0.5.0 (метка на экране «Знакомства» от `created_at` Connection), см. CHANGELOG.md
-- ~~Пауза/mute знакомого без разрыва Connection~~ — реализовано вне очереди в 0.9.0 (таблица `muted_users`, скрывает посты автора только от замьютившего, без разрыва Connection), заодно добавлена и обратимая взаимная блокировка (см. CHANGELOG.md и пункт про блокировку в разделе 2.0+ ниже); в 0.10.1 то же правило распространено с постов на комментарии — скрывается и ветка ответов под скрытым комментарием, и адресованные скрытому человеку реплики
-- ~~Локализация (i18n) — все строки в приложении сейчас захардкожены на русском; ок для портфолио и своих, но не-русскоязычный пользователь увидит русский интерфейс без вариантов~~ — реализовано вне очереди в 0.7.0 (английский по умолчанию, русский при системной локали ru), см. CHANGELOG.md
-- Оффлайн-режим — кэш последней открытой ленты, чтобы приложение не было пустым без сети
-- Доработка интерфейса/UI-полировка сверх того, что сделано на Этапе 5 (сейчас функционально, но не более)
-- QR-сканирование как второй способ знакомства (в дополнение к invite-ссылкам)
-- Push-уведомления
-- Deep link для подтверждения email: сейчас ссылка из письма ведёт на статическую страницу-подтверждение на GitHub Pages (`site_url` в `supabase/config.toml` → `https://tiltozavr2545.github.io/amicus/`, исходник — ветка `gh-pages`, один `index.html`), потому что само подтверждение засчитывается на стороне Supabase ещё до редиректа. Это решает проблему непонятного лендинга (раньше вело прямо на GitHub-репозиторий), но открывать сразу экран приложения было бы удобнее — требует настройки custom URL scheme / Android App Links и обработки в `supabase_flutter`, отдельная задача не для MVP
-- ~~Свой SMTP для писем подтверждения: сейчас используется встроенный email-сервис Supabase, у которого на free tier жёсткий rate limit (пара писем в час) — это уже мешало ручному тестированию несколько раз.~~ ✅ **Закрыто.** Подключён обычный Gmail-аккаунт (`projectamicushelper@gmail.com`) как SMTP-сервер напрямую в живом Supabase-проекте (Dashboard/Management API) — `supabase/config.toml` в репозитории не пушится на remote автоматически, поэтому секция `[auth.email.smtp]` там оставлена закомментированной как справочная копия (для случая, если когда-нибудь понадобится реальный SMTP локально вместо фейкового Inbucket). Инфраструктурное изменение, без миграций и без версии приложения (не app-фича)
+- ~~Dark theme~~ — implemented out of order in 0.8.0 (a light/dark toggle in the `AppBar` of the three main tabs, follows the device's system theme by default), see CHANGELOG.md
+- ~~"Forgot password" on the sign-in screen~~ — implemented out of order in 0.6.0 (a "Forgot password?" link on the sign-in screen → `auth.resetPasswordForEmail()` → an interactive `reset-password.html` on GitHub Pages, `AuthFlowType.implicit` instead of PKCE), see CHANGELOG.md
+- Post view counter. The task is worded "peculiarly" (in the author's words) — before implementing it the agent must clarify with the user exactly how a view is counted (when the card is shown in the feed / when fully expanded / unique users only / what about repeat views, etc.), not make it up on its own
+- ~~Several reaction types — at least like, a neutral reaction and dislike (not just like)~~ — implemented out of order in 0.3.0 (a `type` column in `reactions` + an UPDATE RLS policy for changing a reaction, three mutually exclusive reactions in the UI), see CHANGELOG.md
+- ~~Nested comments (replying to a comment) — the `parent_comment_id` field in the `Comment` table is already laid into the schema for the future~~ — implemented out of order in 0.10.0 (one nesting level, `parent_comment_id`/`reply_to_id`/`deleted_at` + a depth trigger + the `delete_own_comment` RPC), see CHANGELOG.md. A correction to the struck-out item: `parent_comment_id` was in fact **not** in the schema — the field stayed only in the data-model draft in the brief and never made it into the MVP migration, so in 0.10.0 the column was added from scratch
+- ~~Deleting your own posts and comments~~ — implemented out of order in 0.2.0 (DELETE RLS policies on `posts`/`comments`/post photos + UI), see CHANGELOG.md
+- Deleting the whole account — the MVP currently has none of this at all (no UPDATE policy on posts/comments for editing, no account deletion screen); for now an account is deleted manually by the admin on request by email (see the privacy policy on GitHub Pages)
+- Editing a post — currently it can only be deleted; the text can't be edited after publishing
+- Several photos in one post — currently strictly one photo per post
+- ~~"Known for N days/months"~~ — implemented out of order in 0.5.0 (a label on the "Connections" screen from the Connection's `created_at`), see CHANGELOG.md
+- ~~Mute a connection without breaking the Connection~~ — implemented out of order in 0.9.0 (a `muted_users` table, hides the author's posts only from the one who muted, without breaking the Connection); a reversible mutual block was added along the way (see CHANGELOG.md and the block item in the 2.0+ section below); in 0.10.1 the same rule was extended from posts to comments — the reply thread under a hidden comment is hidden too, as are replies addressed to the hidden person
+- ~~Localization (i18n) — every string in the app is currently hardcoded in Russian; fine for the portfolio and friends, but a non-Russian-speaking user will see a Russian interface with no alternative~~ — implemented out of order in 0.7.0 (English by default, Russian with a system `ru` locale), see CHANGELOG.md
+- Offline mode — cache the last opened feed so the app isn't empty without a network
+- Interface work/UI polish beyond what was done in Stage 5 (currently functional, but no more than that)
+- QR scanning as a second way to connect (in addition to invite links)
+- Push notifications
+- Deep link for email confirmation: right now the link in the email leads to a static confirmation page on GitHub Pages (`site_url` in `supabase/config.toml` → `https://tiltozavr2545.github.io/amicus/`, source — the `gh-pages` branch, a single `index.html`), because the confirmation itself is counted on the Supabase side before the redirect. That fixes the confusing landing page (it used to lead straight to the GitHub repository), but opening an app screen directly would be nicer — it needs a custom URL scheme / Android App Links set up and handling in `supabase_flutter`; a separate task, not for the MVP
+- ~~Our own SMTP for confirmation emails: right now Supabase's built-in email service is used, which on the free tier has a hard rate limit (a couple of emails per hour) — this has already got in the way of manual testing several times.~~ ✅ **Closed.** A regular Gmail account (`projectamicushelper@gmail.com`) is connected as the SMTP server directly in the live Supabase project (Dashboard/Management API) — `supabase/config.toml` in the repository isn't pushed to the remote automatically, so the `[auth.email.smtp]` section there is left commented out as a reference copy (in case real SMTP is ever needed locally instead of the fake Inbucket). An infrastructure change, with no migrations and no app version (not an app feature)
 
-## Безопасность и приватность (из аудита кода)
+## Security and privacy (from the code audit)
 
-**Первый аудит (до 0.4.0).** Полное ревью проекта (RLS, Storage-политики, клиент, секреты, вся история git) прошло чисто: критичных дыр нет, секретов в репозитории и истории git нет, `service_role`/secret-ключ в клиенте не используется, anon-ключ публичный by design. Сильные места — `security definer` + `set search_path` на функциях, `for update` против гонки при активации инвайта, канонический порядок пар, `revoke execute … from anon`, лимит размера + allow-list MIME, `enable_anonymous_sign_ins = false`, email-подтверждение, `additional_redirect_urls = []`. Ниже — то, что стоит подтянуть после MVP.
+**First audit (before 0.4.0).** A full review of the project (RLS, Storage policies, client, secrets, the whole git history) came out clean: no critical holes, no secrets in the repository or git history, the `service_role`/secret key isn't used in the client, the anon key is public by design. Strong points — `security definer` + `set search_path` on functions, `for update` against the race on invite activation, canonical pair ordering, `revoke execute … from anon`, a size limit + MIME allow-list, `enable_anonymous_sign_ins = false`, email confirmation, `additional_redirect_urls = []`. Below is what's worth tightening after the MVP.
 
-**Второй аудит (ревью ветки 0.8.1→0.10.3, закрыт в 0.11.0).** Прошёл не чисто — и урок из него один, общий: почти всё найденное появилось не из-за плохой политики, а из-за **дублирования правила видимости**. Правило «чьё содержимое мне видно» жило в четырёх местах, mute/block из 0.9.0 доехали не до всех, и две отставшие копии оказались настоящими дырами. Подробности каждой правки — в CHANGELOG.md (0.11.0), здесь только итог и то, что осталось.
+**Second audit (review of the 0.8.1→0.10.3 branch, closed in 0.11.0).** Did not come out clean — and its lesson is a single, general one: almost everything found appeared not because of a bad policy, but because of **duplication of the visibility rule**. The rule "whose content can I see" lived in four places, mute/block from 0.9.0 didn't reach all of them, and two lagging copies turned out to be real holes. Details of each fix are in CHANGELOG.md (0.11.0); here only the outcome and what's left.
 
-- ~~**Утечка соцграфа через реакции.**~~ ✅ **Закрыто в 0.4.0.** Политика SELECT на `reactions` была широкой (`using (exists (select 1 from posts p where p.id = reactions.post_id))`) — на любом видимом посту через API вытаскивался `user_id` **всех** реагировавших, а через общедоступную тогда `users` он мапился в имя. Теперь SELECT на `reactions` отдаёт только собственные строки (`user_id = auth.uid()`), а публичные счётчики на пост считает `security definer`-функция `reaction_summary(uuid[])`: возвращает только числа (like/neutral/dislike) плюс собственную реакцию вызывающего, без чужих `user_id`, с внутренней проверкой видимости поста. Выбран именно предложенный здесь вариант «настоящий общий счётчик при скрытых личностях», а не сужение до связей — счётчик остаётся истинным тоталом, но кто реагировал, узнать нельзя. Миграция `20260712100000_scope_profile_and_reaction_visibility.sql`.
+- ~~**Social graph leak through reactions.**~~ ✅ **Closed in 0.4.0.** The SELECT policy on `reactions` was broad (`using (exists (select 1 from posts p where p.id = reactions.post_id))`) — on any visible post the API exposed the `user_id` of **everyone** who reacted, and through the then-public `users` it mapped to a name. Now SELECT on `reactions` returns only your own rows (`user_id = auth.uid()`), and the public per-post counters are computed by the `security definer` function `reaction_summary(uuid[])`: it returns only numbers (like/neutral/dislike) plus the caller's own reaction, without other people's `user_id`, with an internal post-visibility check. The option proposed here was chosen — "a real shared counter with hidden identities" — rather than narrowing to connections: the counter stays a true total, but who reacted can't be found out. Migration `20260712100000_scope_profile_and_reaction_visibility.sql`.
 
-- ~~**Вся адресная книга читается любым залогиненным.**~~ ✅ **Закрыто в 0.4.0.** `users` SELECT был `using (true)` — любой видел имена/аватары/`id` **всех**. После harden-миграции для комментариев все имена, которые приложение вообще показывает (авторы постов, комментариев, список знакомых), и так принадлежат твоим Connections, поэтому политику удалось сузить прямым RLS без `security definer`-вью: SELECT на `users` теперь = «своя строка ИЛИ мой Connection». Перечислить всю адресную книгу через API больше нельзя. Миграция `20260712100000_scope_profile_and_reaction_visibility.sql`.
+- ~~**The whole address book is readable by any signed-in user.**~~ ✅ **Closed in 0.4.0.** `users` SELECT was `using (true)` — anyone saw the names/avatars/`id` of **everyone**. After the harden migration for comments, every name the app shows at all (post authors, comment authors, the connections list) already belongs to your Connections, so the policy could be narrowed with plain RLS without a `security definer` view: SELECT on `users` is now "your own row OR my Connection". Enumerating the whole address book through the API is no longer possible. Migration `20260712100000_scope_profile_and_reaction_visibility.sql`.
 
-- ~~**Файлы аватарок читались любым залогиненным (мимо сужения `users`).**~~ ✅ **Закрыто в 0.5.0.** Строку профиля в `users` сузили до Connections ещё в 0.4.0, но сами байты аватарки лежат в Storage, а его SELECT-политика (`20260707222025`) проверяла только `bucket_id='media' AND foldername[1]='avatars'` — то есть любой залогиненный мог скачать чужое фото по пути `avatars/{uuid}/...`, зная лишь UUID (сейчас он никуда не утекает не-связям, но политика всё равно шире, чем задумано). Всплыло, когда список знакомых впервые начал массово тянуть чужие аватарки. Теперь storage-политика зеркалит правило `users`: аватарку видно только себе и своим Connections (подзапрос к `connections` по `foldername[2]`). Проверено RLS-тестом на живой БД. Миграция `20260712120000_scope_avatar_storage_visibility.sql`.
+- ~~**Avatar files were readable by any signed-in user (bypassing the `users` narrowing).**~~ ✅ **Closed in 0.5.0.** The profile row in `users` was narrowed to Connections back in 0.4.0, but the avatar bytes themselves live in Storage, and its SELECT policy (`20260707222025`) only checked `bucket_id='media' AND foldername[1]='avatars'` — meaning any signed-in user could download someone else's photo at the path `avatars/{uuid}/...` knowing just the UUID (it doesn't currently leak to non-connections anywhere, but the policy is still broader than intended). Surfaced when the connections list first started pulling other people's avatars en masse. Now the storage policy mirrors the `users` rule: an avatar is visible only to yourself and your Connections (a subquery on `connections` by `foldername[2]`). Verified with an RLS test against the live DB. Migration `20260712120000_scope_avatar_storage_visibility.sql`.
 
-- ~~**Мелкая закалка.** Нет лимита длины на текст поста/комментария (ни в UI, ни в БД) — стоит добавить `check (char_length(text) <= 5000)` + счётчик символов в UI. И не выводить сырой текст исключения (`$e`) в сообщениях об ошибках («Не удалось …: $e») — заменить на человекочитаемые формулировки, чтобы не светить внутренние детали.~~ ✅ **Закрыто в 0.9.1.** См. CHANGELOG.md.
+- ~~**Minor hardening.** No length limit on post/comment text (neither in the UI nor in the DB) — worth adding `check (char_length(text) <= 5000)` + a character counter in the UI. And don't print the raw exception text (`$e`) in error messages ("Не удалось …: $e", i.e. "Failed to …: $e") — replace with human-readable wording so as not to expose internal details.~~ ✅ **Closed in 0.9.1.** See CHANGELOG.md.
 
-- ~~**Правило видимости размножено на четыре копии, две отстали от mute/block.**~~ ✅ **Закрыто в 0.11.0.** Инлайн в политике `posts`, инлайн в `reaction_summary()`, функцией `is_comment_author_visible()` и инлайн в storage-политике на фото постов. 0.9.0 обновила не все: заблокированный получал через `/rpc/reaction_summary` живые счётчики реакций скрытых от него постов, а зная путь к фото — бесконечно выписывал себе новые signed URL. Все четыре сведены в одну `is_author_visible(uuid)`; впредь правило меняется в одном месте. Миграции `20260726120000`, `20260726130000`. **Аватарки сужать не надо** — блок не рвёт Connection, заблокированный остаётся в списке знакомых, а блокирующий видит его на экране «Заблокированные», где блок и снимают.
+- ~~**The visibility rule is copied four times, two copies lagged behind mute/block.**~~ ✅ **Closed in 0.11.0.** Inline in the `posts` policy, inline in `reaction_summary()`, as the function `is_comment_author_visible()`, and inline in the storage policy on post photos. 0.9.0 didn't update all of them: a blocked user got live reaction counters for posts hidden from them through `/rpc/reaction_summary`, and, knowing the path to a photo, could keep issuing themselves new signed URLs indefinitely. All four are merged into a single `is_author_visible(uuid)`; from now on the rule changes in one place. Migrations `20260726120000`, `20260726130000`. **Avatars don't need narrowing** — a block doesn't break the Connection, the blocked user stays in the connections list, and the blocker sees them on the "Blocked" screen, where the block is lifted.
 
-- ~~**Definer-хелперы отвечали на чужие вопросы.**~~ ✅ **Закрыто в 0.11.0.** Каждая функция в открытой схеме — эндпоинт PostgREST, поэтому грант `authenticated` = «зови с любыми аргументами». `is_blocked_pair(a, b)` не привязывала аргументы к `auth.uid()` и сообщала, заблокировали ли друг друга **посторонние**; `comment_author(uuid)` отдавала автора любого комментария мимо RLS. Первой снят грант (её зовут только изнутри другой definer-функции, то есть правами владельца), вторая свёрнута в булеву `is_author_of_comment_visible(comment_id)` и удалена. Миграция `20260726140000`. На будущее: **у любой новой `security definer`-функции проверять, что каждый аргумент либо про самого вызывающего, либо функция не выдана `authenticated` напрямую.**
+- ~~**Definer helpers answered other people's questions.**~~ ✅ **Closed in 0.11.0.** Every function in an exposed schema is a PostgREST endpoint, so a grant to `authenticated` = "call it with any arguments". `is_blocked_pair(a, b)` didn't tie its arguments to `auth.uid()` and reported whether **strangers** had blocked each other; `comment_author(uuid)` returned the author of any comment, bypassing RLS. The first had its grant revoked (it's only called from inside another definer function, i.e. with the owner's privileges); the second was collapsed into the boolean `is_author_of_comment_visible(comment_id)` and dropped. Migration `20260726140000`. For the future: **for any new `security definer` function, check that every argument is either about the caller themselves, or the function isn't granted to `authenticated` directly.**
 
-- ~~**Серверное состояние было клиентски записываемым.**~~ ✅ **Закрыто в 0.11.0.** Дефолтные гранты Supabase дают `authenticated` писать все колонки, а INSERT-политики про них молчали: комментарий вставлялся сразу заглушкой (`deleted_at`), а пост — с датой 2099 (`created_at`), навсегда занимая верх ленты у всех знакомых автора. Обе колонки прибиты в `with check` (`deleted_at is null`, `created_at = now()`). Миграции `20260726160000`, `20260726190000`. На будущее: **каждая новая колонка, которую заполняет сервер, должна быть явно упомянута в INSERT-политике** — умолчание здесь работает в пользу клиента.
+- ~~**Server-side state was client-writable.**~~ ✅ **Closed in 0.11.0.** Supabase's default grants let `authenticated` write every column, and the INSERT policies said nothing about them: a comment could be inserted already as a tombstone (`deleted_at`), and a post with a 2099 date (`created_at`), permanently occupying the top of the feed for all of the author's connections. Both columns are pinned in `with check` (`deleted_at is null`, `created_at = now()`). Migrations `20260726160000`, `20260726190000`. For the future: **every new column the server fills in must be mentioned explicitly in the INSERT policy** — the default here works in the client's favor.
 
-- ~~**`delete_own_comment()` ошибалась в опасную сторону.**~~ ✅ **Закрыто в 0.11.0.** `if v_author <> auth.uid()` при `auth.uid()` = NULL даёт NULL, `if` не срабатывает, и функция проваливается в удаление — а это её единственная проверка прав (DELETE-политику на `comments` в 0.10.0 сняли ради этого). Плюс гонка: проверка «есть ли ответы» и hard delete шли разными операторами, и ответ, закоммиченный между ними, уносило каскадом FK. Теперь явный guard + `is distinct from` + `for update` до проверки. Миграция `20260726150000`.
+- ~~**`delete_own_comment()` failed in the dangerous direction.**~~ ✅ **Closed in 0.11.0.** `if v_author <> auth.uid()` with `auth.uid()` = NULL yields NULL, the `if` doesn't fire, and the function falls through to the delete — and that's its only permission check (the DELETE policy on `comments` was dropped in 0.10.0 for its sake). Plus a race: the "are there replies" check and the hard delete ran as separate statements, and a reply committed between them got wiped by the FK cascade. Now there's an explicit guard + `is distinct from` + `for update` before the check. Migration `20260726150000`.
 
-- ~~**Сырой текст ошибки при активации инвайта.**~~ ✅ **Закрыто в 0.11.0.** Единственное место, пережившее чистку 0.9.1, — там сообщение полезное, но тем же каналом приходят таймауты и нарушения констрейнтов с именами таблиц. Разведено: стабильные SQLSTATE (`PT404`/`PT409`/`PT422`) + текст из ARB, всё неизвестное — общее сообщение. Миграция `20260726170000`.
+- ~~**Raw error text on invite activation.**~~ ✅ **Closed in 0.11.0.** The only place that survived the 0.9.1 cleanup — the message there is useful, but timeouts and constraint violations with table names arrive through the same channel. Split apart: stable SQLSTATEs (`PT404`/`PT409`/`PT422`) + text from ARB, anything unknown gets a generic message. Migration `20260726170000`.
 
-- ~~**Стоимость RLS росла со всей таблицей.**~~ ✅ **Закрыто в 0.11.0.** Не дыра, но нашлось тем же ревью и оказалось крупнее всего по цифрам. `security definer`-функцию планировщик не инлайнит, поэтому `using (is_author_visible(author_id))` — вызов на каждую строку скана, а для ленты видимость решается до `LIMIT`, то есть по всей таблице постов. Замерено: лента на 2000 постов **217 мс**, стало **3.5 мс** (62×); счётчики комментариев при 1000 комментариев **115 мс** → **5 мс** (23×). Правило зависит только от вызывающего, поэтому спрашивается раз на запрос через `visible_author_ids()` + хэшируемый `IN (SELECT ...)`. Миграция `20260726180000`. На будущее: **не ставить definer-функцию от колонки в `using`, если она на самом деле зависит только от `auth.uid()`.**
+- ~~**RLS cost grew with the whole table.**~~ ✅ **Closed in 0.11.0.** Not a hole, but found by the same review and turned out to be the biggest by the numbers. The planner doesn't inline a `security definer` function, so `using (is_author_visible(author_id))` is a call per scanned row, and for the feed visibility is decided before `LIMIT`, i.e. over the whole posts table. Measured: the feed with 2000 posts **217 ms**, now **3.5 ms** (62×); comment counters with 1000 comments **115 ms** → **5 ms** (23×). The rule depends only on the caller, so it's asked once per query via `visible_author_ids()` + a hashable `IN (SELECT ...)`. Migration `20260726180000`. For the future: **don't put a definer function of a column into `using` if it actually depends only on `auth.uid()`.**
 
-- **Осталось (замечено при ручной проверке 0.11.0):** у сетевых запросов нет клиентского таймаута. Отправка комментария в режиме полёта висела со спиннером ~3.5 минуты, прежде чем упасть в снекбар — ветка ошибки корректна, но всё это время пользователь не понимает, что происходит, и текст в поле выглядит «застрявшим». Лечится `.timeout(...)` на вызовах репозитория (секунд 10–15) с тем же общим сообщением. Серверных отказов не касается — те приходят мгновенно.
+- **Left over (noticed during manual testing of 0.11.0):** network requests have no client-side timeout. Sending a comment in airplane mode hung with a spinner for ~3.5 minutes before falling into a snackbar — the error branch is correct, but all that time the user doesn't understand what's happening, and the text in the field looks "stuck". Fixed with `.timeout(...)` on repository calls (10–15 seconds or so) with the same generic message. Doesn't affect server rejections — those arrive instantly.
 
-- **Осталось (замерено, не сделано):** счётчики комментариев на странице ленты всё ещё считаются на клиенте — сервер отдаёт по строке на каждый видимый комментарий (на странице это сотни строк, ~40 КБ) только чтобы их сосчитать. Кандидат — `comment_summary(uuid[])` с `security invoker` (RLS фильтрует сама, дублирования правила нет, в отличие от `reaction_summary()`). Серверное время не меняется, выигрыш чисто на проводе; отложено, потому что это правка клиентского пути данных, а он юнит-тестами не покрыт.
+- **Left over (measured, not done):** comment counters on a feed page are still computed on the client — the server returns a row for each visible comment (hundreds of rows per page, ~40 KB) just to count them. The candidate is `comment_summary(uuid[])` with `security invoker` (RLS filters by itself, no rule duplication, unlike `reaction_summary()`). Server time doesn't change, the gain is purely on the wire; deferred because it's a change to the client data path, which isn't covered by unit tests.
 
-- **Проверить (операционное, не код):** бакет `media` в дашборде Supabase должен стоять **Private** — весь Storage-RLS осмыслен только при этом. Клиент это предполагает (signed URLs, авторизованный download), но подтвердить можно только в дашборде.
+- **Check (operational, not code):** the `media` bucket in the Supabase dashboard must be set to **Private** — all of the Storage RLS only makes sense under that. The client assumes it (signed URLs, authorized download), but it can only be confirmed in the dashboard.
 
-## 2.0+ — амбиции на будущее
+## 2.0+ — future ambitions
 
-- Модерация, жалобы, блокировка знакомого (частично: простая обратимая блокировка — взаимное скрытие постов без разрыва Connection, без жалоб и модерации — реализована в 0.9.0, см. CHANGELOG.md; полноценная модерация/жалобы остаются здесь)
-- Настройки приватности (кто видит список твоих контактов)
-- Web-версия
-- Знакомство через NFC как альтернатива invite-ссылке/QR — совсем далёкая идея, не приоритет
-- **Полный аудит политики конфиденциальности, переделка и интеграция галочек о согласии в приложение** — сейчас privacy policy статическая на GitHub Pages, согласие на email-подтверждение только, без опций в UI
-- **Новостной аккаунт Amicus** — встроенный адрес (например, `amicus@amicus.app` или systemwide ID), с которым каждый пользователь автоматически связан как Connection. Публикует объявления, обновления, фишки приложения — видны всем в ленте, но не занимают место реальных знакомств. Концепция: когда ты отходишь от соцсетей, ты не теряешь контент друзей, зато получаешь меньше шума. Amicus как минимальный источник не-приватного контента в ленте
-- **Интеграция с существующими соцсетями (Instagram, TikTok и т.д.)** — возможность подключить аккаунт, перенести посты (с фото/видео) на собственную стену в Amicus, однократная синхронизация или фоновая периодическая. Синхронизация друзей на стену как опция (кто попадает из подписок инсты в Connections или отдельный список). Лечит основное возражение к отказу от соцсетей: контент друзей остаётся, но в первой заблокированной для всех остальных вкусе
-- **Собственная стена (wall/profile)** — отдельная вкладка, где видны только твои посты (всё равно отложено за MVP; сейчас ленту фильтровать по конкретному человеку нельзя, функция в плане на 1.0). Вкладка в профиле: твоя стена, чужая видит только твои посты (если это её Connection) или вообще ничего. Отличается от ленты подобно IG/Telegram — не хронология всей вселенной, а портфель одного человека
-- **Цифровой детокс внутри соцсети** — core value проекта как отличие от конкурентов: Amicus не требует полного отказа от контента, только от алгоритма и вовлечённости. Ты видишь посты только знакомых, которых сам выбрал, нет discover/Explore с раскруткой, нет лайков (реакции скрыты для инкогнито), нет счётчика просмотров. Возможная фича: режим «только знакомые» на время (как Digital Wellbeing для конкретного приложения), с уведомлением после срока
+- Moderation, reports, blocking a connection (partially: a simple reversible block — mutual hiding of posts without breaking the Connection, without reports or moderation — is implemented in 0.9.0, see CHANGELOG.md; full moderation/reports stay here)
+- Privacy settings (who sees your contact list)
+- Web version
+- Connecting via NFC as an alternative to the invite link/QR — a very distant idea, not a priority
+- **Full privacy policy audit, rework and integration of consent checkboxes into the app** — right now the privacy policy is static on GitHub Pages; consent is only the email confirmation, with no options in the UI
+- **Amicus news account** — a built-in address (e.g. `amicus@amicus.app` or a systemwide ID) that every user is automatically linked with as a Connection. Publishes announcements, updates, app features — visible to everyone in the feed, but not taking the place of real connections. Concept: when you step away from social networks, you don't lose your friends' content, but you get less noise. Amicus as a minimal source of non-private content in the feed
+- **Integration with existing social networks (Instagram, TikTok, etc.)** — the ability to link an account, move posts (with photos/videos) to your own wall in Amicus, as a one-off sync or a periodic background one. Syncing friends to the wall as an option (who from your Insta follows ends up in Connections or in a separate list). Addresses the main objection to quitting social networks: friends' content stays, but in a first flavor, blocked off for everyone else
+- **Your own wall (wall/profile)** — a separate tab where only your posts are visible (still deferred past the MVP; right now the feed can't be filtered by a specific person, the feature is planned for 1.0). A tab in the profile: your wall; someone else sees only your posts (if they're your Connection) or nothing at all. Differs from the feed the way IG/Telegram do — not a timeline of the whole universe, but one person's portfolio
+- **Digital detox inside a social network** — the project's core value as what sets it apart from competitors: Amicus doesn't demand giving up content entirely, only the algorithm and engagement. You see posts only from connections you chose yourself, there's no discover/Explore with promotion, no likes (reactions hidden for incognito), no view counter. A possible feature: a temporary "connections only" mode (like Digital Wellbeing for a specific app), with a notification once the period ends
 
-## Переезд с Supabase на свой сервер
+## Moving from Supabase to our own server
 
-Не гипотеза, а решённый вопрос: рано или поздно вся база данных переедет с Supabase на собственный личный сервер — просто не для 0.1, это избыточно на старте. У тебя уже есть опыт с ASP.NET Core + PostgreSQL (по сути то же самое, что ты делал в лабе с TransferScout), backend можно будет переписать на нём. RLS-политики сейчас пишутся как чистый Postgres SQL — переносить логику доступа при миграции не придётся, только слой Auth/Storage/Realtime.
+Not a hypothesis but a settled matter: sooner or later the whole database will move from Supabase to my own personal server — just not for 0.1; it's overkill at the start. You already have experience with ASP.NET Core + PostgreSQL (essentially the same thing you did in the TransferScout lab), and the backend can be rewritten on it. RLS policies are currently written as plain Postgres SQL — access logic won't need porting during the migration, only the Auth/Storage/Realtime layer.
 
-## Вопросы, которые стоит для себя решить по ходу
+## Questions worth settling along the way
 
-Не обязательно отвечать на них прямо сейчас — это чек-лист на потом, когда дойдёшь до соответствующего этапа или функциональности:
+No need to answer them right now — this is a checklist for later, when you get to the corresponding stage or functionality:
 
-- ~~Набор реакций: решено, что будет минимум лайк/нейтральная/дизлайк (см. 1.0) — открыт вопрос конкретной иконографии/UI выбора реакции~~ — закрыто в 0.3.0: три взаимоисключающие реакции 👍/😐/👎 (`Icons.thumb_up` / `sentiment_neutral` / `thumb_down`, выбранная подсвечивается цветом — зелёный/янтарный/красный — и заливкой), у каждой свой счётчик; повторный тап по своей реакции её снимает
-- ~~Комментарии: нужны ли ответы-на-ответы (треды) в первой версии, или плоский список ок?~~ — закрыто в 0.10.0: треды нужны, но ровно на один уровень (как в Instagram/YouTube) — ответ на ответ попадает в ту же ветку, а кому он адресован, показывает метка «В ответ: Имя». Глубина закреплена в БД триггером, а не только в UI, чтобы дерево нельзя было углубить прямым вызовом API
-- Может ли обычный участник комнаты добавлять новых людей, или только создатель?
-- Что происходит с комнатой, если создатель удаляет аккаунт?
-- Нужна ли возможность разорвать Connection (условно «удалить из знакомых»)?
-- Видно ли другим, с кем именно ты знаком, или список контактов — приватная информация? (частично всплыло в аудите — см. раздел «Безопасность и приватность»: в 0.4.0 чтение `users` и `reactions` сужено до «только свои связи / только свои строки», но сам вопрос о видимости списка контактов остаётся открытым)
+- ~~Reaction set: it's decided there will be at least like/neutral/dislike (see 1.0) — the question of the specific iconography/reaction-picker UI is open~~ — closed in 0.3.0: three mutually exclusive reactions 👍/😐/👎 (`Icons.thumb_up` / `sentiment_neutral` / `thumb_down`, the selected one is highlighted in color — green/amber/red — and filled), each with its own counter; tapping your own reaction again removes it
+- ~~Comments: are replies-to-replies (threads) needed in the first version, or is a flat list fine?~~ — closed in 0.10.0: threads are needed, but exactly one level deep (like Instagram/YouTube) — a reply to a reply goes into the same thread, and who it's addressed to is shown by the "In reply to: Name" label. The depth is enforced in the DB by a trigger, not just in the UI, so the tree can't be deepened by calling the API directly
+- Can a regular room member add new people, or only the creator?
+- What happens to a room if its creator deletes their account?
+- Should it be possible to break a Connection (roughly, "remove from connections")?
+- Can others see who exactly you're connected with, or is the contact list private information? (partially came up in the audit — see the "Security and privacy" section: in 0.4.0 reading `users` and `reactions` was narrowed to "only your connections / only your own rows", but the question of contact list visibility itself remains open)

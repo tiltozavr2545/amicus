@@ -61,14 +61,15 @@ github-release [--version X.Y.Z]
    PR. Do not guess a version bump yourself or invent a new tag to work
    around the collision.
 
-3. **Write the release body in Russian**, matching every prior release
-   exactly in structure (verify against 2-3 recent releases with
+3. **Write the release body in English** (the repo's English-only rule in
+   AGENTS.md covers release bodies too), using the same structure as every
+   prior release (verify against 2-3 recent releases with
    `gh release view v<prev> --json body -q '.body'` before writing - do not
    rely on memory of the format, it must match verbatim style):
    ```text
-   APK для Android (universal, sideload).
+   APK for Android (universal, sideload).
 
-   ## Что нового с <предыдущая версия>
+   ## What's new since <previous version>
 
    <one bolded-lead-sentence bullet per user-visible change since the
    previous release tag, written for an end user - not a commit-log dump.
@@ -76,7 +77,7 @@ github-release [--version X.Y.Z]
    `CHANGELOG.md`, then describe user impact, the same voice as existing
    release bodies>
    ```
-   The `<предыдущая версия>` is the version of the immediately preceding
+   The `<previous version>` is the version of the immediately preceding
    PUBLISHED GitHub release - not "one PR back" and not "one version-bump
    back." Versions get skipped routinely (a version can be bumped and
    merged to `main` without ever getting its own GitHub release, e.g. via
@@ -114,15 +115,15 @@ github-release [--version X.Y.Z]
    **Correctness warning - a bullet can be true of the current version and
    still mislead relative to the previous RELEASED version.** Do not phrase
    a bullet purely from the latest PR's diff without checking whether the
-   thing it "fixes" even existed as a problem back at `<предыдущая
-   версия>`. Concretely seen in this repo: a PR fixed an icon-margin
+   thing it "fixes" even existed as a problem back at `<previous
+   version>`. Concretely seen in this repo: a PR fixed an icon-margin
    regression that was introduced two versions after the last real release
    - phrasing it as "the icon now has a margin" implied margins were
    missing since that release, when the actual state at that release (the
    plain Flutter default icon) never had the bug at all. The regression and
    its fix both happened invisibly between releases. Before writing each
    bullet, walk the full intermediate history (`CHANGELOG.md` entries and
-   PR titles for every version between `<предыдущая версия>` and this one,
+   PR titles for every version between `<previous version>` and this one,
    not just the two endpoints) and describe the NET change relative to what
    a user on the previous release actually experienced - not the literal
    text of whichever intermediate PR happened to touch that area last.

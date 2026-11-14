@@ -53,9 +53,9 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       repoVersion(),
     ]);
 
-    // Активность: «был в приложении» — это user_activity, которую пишет сам
-    // клиент при запуске. Человек без строки не заходил ни разу с тех пор,
-    // как таблица появилась.
+    // Activity: "was in the app" is user_activity, which the client itself
+    // writes at launch. A person without a row has not opened the app once
+    // since the table appeared.
     const now = Date.now();
     const lastActive = new Map(
       activity.map((a) => [a.user_id, a.last_active_at]),
@@ -66,11 +66,11 @@ overviewRouter.get('/overview', async (_req, res, next) => {
     const wau = users.filter((u) => within(lastActive.get(u.id), 7)).length;
     const mau = users.filter((u) => within(lastActive.get(u.id), 30)).length;
 
-    // Версия — свойство УСТАНОВКИ, не человека: телефон и планшет одного
-    // пользователя бывают на разных сборках (docs/data-model.md). Поэтому
-    // таблица версий считает и установки, и людей, и «отставшим» считается
-    // тот, у кого МАКСИМУМ build по всем устройствам ниже целевого — ровно
-    // как в enqueue_app_update_notifications().
+    // Version is a property of the INSTALL, not of the person: one user's
+    // phone and tablet can be on different builds (docs/data-model.md). So
+    // the version table counts both installs and people, and "behind" means
+    // the person whose MAXIMUM build across all devices is below the target,
+    // exactly as in enqueue_app_update_notifications().
     const installsByVersion = new Map<string, VersionRow>();
     const usersByVersion = new Map<string, Set<string>>();
     for (const d of devices) {
@@ -94,8 +94,8 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       (a, b) => (b.build ?? -1) - (a.build ?? -1),
     );
 
-    // NULL в app_build значит «старее всего известного» (docs/data-model.md),
-    // поэтому max(NULL, 5) — это 5, а не NULL.
+    // NULL in app_build means "older than anything known" (docs/data-model.md),
+    // so max(NULL, 5) is 5, not NULL.
     const maxBuildByUser = new Map<string, number | null>();
     for (const d of devices) {
       const seen = maxBuildByUser.get(d.user_id);
@@ -120,13 +120,15 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       else if (latestBuild !== null && build >= latestBuild) usersOnLatest += 1;
       else usersBehind += 1;
     }
-    // «Устройств нет» и «устройство есть, а версию не сообщило» — разные
-    // вещи: до первого пуш не дойдёт вовсе, второй просто считается самым
-    // старым из известных. Для выбора аудитории это разные списки.
+    // "No devices" and "has a device that reported no version" are different
+    // things: the first will never get a push at all, the second simply
+    // counts as the oldest known. For choosing an audience they are different
+    // lists.
     const usersWithoutDevices = users.length - maxBuildByUser.size;
 
-    // Платформа — свойство установки, как и версия; людей считаем отдельно,
-    // потому что один человек законно сидит и с iPhone, и с Android-планшета.
+    // Platform is a property of the install, like version; people are counted
+    // separately, because one person can legitimately be on both an iPhone
+    // and an Android tablet.
     const usersByPlatform = new Map<string, Set<string>>();
     for (const d of devices) {
       const key = d.platform ?? 'не сообщена';
@@ -144,12 +146,12 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       }))
       .sort((a, b) => b.installs - a.installs);
 
-    // Возраст токена = сколько устройство не выходило на связь: `updated_at`
-    // переписывается при каждом запуске приложения, и пришпиливает его
-    // сервер (`pin_device_token_timestamps()`), так что клиент его не
-    // подделает. Смотреть сюда стоит с одним вопросом: не накопилось ли
-    // мёртвых строк у тех, кому никогда ничего не шлют, — прунинг по
-    // UNREGISTERED в send-push срабатывает только на отправке.
+    // Token age = how long the device has been out of touch: `updated_at` is
+    // rewritten on every app launch and pinned by the server
+    // (`pin_device_token_timestamps()`), so the client cannot forge it. This
+    // is worth looking at with one question: have dead rows piled up for
+    // people who are never sent anything? Pruning on UNREGISTERED in
+    // send-push only fires on send.
     const usersByAge = new Map<string, Set<string>>();
     const ageOf = (iso: string) => {
       const days = (Date.now() - Date.parse(iso)) / 864e5;
@@ -182,10 +184,10 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       }))
       .sort((a, b) => ageOrder.indexOf(a.bucket) - ageOrder.indexOf(b.bucket));
 
-    // Почему до человека не доходит пуш. Прежде на это отвечал только
-    // счётчик «без устройств», который валил в кучу отказ в разрешении, сбой
-    // регистрации и «просто не открывал приложение с тех пор, как версия
-    // научилась это сообщать».
+    // Why a push does not reach a person. This used to be answered only by
+    // the "no devices" counter, which lumped together denied permission,
+    // registration failure and "simply has not opened the app since the
+    // version learned to report this".
     const STATE_TITLES: Record<string, string> = {
       granted: 'разрешил, токен есть',
       denied: 'отказал в разрешении',
@@ -213,9 +215,9 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       .map(([locale, installs]) => ({ locale, installs }))
       .sort((a, b) => b.installs - a.installs);
 
-    // Отсутствие строки в notification_preferences = всё включено, поэтому
-    // выключенным считается только явный false (весь сервер читает эти
-    // флаги через coalesce(..., true)).
+    // No row in notification_preferences = everything on, so only an
+    // explicit false counts as off (the whole server reads these flags via
+    // coalesce(..., true)).
     const settingNames = new Set<string>();
     for (const row of prefs) {
       for (const [k, v] of Object.entries(row)) {

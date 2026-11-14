@@ -5,8 +5,8 @@ export function dayKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
-// Ряд за N дней без дырок: пустой день должен рисоваться нулём, а не
-// пропадать из графика.
+// A series over N days with no gaps: an empty day must be drawn as zero, not
+// vanish from the chart.
 export function series(
   dates: string[],
   days: number,
@@ -53,8 +53,8 @@ export function groupCount<T>(
   return out;
 }
 
-// Id системного аккаунта живёт в БД (`system_account_ids()`), а не копией в
-// коде консоли — та же причина, по которой его не носит в себе APK.
+// The system account id lives in the DB (`system_account_ids()`), not as a
+// copy in the console code — same reason the APK doesn't carry it either.
 export async function systemAccountIds(): Promise<Set<string>> {
   try {
     const { data, error } = await admin.rpc('system_account_ids');

@@ -61,10 +61,10 @@ class PushNotificationsRepository {
       );
       await _recordStatus(userId, 'granted', version: version, os: os);
     } catch (error) {
-      // Единственная ветка, которая раньше исчезала бесследно: исключение
-      // уходило в `pushRegistrationProvider`, чьё состояние никто не читает,
-      // — и наш собственный сбой записи был снаружи неотличим от честного
-      // отказа пользователя в разрешении. Теперь он называет себя.
+      // The one branch that used to vanish without a trace: the exception
+      // went to `pushRegistrationProvider`, whose state nobody reads, so our
+      // own failure to write was indistinguishable from the outside from a
+      // genuine refusal of the permission by the user. Now it names itself.
       await _recordStatus(
         userId,
         'error',
@@ -105,12 +105,12 @@ class PushNotificationsRepository {
     });
   }
 
-  /// Чем закончилась попытка зарегистрировать токен (миграция 20260913120000).
+  /// How an attempt to register the token ended (migration 20260913120000).
   ///
-  /// Диагностика, а не функциональность, поэтому глотает собственные ошибки:
-  /// провалившаяся запись статуса не должна утащить за собой регистрацию,
-  /// которая могла пройти успешно. Строка одна на человека и переписывается
-  /// на каждый запуск, так что устаревшей она не бывает.
+  /// Diagnostics, not functionality, so it swallows its own errors: a failed
+  /// status write must not drag down the registration, which may well have
+  /// succeeded. There is one row per person, rewritten on every launch, so
+  /// it can never go stale.
   Future<void> _recordStatus(
     String userId,
     String status, {
@@ -128,15 +128,16 @@ class PushNotificationsRepository {
             'os_version': os.osVersion,
             'app_version': version.name,
             'app_build': version.build,
-            // Обрезка по границе CHECK: иначе длинное сообщение об ошибке
-            // уронило бы запись о самой этой ошибке.
+            // Truncated to the CHECK boundary: otherwise a long error message
+            // would make the record of that very error fail to write.
             'detail': detail == null
                 ? null
                 : (detail.length > 300 ? detail.substring(0, 300) : detail),
           })
           .timeout(networkTimeout);
     } catch (_) {
-      // Некуда и незачем сообщать: это запись о том, что уже пошло не так.
+      // Nowhere to report it and no point: this is a record of something
+      // that has already gone wrong.
     }
   }
 
@@ -237,9 +238,10 @@ final pushRegistrationProvider = FutureProvider<void>((ref) async {
       .read(pushNotificationsRepositoryProvider)
       .registerDevice(userId: userId, locale: locale, version: version, os: os);
   if (!ref.mounted) {
-    // Дождаться отмены, а не бросить её: провайдер уже снят, и это последнее
-    // место, где о брошенном Future кто-либо узнает — исключение из него
-    // ушло бы в `FlutterError.onError` без обработчика.
+    // Await the cancellation rather than drop it: the provider is already
+    // disposed, and this is the last place where anyone would learn about a
+    // dropped Future - an exception from it would go to
+    // `FlutterError.onError` with no handler.
     await subscription?.cancel();
     return;
   }

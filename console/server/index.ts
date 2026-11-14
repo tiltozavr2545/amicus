@@ -9,9 +9,10 @@ import { overviewRouter } from './routes/overview.ts';
 import { usersRouter } from './routes/users.ts';
 
 const app = express();
-// Перед разбором тела: проверка смотрит только на заголовки, и незачем
-// парсить мегабайт JSON из запроса, который сейчас отклонят. Про то, что
-// петлевой биндинг ниже сам по себе этого не закрывает, — в local_only.ts.
+// Before body parsing: the check looks only at headers, and there is no point
+// parsing a megabyte of JSON from a request that is about to be rejected. For
+// why the loopback binding below doesn't cover this on its own, see
+// local_only.ts.
 app.use(localOnly);
 app.use(express.json({ limit: '1mb' }));
 
@@ -31,8 +32,9 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: message });
 });
 
-// Только петля. Консоль ходит service_role-ключом, то есть мимо RLS целиком:
-// один случайный `0.0.0.0` в кафе — и вся база у соседа по Wi-Fi.
+// Loopback only. The console uses the service_role key, i.e. bypasses RLS
+// entirely: one stray `0.0.0.0` in a cafe and the whole database is open to
+// the Wi-Fi neighbour.
 app.listen(env.apiPort, '127.0.0.1', () => {
   console.log(`[api] http://127.0.0.1:${env.apiPort} → ${env.supabaseUrl}`);
 });

@@ -14,8 +14,8 @@ import { Reports } from './pages/Reports';
 import { UserDetail } from './pages/UserDetail';
 import { Users } from './pages/Users';
 
-// Роутер сам прокрутку не сбрасывает: со списка, промотанного вниз, переход
-// в карточку попадал в её середину.
+// The router doesn't reset scroll on its own: navigating from a list scrolled
+// down into a detail card landed in the middle of the card.
 function ScrollToTop() {
   const { pathname } = useLocation();
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the re-run trigger, not a value the effect body reads.

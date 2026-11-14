@@ -149,7 +149,6 @@
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
 
-  "darkThemeToggleTooltip": "Toggle dark theme",
   "failedToLoadProfileError": "Failed to load profile. Please try again.",
   "failedToSaveNameError": "Failed to save name. Please try again.",
 
@@ -218,6 +217,16 @@
   },
 
   "settingsTooltip": "Settings",
+  "appearanceSectionTitle": "Appearance",
+  "themeLabel": "Theme",
+  "themeLightLabel": "Light",
+  "themeDarkLabel": "Dark",
+  "navigationStyleLabel": "Navigation",
+  "navigationFloatingLabel": "Floating",
+  "navigationClassicLabel": "Classic",
+  "aboutTitle": "About Amicus",
+  "authWelcomeMessage": "A little closer to your people.",
+
   "settingsTitle": "Settings",
   "notificationsSectionTitle": "Notifications",
   "notifyAppUpdatesLabel": "App update announcements",

@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:amicus/theme/theme_mode_provider.dart';
+import 'package:amicus/theme/navigation_style_provider.dart';
+import 'package:amicus/theme/amicus_theme.dart';
 
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/settings/account_repository.dart';
@@ -13,6 +17,8 @@ import 'package:amicus/l10n/app_localizations.dart';
 class _FakeNotificationPreferencesRepository
     implements NotificationPreferencesRepository {
   NotificationPreferences stored = const NotificationPreferences();
+  Completer<NotificationPreferences>? fetchGate;
+  bool fetchThrows = false;
   bool saveThrows = false;
   int saveCalls = 0;
   NotificationPreferences? lastSaved;
@@ -25,7 +31,10 @@ class _FakeNotificationPreferencesRepository
   final List<Completer<void>> gates = [];
 
   @override
-  Future<NotificationPreferences> fetch(String userId) async => stored;
+  Future<NotificationPreferences> fetch(String userId) async {
+    if (fetchThrows) throw Exception('offline');
+    return fetchGate == null ? stored : await fetchGate!.future;
+  }
 
   @override
   Future<void> save(String userId, NotificationPreferences prefs) async {
@@ -66,6 +75,7 @@ class _FakeAccountRepository implements AccountRepository {
 Widget _wrap(
   _FakeNotificationPreferencesRepository repo, {
   _FakeAccountRepository? accountRepo,
+  Locale locale = const Locale('en'),
 }) {
   return ProviderScope(
     overrides: [
@@ -75,10 +85,12 @@ Widget _wrap(
         accountRepo ?? _FakeAccountRepository(),
       ),
     ],
-    child: const MaterialApp(
+    child: MaterialApp(
+      theme: AmicusTheme.light,
+      locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: SettingsScreen(),
+      home: const SettingsScreen(),
     ),
   );
 }
@@ -103,6 +115,128 @@ Future<void> _scrollToAndTap(WidgetTester tester, String label) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'Theme has system, light and dark choices and persists a return to system',
+    (tester) async {
+      await tester.pumpWidget(_wrap(_FakeNotificationPreferencesRepository()));
+      await tester.pumpAndSettle();
+      final choice = find.byType(DropdownButton<ThemeMode>);
+      await tester.scrollUntilVisible(choice, 200);
+      await tester.scrollUntilVisible(choice, 200);
+      await tester.ensureVisible(choice);
+      await tester.tap(choice);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dark').last);
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(tester.element(choice));
+      expect(container.read(themeModeProvider), ThemeMode.dark);
+      expect(
+        (await SharedPreferences.getInstance()).getString('theme_mode'),
+        'dark',
+      );
+
+      await tester.tap(choice);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('System default').last);
+      await tester.pumpAndSettle();
+      expect(container.read(themeModeProvider), ThemeMode.system);
+      expect(
+        (await SharedPreferences.getInstance()).getString('theme_mode'),
+        'system',
+      );
+    },
+  );
+
+  testWidgets(
+    'Appearance and account remain available when notification loading fails',
+    (tester) async {
+      await tester.pumpWidget(
+        _wrap(_FakeNotificationPreferencesRepository()..fetchThrows = true),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Failed to load settings. Please try again.'),
+        findsOneWidget,
+      );
+      final choice = find.byType(DropdownButton<ThemeMode>);
+      await tester.scrollUntilVisible(choice, 200);
+      await tester.ensureVisible(choice);
+      await tester.tap(choice);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Light').last);
+      await tester.pumpAndSettle();
+      expect(
+        ProviderScope.containerOf(
+          tester.element(choice),
+        ).read(themeModeProvider),
+        ThemeMode.light,
+      );
+      await _scrollToAndTap(tester, 'Sign out');
+      expect(find.text('Sign out?'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Russian settings fit a narrow screen and save classic navigation',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        _wrap(
+          _FakeNotificationPreferencesRepository(),
+          locale: const Locale('ru'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final choice = find.byType(DropdownButton<bool>);
+      await tester.scrollUntilVisible(choice, 200);
+      await tester.scrollUntilVisible(choice, 200);
+      await tester.ensureVisible(choice);
+      await tester.tap(choice);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Классическая').last);
+      await tester.pumpAndSettle();
+      expect(
+        ProviderScope.containerOf(
+          tester.element(choice),
+        ).read(floatingNavigationProvider),
+        false,
+      );
+      expect(
+        (await SharedPreferences.getInstance()).getBool('floating_navigation'),
+        false,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Cached switches appear without a spinner and refresh in place', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'notification_preferences_test-user': '{"notify_comments":false}',
+    });
+    final gate = Completer<NotificationPreferences>();
+    final repo = _FakeNotificationPreferencesRepository()..fetchGate = gate;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    SwitchListTile comments() => tester.widget<SwitchListTile>(
+      find.ancestor(
+        of: find.text('Comments on your posts and replies to you'),
+        matching: find.byType(SwitchListTile),
+      ),
+    );
+    expect(comments().value, false);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    gate.complete(const NotificationPreferences());
+    await tester.pumpAndSettle();
+    expect(comments().value, true);
+  });
+
   testWidgets('Every toggle starts on by default', (tester) async {
     final repo = _FakeNotificationPreferencesRepository();
     await tester.pumpWidget(_wrap(repo));

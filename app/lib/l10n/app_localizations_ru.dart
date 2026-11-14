@@ -387,9 +387,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get dislikeTooltip => 'Не нравится';
 
   @override
-  String get darkThemeToggleTooltip => 'Переключить тёмную тему';
-
-  @override
   String get failedToLoadProfileError =>
       'Не удалось загрузить профиль. Попробуйте ещё раз.';
 
@@ -543,6 +540,33 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get settingsTooltip => 'Настройки';
+
+  @override
+  String get appearanceSectionTitle => 'Оформление';
+
+  @override
+  String get themeLabel => 'Тема';
+
+  @override
+  String get themeLightLabel => 'Светлая';
+
+  @override
+  String get themeDarkLabel => 'Тёмная';
+
+  @override
+  String get navigationStyleLabel => 'Навигация';
+
+  @override
+  String get navigationFloatingLabel => 'Плавающая';
+
+  @override
+  String get navigationClassicLabel => 'Классическая';
+
+  @override
+  String get aboutTitle => 'О приложении Amicus';
+
+  @override
+  String get authWelcomeMessage => 'Чуть ближе к своим.';
 
   @override
   String get settingsTitle => 'Настройки';

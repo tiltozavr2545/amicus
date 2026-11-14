@@ -3,8 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 
-/// Opens [SettingsScreen]. Shown in the top bar's actions, next to
-/// [ThemeToggleSwitch] on every main tab.
+/// Opens Settings from the top bar of every main tab.
 class SettingsButton extends StatelessWidget {
   const SettingsButton({super.key});
 

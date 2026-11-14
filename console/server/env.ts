@@ -15,9 +15,9 @@ function required(name: string): string {
   return value.trim();
 }
 
-// Перепутать anon-ключ с service_role легко, а симптом получается тупой:
-// запросы уходят, RLS их молча фильтрует, и консоль показывает пустые
-// таблицы вместо ошибки. Дешевле отказаться стартовать.
+// It is easy to mix up the anon key with service_role, and the symptom is
+// dumb: requests go out, RLS silently filters them, and the console shows
+// empty tables instead of an error. It's cheaper to refuse to start.
 function assertServiceRole(key: string): string {
   if (key.startsWith('sb_publishable_')) {
     throw new Error(
@@ -38,7 +38,8 @@ function assertServiceRole(key: string): string {
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('SUPABASE_'))
         throw error;
-      // Не JWT — значит ключ нового поколения (`sb_secret_…`), проверить нечем.
+      // Not a JWT — so it's a new-generation key (`sb_secret_…`); nothing to
+      // check.
     }
   }
   return key;

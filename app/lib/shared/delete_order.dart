@@ -13,8 +13,8 @@
 /// pointing at bytes that were gone, so the avatar vanished everywhere; and
 /// deleting an account destroyed every photo and video the user had before the
 /// account itself was gone, then failed and left the account alive. Three
-/// copies of one rule, wrong in the same way three times — the shape CLAUDE.md
-/// warns about in "правило видимости жило в четырёх копиях".
+/// copies of one rule, wrong in the same way three times — the shape AGENTS.md
+/// warns about in "The visibility rule lived in four copies".
 ///
 /// [objects] is best-effort by construction: once [rows] has committed, the
 /// operation has succeeded from every observer's point of view, and reporting

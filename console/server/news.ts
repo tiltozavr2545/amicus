@@ -11,53 +11,57 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// Черновики лежат файлом рядом с консолью, а не в базе, и это осознанно:
-// консоль локальная и однопользовательская, черновик — личная заметка на
-// этой машине, а не состояние приложения. Таблица ради него потребовала бы
-// миграции, политик и грантов на данные, которые никто, кроме одного
-// человека за этим ноутбуком, никогда не прочитает.
+// Drafts live in a file next to the console, not in the database, and that's
+// deliberate: the console is local and single-user, a draft is a personal note
+// on this machine, not app state. A table for it would require a migration,
+// policies and grants for data that nobody but the one person at this laptop
+// will ever read.
 const DRAFTS = resolve(here, '..', 'drafts.json');
 
-// Байты, ещё не ставшие постом, — рядом с черновиками и по той же причине.
+// Bytes that haven't become a post yet live next to the drafts, for the same
+// reason.
 //
-// Раньше выбранный файл уезжал в бакет сразу, в момент выбора, и черновик
-// хранил его `posts/<systemId>/…` путь. Ровно это и делало черновик
-// нежизнеспособным: на объект, у которого нет строки в `post_media`, не
-// ссылается никто, то есть по определению `orphaned_media_paths()`
-// (20260829110000) он сирота, и ежечасный `reap-orphaned-media` сносил байты
-// через сутки. Публикация двухдневного черновика при этом проходила успешно:
-// строки `post_media` вставали, указывая в пустоту, и пост уходил в ленту
-// всем знакомым с битыми картинками — вместе с уже отправленным пушем.
-// Вернуть было нечего, `drafts.json` — единственная копия черновика.
+// The selected file used to go to the bucket right away, at the moment of
+// selection, and the draft stored its `posts/<systemId>/…` path. That's
+// exactly what made drafts unviable: an object without a row in `post_media`
+// is referenced by nobody, i.e. by the definition of `orphaned_media_paths()`
+// (20260829110000) it's an orphan, and the hourly `reap-orphaned-media` wiped
+// the bytes after a day. Publishing a two-day-old draft still succeeded,
+// though: the `post_media` rows went in pointing at nothing, and the post went
+// out to the feed of every connection with broken pictures — along with the
+// push already sent. There was nothing to restore it from: `drafts.json` is the
+// only copy of a draft.
 //
-// Отсюда правило: **черновик не ссылается в бакет**. Файл живёт здесь, пока
-// из него не сделают пост, и в бакет уезжает в момент публикации
-// (`prepareMedia`). Заодно исчезает и весь класс «консоль насорила в бакет»:
-// брошенный набор файлов больше вообще туда не попадает.
+// Hence the rule: **a draft doesn't reference the bucket**. The file lives
+// here until a post is made from it, and goes to the bucket at publish time
+// (`prepareMedia`). As a bonus, the whole "the console littered the bucket"
+// class disappears: an abandoned set of files never gets there at all.
 const STAGING = resolve(here, '..', 'news-staging');
 
-// Чем помечен путь, который указывает сюда, а не в бакет. Двоеточие в
-// префиксе выбрано потому, что его не бывает в ключе объекта Storage, — то
-// есть перепутать staged-ссылку с настоящим путём нельзя ни в одну сторону.
+// The marker of a path that points here rather than at the bucket. The colon
+// in the prefix was chosen because it never occurs in a Storage object key —
+// so a staged ref can't be confused with a real path in either direction.
 const STAGED_PREFIX = 'staged:';
 
-// Как выглядит имя staged-файла: uuid плюс расширение, и ничего больше.
+// What a staged file name looks like: a uuid plus an extension, nothing more.
 //
-// Это не придирка к форме, а единственная проверка между строкой из запроса и
-// `resolve()` по файловой системе. Имя приходит снаружи — клиент шлёт обратно
-// то, что мы ему выдали, но «выдали» здесь не гарантия, — и без якорей `^…$`
-// сюда прошло бы `../../`. Имя выдаётся сервером целиком (uuid плюс
-// расширение по таблице типов), так что шаблон описывает ровно то, что бывает.
+// This isn't nitpicking about form but the only check between a string from
+// the request and a filesystem `resolve()`. The name comes from outside — the
+// client sends back what we gave it, but "gave" is no guarantee here — and
+// without the `^…$` anchors `../../` would get through. The name is issued by
+// the server whole (uuid plus an extension from the type table), so the
+// pattern describes exactly what can occur.
 const STAGED_NAME =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{2,5}$/;
 
-// Сколько брошенный staged-файл лежит, прежде чем его вынесут.
+// How long an abandoned staged file stays before it's cleared out.
 //
-// «Брошенный» — это не «из черновика»: на что ссылается черновик, живёт,
-// сколько живёт черновик (см. `pruneStaging`). Выносится то, что выбрали и
-// ни во что не превратили — ни в пост, ни в черновик, — потому что вкладку
-// закрыли. Неделя, а не сутки: цена ошибки здесь противоположна той, что была
-// у бакета, и промахнуться лучше в сторону лишнего файла на своём же диске.
+// "Abandoned" doesn't mean "from a draft": whatever a draft references lives
+// as long as the draft does (see `pruneStaging`). What gets cleared is what
+// was selected and never turned into anything — neither a post nor a draft —
+// because the tab was closed. A week, not a day: the cost of a mistake here is
+// the opposite of what it was for the bucket, and it's better to err on the
+// side of an extra file on our own disk.
 const STAGED_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type Draft = {
@@ -76,8 +80,8 @@ export async function readDrafts(): Promise<Draft[]> {
     const parsed = JSON.parse(await readFile(DRAFTS, 'utf8'));
     return Array.isArray(parsed) ? (parsed as Draft[]) : [];
   } catch {
-    // Файла ещё нет или он испорчен — пустой список честнее, чем падение
-    // всего раздела из-за заметки.
+    // The file doesn't exist yet or is corrupted — an empty list is more
+    // honest than crashing the whole section over a note.
     return [];
   }
 }
@@ -86,22 +90,22 @@ export async function writeDrafts(drafts: Draft[]): Promise<void> {
   await writeFile(DRAFTS, JSON.stringify(drafts, null, 2), 'utf8');
 }
 
-/// Ссылается ли путь на staged-файл, а не на объект в бакете.
+/// Whether the path refers to a staged file rather than a bucket object.
 export function isStaged(path: string): boolean {
   return path.startsWith(STAGED_PREFIX);
 }
 
-/// Имя staged-файла из ссылки на него, или null, если ссылка не наша.
+/// The staged file name from a ref to it, or null if the ref isn't ours.
 ///
-/// Единственный способ превратить пришедшую строку в имя файла: всё остальное
-/// в этом модуле принимает уже проверенное имя.
+/// The only way to turn an incoming string into a file name: everything else
+/// in this module takes an already-checked name.
 export function stagedName(path: string): string | null {
   if (!isStaged(path)) return null;
   const name = path.slice(STAGED_PREFIX.length);
   return STAGED_NAME.test(name) ? name : null;
 }
 
-/// Ссылка, под которой staged-файл ездит в черновике и в теле запроса.
+/// The ref a staged file travels under in a draft and in a request body.
 export function stagedRef(name: string): string {
   return `${STAGED_PREFIX}${name}`;
 }
@@ -115,15 +119,15 @@ export function readStaged(name: string): Promise<Buffer> {
   return readFile(resolve(STAGING, name));
 }
 
-/// Выносит staged-файлы, на которые никто не ссылается и которые никому уже
-/// не пригодятся.
+/// Clears out staged files that nothing references and that nobody will need
+/// anymore.
 ///
-/// [referenced] — имена, занятые черновиками; они не трогаются, сколько бы им
-/// ни было лет. Всё остальное сносится по возрасту: свежее живёт, потому что
-/// прямо сейчас может лежать в композере несохранённым.
+/// [referenced] — names held by drafts; they're never touched, however old.
+/// Everything else is removed by age: fresh files survive, because they may be
+/// sitting unsaved in the composer right now.
 ///
-/// Свои ошибки глотает: это уборка на локальном диске, и провалившаяся уборка
-/// не повод ронять раздел новостей.
+/// Swallows its own errors: this is cleanup on a local disk, and a failed
+/// cleanup is no reason to bring down the news section.
 export async function pruneStaging(referenced: Set<string>): Promise<void> {
   try {
     const names = await readdir(STAGING);
@@ -136,14 +140,14 @@ export async function pruneStaging(referenced: Set<string>): Promise<void> {
       await unlink(file);
     }
   } catch {
-    // Каталога ещё нет (ни одного файла не выбирали), или файл увели из-под
-    // нас между readdir и stat.
+    // The directory doesn't exist yet (no file has been selected), or a file
+    // was pulled out from under us between readdir and stat.
   }
 }
 
-// Что принимает бакет `media` (см. storage.buckets): проверяется здесь, а не
-// только на сервере Storage, чтобы человек узнал об отказе до того, как
-// стомегабайтный файл уедет по сети.
+// What the `media` bucket accepts (see storage.buckets): checked here, not only
+// on the Storage server, so the person learns about a refusal before a
+// hundred-megabyte file goes over the network.
 export const ALLOWED_MIME = new Set([
   'image/jpeg',
   'image/png',
@@ -158,18 +162,20 @@ export const ALLOWED_MIME = new Set([
   'video/x-matroska',
 ]);
 
-// Расширение по типу — таблицей, и только таблицей.
+// Extension by type — via a table, and only via a table.
 //
-// Ключи — ровно ALLOWED_MIME, то есть промахнуться мимо неё неоткуда:
-// вызывающий уже отказал всему, чего здесь нет. Значения попарно различны,
-// поэтому таблица читается и в обратную сторону (`mimeForExtension`), а это и
-// есть то, ради чего расширение больше НЕ берётся из присланного имени файла:
-// staged-файл лежит на диске под своим расширением, и по нему же
-// восстанавливается `contentType` при заливке в бакет. Имя из запроса в
-// вычислении пути не участвует вовсе — ни в ключе объекта, ни в имени файла.
+// The keys are exactly ALLOWED_MIME, so there's no way to miss it: the caller
+// has already refused everything not listed here. The values are pairwise
+// distinct, so the table also reads in reverse (`mimeForExtension`), and
+// that's exactly why the extension is NO longer taken from the submitted file
+// name: a staged file sits on disk under its own extension, and the
+// `contentType` for the bucket upload is recovered from it. The name from the
+// request plays no part in computing the path at all — neither in the object
+// key nor in the file name.
 //
-// Прежний вывод (`mime.split('/')[1]` с отдельной веткой на `quicktime`)
-// давал ещё и `x-matroska`, что не расширение ни в каком смысле.
+// The previous derivation (`mime.split('/')[1]` with a separate branch for
+// `quicktime`) also produced `x-matroska`, which isn't an extension in any
+// sense.
 const EXTENSION_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -191,16 +197,18 @@ const MIME_BY_EXTENSION: Record<string, string> = Object.fromEntries(
 export const MAX_FILE_BYTES = 104857600;
 export const MAX_MEDIA_PER_POST = 20;
 
-/// Расширение, под которым файл этого типа лежит и в стейджинге, и в бакете.
+/// The extension a file of this type is stored under, both in staging and in
+/// the bucket.
 export function extensionForMime(mime: string): string {
   return EXTENSION_BY_MIME[mime] ?? 'bin';
 }
 
-/// Обратно: чем объявлять содержимое staged-файла, залитого в бакет.
+/// The reverse: what to declare as the content type of a staged file uploaded
+/// to the bucket.
 ///
-/// Бакет проверяет `allowed_mime_types`, так что соврать здесь — значит
-/// получить отказ на заливке; `null` для незнакомого расширения честнее
-/// `application/octet-stream`, который бакет всё равно не примет.
+/// The bucket checks `allowed_mime_types`, so lying here means getting a
+/// refusal on upload; `null` for an unknown extension is more honest than
+/// `application/octet-stream`, which the bucket won't accept anyway.
 export function mimeForExtension(name: string): string | null {
   const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
   return MIME_BY_EXTENSION[ext] ?? null;

@@ -72,8 +72,8 @@ export function ago(iso: string | null): string {
   return new Date(iso).toLocaleDateString('ru-RU');
 }
 
-// В списке время суток только шумит и рвёт колонку на две строки — там
-// нужен день, в карточке уже и время.
+// In a list the time of day is just noise and breaks the column into two
+// lines — the day is what matters there; the detail card shows the time too.
 export function day(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('ru-RU') : '—';
 }

@@ -14,6 +14,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/main_shell_screen.dart';
+import 'features/shell/navigation_motion.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authChanges = ref.watch(supabaseClientProvider).auth.onAuthStateChange;
@@ -37,11 +38,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       );
     },
     routes: [
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
+        navigatorContainerBuilder: (context, shell, children) =>
+            NavigationPages(shell: shell, children: children),
         builder: (context, state, navigationShell) =>
             MainShellScreen(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/',
@@ -50,6 +54,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/rooms',
@@ -58,6 +63,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/connections',
@@ -66,6 +72,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/profile',
@@ -94,15 +101,15 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 
-  // Оба владельца ресурсов, и оба раньше не освобождались: подписка на
-  // `onAuthStateChange` внутри `refresh` и собственные слушатели `GoRouter`.
-  // Провайдер не autoDispose и в норме живёт весь процесс, поэтому в
-  // приложении это не росло — но `ProviderScope` пересоздаётся в каждом
-  // виджет-тесте, и брошенная подписка на поток Supabase переживает тест, в
-  // котором её завели.
+  // Both own resources, and neither used to be released: the
+  // `onAuthStateChange` subscription inside `refresh` and `GoRouter`'s own
+  // listeners. The provider is not autoDispose and normally lives for the
+  // whole process, so in the app this never grew — but `ProviderScope` is
+  // recreated in every widget test, and an abandoned subscription to a
+  // Supabase stream outlives the test that created it.
   //
-  // Порядок внутри важен: роутер подписан на `refresh`, поэтому сначала
-  // отпускает слушателя он, и только потом уходит сам слушаемый.
+  // The order inside matters: the router listens to `refresh`, so it lets go
+  // of its listener first, and only then does the listenable itself go away.
   ref.onDispose(() {
     router.dispose();
     refresh.dispose();

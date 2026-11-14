@@ -154,6 +154,7 @@ class Post {
     required this.authorId,
     required this.authorName,
     required this.createdAt,
+    this.authorAvatarPath,
     this.clientToken,
     this.authorDislikesDisabled = false,
     this.visibility = PostVisibility.connections,
@@ -169,6 +170,7 @@ class Post {
   final String id;
   final String authorId;
   final String authorName;
+  final String? authorAvatarPath;
   final DateTime createdAt;
 
   /// The idempotency token this post's row was created with. Null only for
@@ -213,6 +215,8 @@ class Post {
       id: row['id'] as String,
       authorId: row['author_id'] as String,
       authorName: (row['author'] as Map<String, dynamic>)['name'] as String,
+      authorAvatarPath:
+          (row['author'] as Map<String, dynamic>)['avatar_path'] as String?,
       createdAt: parseTimestamp(row['created_at'] as String),
       clientToken: row['client_token'] as String?,
       authorDislikesDisabled:
@@ -237,6 +241,7 @@ class Post {
       id: id,
       authorId: authorId,
       authorName: authorName,
+      authorAvatarPath: authorAvatarPath,
       createdAt: createdAt,
       clientToken: clientToken,
       authorDislikesDisabled: authorDislikesDisabled,
@@ -260,6 +265,7 @@ class Post {
     'id': id,
     'author_id': authorId,
     'author_name': authorName,
+    'author_avatar_path': authorAvatarPath,
     'created_at': createdAt.toIso8601String(),
     'client_token': clientToken,
     'author_dislikes_disabled': authorDislikesDisabled,
@@ -277,6 +283,7 @@ class Post {
     id: json['id'] as String,
     authorId: json['author_id'] as String,
     authorName: json['author_name'] as String,
+    authorAvatarPath: json['author_avatar_path'] as String?,
     createdAt: DateTime.parse(json['created_at'] as String),
     clientToken: json['client_token'] as String?,
     authorDislikesDisabled: json['author_dislikes_disabled'] as bool? ?? false,
@@ -579,7 +586,7 @@ class FeedRepository {
     var query = _client
         .from('posts')
         .select(
-          '*, author:users(name, dislikes_disabled), media:post_media(*)',
+          '*, author:users(name, avatar_path, dislikes_disabled), media:post_media(*)',
         );
     if (authorId != null) {
       query = query.eq('author_id', authorId);
