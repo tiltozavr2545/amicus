@@ -8,6 +8,7 @@ import '../../shared/auth_error_message.dart';
 import '../../shared/email_validation.dart';
 import '../../shared/network_timeout.dart';
 import 'auth_providers.dart';
+import 'auth_layout.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -96,50 +97,42 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.resetPasswordTitle)),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(l10n.resetPasswordInstructions),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
+      body: AuthLayout(
+        children: [
+          Text(l10n.resetPasswordInstructions),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: 'Email'),
+          ),
+          const SizedBox(height: 24),
+          if (_errorMessage != null) ...[
+            Text(
+              _errorMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-            const SizedBox(height: 24),
-            if (_errorMessage != null) ...[
-              Text(
-                _errorMessage!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (_successMessage != null) ...[
-              Text(
-                _successMessage!,
-                style: const TextStyle(color: Colors.green),
-              ),
-              const SizedBox(height: 12),
-            ],
-            FilledButton(
-              onPressed: _isLoading ? null : _sendResetEmail,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(l10n.sendLinkButton),
-            ),
-            TextButton(
-              onPressed: () => context.go('/sign-in'),
-              child: Text(l10n.backToSignInButton),
-            ),
+            const SizedBox(height: 12),
           ],
-        ),
+          if (_successMessage != null) ...[
+            Text(_successMessage!, style: const TextStyle(color: Colors.green)),
+            const SizedBox(height: 12),
+          ],
+          FilledButton(
+            onPressed: _isLoading ? null : _sendResetEmail,
+            child: _isLoading
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(l10n.sendLinkButton),
+          ),
+          TextButton(
+            onPressed: () => context.go('/sign-in'),
+            child: Text(l10n.backToSignInButton),
+          ),
+        ],
       ),
     );
   }

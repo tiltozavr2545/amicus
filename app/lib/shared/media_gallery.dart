@@ -364,44 +364,47 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: _items.length,
-        allowImplicitScrolling: true,
-        // Tracks the page as well as resolving around it: the same
-        // keep-the-neighbour-alive behaviour as a carousel, so a video
-        // swiped past here needs pausing for the same reason (see
-        // [MediaSlide.isCurrent]).
-        onPageChanged: (index) {
-          setState(() => _currentIndex = index);
-          _resolveAround(index);
-        },
-        itemBuilder: (context, index) {
-          final item = _items[index];
-          if (item.isVideo) {
-            return Center(
-              child: MediaSlide(
-                item: item,
-                fit: BoxFit.contain,
-                constrainHeight: false,
-                isCurrent: index == _currentIndex,
-              ),
-            );
-          }
-          return item.url == null
-              ? const Center(child: CircularProgressIndicator())
-              : InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 4,
-                  child: Center(
-                    child: CachedNetworkImage(
-                      imageUrl: item.url!,
-                      cacheKey: item.storagePath,
-                      fit: BoxFit.contain,
+      body: SafeArea(
+        top: false,
+        child: PageView.builder(
+          controller: _pageController,
+          itemCount: _items.length,
+          allowImplicitScrolling: true,
+          // Tracks the page as well as resolving around it: the same
+          // keep-the-neighbour-alive behaviour as a carousel, so a video
+          // swiped past here needs pausing for the same reason (see
+          // [MediaSlide.isCurrent]).
+          onPageChanged: (index) {
+            setState(() => _currentIndex = index);
+            _resolveAround(index);
+          },
+          itemBuilder: (context, index) {
+            final item = _items[index];
+            if (item.isVideo) {
+              return Center(
+                child: MediaSlide(
+                  item: item,
+                  fit: BoxFit.contain,
+                  constrainHeight: false,
+                  isCurrent: index == _currentIndex,
+                ),
+              );
+            }
+            return item.url == null
+                ? const Center(child: CircularProgressIndicator())
+                : InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Center(
+                      child: CachedNetworkImage(
+                        imageUrl: item.url!,
+                        cacheKey: item.storagePath,
+                        fit: BoxFit.contain,
+                      ),
                     ),
-                  ),
-                );
-        },
+                  );
+          },
+        ),
       ),
     );
   }

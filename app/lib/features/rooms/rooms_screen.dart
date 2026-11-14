@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../theme/theme_toggle_switch.dart';
+import '../../shared/bottom_navigation_inset.dart';
+import '../../shared/content_width.dart';
 import '../auth/auth_providers.dart';
 import '../connections/friend_profile_screen.dart';
 import '../settings/settings_button.dart';
@@ -36,14 +37,19 @@ class RoomsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.roomsTitle),
-        actions: const [ThemeToggleSwitch(), SettingsButton()],
+        actions: const [SettingsButton()],
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: l10n.newRoomTitle,
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const CreateRoomScreen())),
-        child: const Icon(Icons.group_add_outlined),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: BottomNavigationInset.of(context)),
+        child: FloatingActionButton.extended(
+          tooltip: l10n.newRoomTitle,
+          onPressed: () => Navigator.of(
+            context,
+            rootNavigator: true,
+          ).push(MaterialPageRoute(builder: (_) => const CreateRoomScreen())),
+          icon: const Icon(Icons.group_add_outlined),
+          label: Text(l10n.newRoomTitle),
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () => _refresh(ref),
@@ -58,11 +64,20 @@ class RoomsScreen extends ConsumerWidget {
           AsyncValue(:final value?) when value.isEmpty => _CenteredMessage(
             child: Text(l10n.noRoomsYetMessage, textAlign: TextAlign.center),
           ),
-          AsyncValue(:final value?) => ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: value.length,
-            itemBuilder: (context, index) =>
-                _RoomListItem(room: value[index], viewerId: viewerId),
+          AsyncValue(:final value?) => ContentWidth(
+            child: ListView.separated(
+              padding: EdgeInsets.fromLTRB(
+                8,
+                8,
+                8,
+                96 + BottomNavigationInset.of(context),
+              ),
+              separatorBuilder: (_, _) =>
+                  const Divider(indent: 76, endIndent: 20),
+              itemCount: value.length,
+              itemBuilder: (context, index) =>
+                  _RoomListItem(room: value[index], viewerId: viewerId),
+            ),
           ),
           _ => const Center(child: CircularProgressIndicator()),
         },
@@ -122,7 +137,7 @@ class _RoomListItem extends StatelessWidget {
       leading: GestureDetector(
         onTap: () {
           final person = RoomAvatar.personBehind(room, viewerId);
-          Navigator.of(context).push(
+          Navigator.of(context, rootNavigator: true).push(
             MaterialPageRoute(
               builder: (_) => person == null
                   ? RoomDetailsScreen(roomId: room.id)
@@ -144,7 +159,7 @@ class _RoomListItem extends StatelessWidget {
       subtitle: subtitle == null
           ? null
           : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      onTap: () => Navigator.of(context).push(
+      onTap: () => Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: room.id)),
       ),
       // Marks, not buttons: the whole row already opens the chat, and a

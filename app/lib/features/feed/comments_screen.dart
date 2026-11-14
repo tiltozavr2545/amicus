@@ -327,7 +327,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                           ),
                         ),
                       ),
-                      IconButton(
+                      IconButton.filled(
+                        tooltip: l10n.sendMessageTooltip,
                         icon: _isSending
                             ? const SizedBox(
                                 height: 16,

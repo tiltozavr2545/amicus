@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,12 +9,15 @@ import 'package:uuid/uuid.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/bottom_navigation_inset.dart';
+import '../../shared/content_width.dart';
 import '../../shared/write_ban.dart';
 import '../../shared/media_pick_message.dart';
 import '../../shared/media_picking.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
 import 'feed_repository.dart';
+import 'post_draft_store.dart';
 
 const _maxMediaCount = 20;
 
@@ -73,7 +77,8 @@ class CreatePostScreen extends ConsumerStatefulWidget {
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
 }
 
-class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
+class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
+    with WidgetsBindingObserver {
   late final _textController = TextEditingController(
     text: widget.existingPost?.text ?? '',
   );
@@ -119,16 +124,107 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   /// (see [Post.clientToken]). Minting it once matters there too: a token that
   /// changed mid-session moved the prefix, orphaning whatever the previous
   /// attempt had already uploaded.
-  late final String _submissionToken = const Uuid().v4();
+  late String _submissionToken = const Uuid().v4();
+
+  PostDraftStore? _draftStore;
+  String? _draftUser;
+  Timer? _draftTimer;
+  bool _draftReady = false;
+  bool _published = false;
+
+  Future<void> _restoreDraft() async {
+    try {
+      final user = _draftUser;
+      final draft = user == null ? null : await _draftStore!.load(user);
+      if (!mounted) return;
+      if (draft != null) {
+        _submissionToken = draft.token;
+        _textController.text = draft.text;
+        _visibility = draft.visibility;
+        _slots.addAll(
+          draft.media.map(
+            (media) => _PickedSlot(
+              media.mediaClientToken,
+              media,
+              media.source is MediaBytes
+                  ? (media.source as MediaBytes).bytes
+                  : media.posterBytes!,
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      // A failed restore must not prevent opening the composer.
+    }
+    if (mounted) setState(() => _draftReady = true);
+  }
+
+  void _scheduleDraft() {
+    if (_isEditing || !_draftReady || _published) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 250), _saveDraft);
+  }
+
+  void _saveDraft() {
+    _draftTimer?.cancel();
+    final store = _draftStore;
+    final user = _draftUser;
+    if (store == null || user == null || !_draftReady || _published) return;
+    unawaited(
+      store
+          .save(
+            user,
+            PostDraft(
+              token: _submissionToken,
+              text: _textController.text,
+              visibility: _visibility,
+              media: [
+                for (final slot in _slots)
+                  if (slot is _PickedSlot) slot.pending,
+              ],
+            ),
+          )
+          .catchError((Object _) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    AppLocalizations.of(context)!.failedToSaveSettingsError,
+                  ),
+                ),
+              );
+            }
+          }),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _saveDraft();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    if (_isEditing) _resolveExistingMediaUrls();
+    if (_isEditing) {
+      _resolveExistingMediaUrls();
+    } else {
+      _draftStore = ref.read(postDraftStoreProvider);
+      _draftUser = ref.read(currentUserIdProvider);
+      WidgetsBinding.instance.addObserver(this);
+      _textController.addListener(_scheduleDraft);
+      unawaited(_restoreDraft());
+    }
   }
 
   @override
   void dispose() {
+    _saveDraft();
+    _draftTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     super.dispose();
   }
@@ -254,6 +350,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       _slots.addAll(result.items.map(_slotFor));
       _isPicking = false;
     });
+    _saveDraft();
     if (mediaPickProblemMessage(result.firstProblem, l10n)
         case final message?) {
       ScaffoldMessenger.of(
@@ -285,13 +382,17 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
   }
 
-  void _removeSlot(_Slot slot) => setState(() => _slots.remove(slot));
+  void _removeSlot(_Slot slot) {
+    setState(() => _slots.remove(slot));
+    _saveDraft();
+  }
 
   void _reorder(int oldIndex, int newIndex) {
     setState(() {
       final slot = _slots.removeAt(oldIndex);
       _slots.insert(newIndex, slot);
     });
+    _saveDraft();
   }
 
   Future<void> _submit() async {
@@ -339,6 +440,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           visibility: _visibility,
         );
       }
+      if (!_isEditing) {
+        _published = true;
+        _draftTimer?.cancel();
+        final user = _draftUser;
+        if (user != null) {
+          try {
+            await _draftStore!.clear(user);
+          } catch (_) {}
+        }
+      }
       if (mounted) _close(true);
     } catch (e) {
       // Guarded like the `finally` below. Nothing stops the user pressing back
@@ -370,95 +481,108 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       appBar: AppBar(
         title: Text(_isEditing ? l10n.editPostTitle : l10n.newPostTitle),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _textController,
-              maxLines: 5,
-              maxLength: 5000,
-              decoration: InputDecoration(
-                hintText: l10n.whatsNewHint,
-                border: const OutlineInputBorder(),
-              ),
+      body: AbsorbPointer(
+        absorbing: !_isEditing && !_draftReady,
+        child: ContentWidth(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              16 + BottomNavigationInset.of(context),
             ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _isPicking || _slots.length >= _maxMediaCount
-                  ? null
-                  : _pickMedia,
-              icon: _isPicking
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.photo_outlined),
-              label: Text(l10n.addMediaButton),
-            ),
-            if (_slots.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _MediaGrid(
-                slots: _slots,
-                removeTooltip: l10n.removeMediaTooltip,
-                onRemove: _removeSlot,
-                onReorder: _reorder,
-              ),
-            ],
-            const SizedBox(height: 16),
-            Text(
-              l10n.postVisibilityLabel,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            const SizedBox(height: 8),
-            // A segmented button, not a checkbox: these are two audiences to
-            // choose between, not a flag to switch on — and both of them are
-            // always worth naming, so nobody has to remember what the
-            // unticked state meant.
-            SegmentedButton<PostVisibility>(
-              segments: [
-                ButtonSegment(
-                  value: PostVisibility.connections,
-                  icon: const Icon(Icons.people_outline),
-                  label: Text(l10n.visibilityConnectionsLabel),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _textController,
+                  maxLines: 5,
+                  maxLength: 5000,
+                  decoration: InputDecoration(hintText: l10n.whatsNewHint),
                 ),
-                ButtonSegment(
-                  value: PostVisibility.favorites,
-                  icon: const Icon(Icons.star_outline),
-                  label: Text(l10n.visibilityFavoritesLabel),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _isPicking || _slots.length >= _maxMediaCount
+                      ? null
+                      : _pickMedia,
+                  icon: _isPicking
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_outlined),
+                  label: Text(l10n.addMediaButton),
                 ),
+                if (_slots.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _MediaGrid(
+                    slots: _slots,
+                    removeTooltip: l10n.removeMediaTooltip,
+                    onRemove: _removeSlot,
+                    onReorder: _reorder,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  l10n.postVisibilityLabel,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 8),
+                // A segmented button, not a checkbox: these are two audiences to
+                // choose between, not a flag to switch on — and both of them are
+                // always worth naming, so nobody has to remember what the
+                // unticked state meant.
+                SegmentedButton<PostVisibility>(
+                  segments: [
+                    ButtonSegment(
+                      value: PostVisibility.connections,
+                      icon: const Icon(Icons.people_outline),
+                      label: Text(l10n.visibilityConnectionsLabel),
+                    ),
+                    ButtonSegment(
+                      value: PostVisibility.favorites,
+                      icon: const Icon(Icons.star_outline),
+                      label: Text(l10n.visibilityFavoritesLabel),
+                    ),
+                  ],
+                  selected: {_visibility},
+                  onSelectionChanged: _isSubmitting
+                      ? null
+                      : (selection) => setState(() {
+                          _visibility = selection.first;
+                          _scheduleDraft();
+                        }),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _visibility == PostVisibility.favorites
+                      ? l10n.visibilityFavoritesDescription
+                      : l10n.visibilityConnectionsDescription,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
               ],
-              selected: {_visibility},
-              onSelectionChanged: _isSubmitting
-                  ? null
-                  : (selection) =>
-                        setState(() => _visibility = selection.first),
             ),
-            const SizedBox(height: 4),
-            Text(
-              _visibility == PostVisibility.favorites
-                  ? l10n.visibilityFavoritesDescription
-                  : l10n.visibilityConnectionsDescription,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _errorMessage!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.all(16),
         child: FilledButton(
-          onPressed: _isSubmitting ? null : _submit,
+          onPressed: _isSubmitting || (!_isEditing && !_draftReady)
+              ? null
+              : _submit,
           child: _isSubmitting
               ? const SizedBox(
                   height: 16,

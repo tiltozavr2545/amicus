@@ -14,6 +14,7 @@ void main() {
 
       expect(post.id, 'post-1');
       expect(post.authorName, 'Alice');
+      expect(post.authorAvatarPath, isNull);
       expect(post.text, 'Hello');
       expect(post.media, isEmpty);
       expect(post.likeCount, 0);
@@ -33,6 +34,20 @@ void main() {
       });
 
       expect(post.authorDislikesDisabled, true);
+    });
+
+    test('preserves the joined author avatar when reaction counts change', () {
+      final post = Post.fromRow({
+        'id': 'post-1',
+        'author_id': 'user-1',
+        'author': {'name': 'Alice', 'avatar_path': 'avatars/user-1/main.jpg'},
+        'created_at': '2026-01-01T12:00:00Z',
+      });
+      expect(post.authorAvatarPath, 'avatars/user-1/main.jpg');
+      expect(
+        post.copyWith(likeCount: 1).authorAvatarPath,
+        post.authorAvatarPath,
+      );
     });
 
     test('a null client_token (a pre-idempotency-column post) parses fine', () {

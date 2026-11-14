@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/content_width.dart';
 import '../moderation/report_repository.dart';
 import '../moderation/report_sheet.dart';
 import '../feed/post_list_view.dart';
@@ -37,7 +38,7 @@ class FriendProfileScreen extends ConsumerWidget {
   final String? avatarPath;
 
   void _openViewer(BuildContext context, List<ProfilePhoto> photos) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) =>
@@ -55,8 +56,15 @@ class FriendProfileScreen extends ConsumerWidget {
     final photosAsync = ref.watch(_friendPhotosProvider(friendId));
     final photos = photosAsync.value ?? const <ProfilePhoto>[];
 
-    final header = Padding(
-      padding: const EdgeInsets.only(bottom: 24),
+    final header = Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.primaryContainer.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(24),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -64,12 +72,12 @@ class FriendProfileScreen extends ConsumerWidget {
             child: GestureDetector(
               onTap: photos.isEmpty ? null : () => _openViewer(context, photos),
               child: CircleAvatar(
-                radius: 72,
+                radius: 56,
                 backgroundImage: avatarBytes != null
-                    ? sizedMemoryImage(context, avatarBytes, logicalWidth: 144)
+                    ? sizedMemoryImage(context, avatarBytes, logicalWidth: 112)
                     : null,
                 child: avatarBytes == null
-                    ? const Icon(Icons.person, size: 58)
+                    ? const Icon(Icons.person, size: 46)
                     : null,
               ),
             ),
@@ -122,10 +130,12 @@ class FriendProfileScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: PostListView(
-        authorId: friendId,
-        header: header,
-        emptyState: (context) => Text(l10n.noAuthorPostsYetMessage),
+      body: ContentWidth(
+        child: PostListView(
+          authorId: friendId,
+          header: header,
+          emptyState: (context) => Text(l10n.noAuthorPostsYetMessage),
+        ),
       ),
     );
   }

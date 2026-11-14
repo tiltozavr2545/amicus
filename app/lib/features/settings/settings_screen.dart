@@ -1,9 +1,16 @@
+import 'dart:convert';
+import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../l10n/locale_provider.dart';
+import '../../shared/content_width.dart';
+import '../../theme/theme_mode_choice.dart';
+import '../../theme/navigation_style_provider.dart';
+import 'settings_choice.dart';
 import '../auth/auth_providers.dart';
 import 'account_repository.dart';
 import 'notification_preferences_repository.dart';
@@ -33,6 +40,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // toggle can apply optimistically without waiting on a refetch — same
   // seed-once-from-async-data shape as ProfileScreen's `_nameController`.
   NotificationPreferences? _prefs;
+
+  bool _edited = false;
+  bool _serverLoaded = false;
+  Future<void> _cacheWrite = Future.value();
+
+  @override
+  void initState() {
+    super.initState();
+    final userId = ref.read(currentUserIdProvider);
+    unawaited(_loadCached(userId));
+  }
+
+  Future<void> _loadCached(String? userId) async {
+    try {
+      final store = await SharedPreferences.getInstance();
+      final raw = store.getString('notification_preferences_$userId');
+      if (raw == null || !mounted || _edited || _serverLoaded) return;
+      final value = NotificationPreferences.fromRow(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+      setState(() => _prefs = value);
+    } catch (_) {}
+  }
+
+  void _remember(NotificationPreferences value) {
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    _cacheWrite = _cacheWrite
+        .then((_) async {
+          final store = await SharedPreferences.getInstance();
+          await store.setString(
+            'notification_preferences_$userId',
+            jsonEncode({
+              'notify_system_account': value.systemAccount,
+              'notify_favorites': value.favorites,
+              'notify_comments': value.comments,
+              'notify_digest': value.digest,
+              'notify_inactive_week': value.inactiveWeek,
+              'notify_room_messages': value.roomMessages,
+            }),
+          );
+        })
+        .catchError((Object _) {});
+  }
 
   bool _isSigningOut = false;
   bool _isDeletingAccount = false;
@@ -138,12 +189,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     NotificationPreferences Function(NotificationPreferences, bool) set,
     bool value,
   ) async {
-    final current = _prefs;
-    if (current == null) return;
+    _edited = true;
+    final current = _prefs ?? const NotificationPreferences();
     final userId = ref.read(currentUserIdProvider);
     if (userId == null) return;
     final next = set(current, value);
     setState(() => _prefs = next);
+    _remember(next);
     try {
       await ref
           .read(notificationPreferencesRepositoryProvider)
@@ -151,7 +203,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       final latest = _prefs;
-      if (latest != null) setState(() => _prefs = set(latest, !value));
+      if (latest != null) {
+        final restored = set(latest, !value);
+        setState(() => _prefs = restored);
+        _remember(restored);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -162,159 +218,232 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// Muted, uppercase caption style that visually distinguishes a section
-  /// title (e.g. "Notifications") from the settings rows beneath it, which
-  /// otherwise share the same title-sized text and read as just another row.
-  TextStyle? _sectionHeaderStyle(BuildContext context) {
-    return Theme.of(context).textTheme.titleSmall?.copyWith(
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.1,
-    );
+  Future<void> _savePreference(Future<void> Function() save) async {
+    try {
+      await save();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.failedToSaveSettingsError,
+          ),
+        ),
+      );
+    }
   }
+
+  Widget _section(String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+    child: Text(
+      label,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final prefsAsync = ref.watch(_notificationPreferencesProvider);
+    ref.listen(_notificationPreferencesProvider, (_, next) {
+      final loaded = next.asData?.value;
+      if (loaded == null) return;
+      _serverLoaded = true;
+      if (!_edited) {
+        _prefs = loaded;
+        _remember(loaded);
+      }
+    });
     final packageInfoAsync = ref.watch(_packageInfoProvider);
+    final busy = _isSigningOut || _isDeletingAccount;
+    final dropdownStyle = Theme.of(context).textTheme.bodyLarge;
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
-      body: prefsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) =>
-            Center(child: Text(l10n.failedToLoadSettingsError)),
-        data: (loaded) {
-          _prefs ??= loaded;
-          final prefs = _prefs!;
-          return ListView(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: Text(
-                  l10n.notificationsSectionTitle.toUpperCase(),
-                  style: _sectionHeaderStyle(context),
-                ),
-              ),
-              SwitchListTile(
-                title: Text(l10n.notifyAppUpdatesLabel),
-                value: prefs.systemAccount,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(systemAccount: v), value),
-              ),
-              SwitchListTile(
-                title: Text(l10n.notifyFavoritesLabel),
-                value: prefs.favorites,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(favorites: v), value),
-              ),
-              SwitchListTile(
-                title: Text(l10n.notifyCommentsLabel),
-                value: prefs.comments,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(comments: v), value),
-              ),
-              SwitchListTile(
-                title: Text(l10n.notifyDigestLabel),
-                value: prefs.digest,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(digest: v), value),
-              ),
-              SwitchListTile(
-                title: Text(l10n.notifyInactiveLabel),
-                value: prefs.inactiveWeek,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(inactiveWeek: v), value),
-              ),
-              SwitchListTile(
-                title: Text(l10n.notifyRoomMessagesLabel),
-                value: prefs.roomMessages,
-                onChanged: (value) =>
-                    _toggle((p, v) => p.copyWith(roomMessages: v), value),
-              ),
-              const Divider(height: 32),
-              ListTile(
-                title: Text(l10n.languageSectionTitle),
-                trailing: DropdownButton<Locale?>(
-                  value: ref.watch(localeProvider),
-                  underline: const SizedBox.shrink(),
-                  // DropdownButton defaults to textTheme.titleMedium when no
-                  // style is given, which reads bolder than every other row's
-                  // plain (unstyled) label text — match those instead.
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  onChanged: (value) =>
-                      ref.read(localeProvider.notifier).setLocale(value),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(l10n.languageSystemLabel),
+      body: ContentWidth(
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 32),
+          children: [
+            _section(l10n.notificationsSectionTitle),
+            Builder(
+              builder: (context) {
+                final prefs =
+                    _prefs ??
+                    prefsAsync.asData?.value ??
+                    const NotificationPreferences();
+                return Column(
+                  children: [
+                    SwitchListTile(
+                      secondary: const Icon(Icons.campaign_outlined),
+                      title: Text(l10n.notifyAppUpdatesLabel),
+                      value: prefs.systemAccount,
+                      onChanged: (v) =>
+                          _toggle((p, v) => p.copyWith(systemAccount: v), v),
                     ),
-                    const DropdownMenuItem(
-                      value: Locale('en'),
-                      child: Text('English'),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.star_outline),
+                      title: Text(l10n.notifyFavoritesLabel),
+                      value: prefs.favorites,
+                      onChanged: (v) =>
+                          _toggle((p, v) => p.copyWith(favorites: v), v),
                     ),
-                    const DropdownMenuItem(
-                      value: Locale('ru'),
-                      child: Text('Русский'),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.chat_bubble_outline),
+                      title: Text(l10n.notifyCommentsLabel),
+                      value: prefs.comments,
+                      onChanged: (v) =>
+                          _toggle((p, v) => p.copyWith(comments: v), v),
+                    ),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.view_agenda_outlined),
+                      title: Text(l10n.notifyDigestLabel),
+                      value: prefs.digest,
+                      onChanged: (v) =>
+                          _toggle((p, v) => p.copyWith(digest: v), v),
+                    ),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.schedule_outlined),
+                      title: Text(l10n.notifyInactiveLabel),
+                      value: prefs.inactiveWeek,
+                      onChanged: (v) =>
+                          _toggle((p, v) => p.copyWith(inactiveWeek: v), v),
+                    ),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.forum_outlined),
+                      title: Text(l10n.notifyRoomMessagesLabel),
+                      value: prefs.roomMessages,
+                      onChanged: (v) =>
+                          _toggle((p, v) => p.copyWith(roomMessages: v), v),
                     ),
                   ],
-                ),
-              ),
-              const Divider(height: 32),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Text(
-                  l10n.accountSectionTitle.toUpperCase(),
-                  style: _sectionHeaderStyle(context),
-                ),
-              ),
+                );
+              },
+            ),
+            if (prefsAsync.hasError)
               ListTile(
-                title: Text(l10n.signOutButton),
-                trailing: _isSigningOut
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : null,
-                onTap: _isSigningOut ? null : _signOut,
-              ),
-              ListTile(
-                title: Text(
-                  l10n.deleteAccountLabel,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                title: Text(l10n.failedToLoadSettingsError),
+                trailing: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () =>
+                      ref.invalidate(_notificationPreferencesProvider),
                 ),
-                trailing: _isDeletingAccount
-                    ? SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      )
-                    : null,
-                onTap: _isDeletingAccount ? null : _deleteAccount,
               ),
-              if (packageInfoAsync.hasValue) ...[
-                const Divider(height: 32),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: Text(
-                    l10n.appVersionLabel(
-                      packageInfoAsync.value!.version,
-                      packageInfoAsync.value!.buildNumber,
-                    ),
-                    style: Theme.of(context).textTheme.bodySmall,
+            const Divider(height: 32, indent: 20, endIndent: 20),
+            _section(l10n.appearanceSectionTitle),
+            SettingsChoice(
+              icon: Icons.view_day_outlined,
+              title: l10n.navigationStyleLabel,
+              selection: DropdownButton<bool>(
+                isExpanded: true,
+                itemHeight: null,
+                style: dropdownStyle,
+                value: ref.watch(floatingNavigationProvider),
+                underline: const SizedBox.shrink(),
+                onChanged: (floating) {
+                  if (floating != null) {
+                    final notifier = ref.read(
+                      floatingNavigationProvider.notifier,
+                    );
+                    _savePreference(() => notifier.setFloating(floating));
+                  }
+                },
+                items: [
+                  DropdownMenuItem(
+                    value: true,
+                    child: Text(l10n.navigationFloatingLabel),
                   ),
-                ),
-              ],
-            ],
-          );
-        },
+                  DropdownMenuItem(
+                    value: false,
+                    child: Text(l10n.navigationClassicLabel),
+                  ),
+                ],
+              ),
+            ),
+            SettingsChoice(
+              icon: Icons.language,
+              title: l10n.languageSectionTitle,
+              selection: DropdownButton<String>(
+                isExpanded: true,
+                itemHeight: null,
+                style: dropdownStyle,
+                value: ref.watch(localeProvider)?.languageCode ?? '',
+                underline: const SizedBox.shrink(),
+                onChanged: (code) {
+                  if (code == null) return;
+                  final notifier = ref.read(localeProvider.notifier);
+                  _savePreference(
+                    () =>
+                        notifier.setLocale(code.isEmpty ? null : Locale(code)),
+                  );
+                },
+                items: [
+                  DropdownMenuItem(
+                    value: '',
+                    child: Text(l10n.languageSystemLabel),
+                  ),
+                  const DropdownMenuItem(value: 'en', child: Text('English')),
+                  const DropdownMenuItem(value: 'ru', child: Text('Русский')),
+                ],
+              ),
+            ),
+            SettingsChoice(
+              icon: Icons.brightness_6_outlined,
+              title: l10n.themeLabel,
+              selection: const ThemeModeChoice(),
+            ),
+            const Divider(height: 32, indent: 20, endIndent: 20),
+            _section(l10n.accountSectionTitle),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: Text(l10n.signOutButton),
+              trailing: _isSigningOut
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+              onTap: busy ? null : _signOut,
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.person_remove_outlined,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                l10n.deleteAccountLabel,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              trailing: _isDeletingAccount
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
+              onTap: busy ? null : _deleteAccount,
+            ),
+            const Divider(height: 32, indent: 20, endIndent: 20),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: Text(l10n.aboutTitle),
+              subtitle: packageInfoAsync.value == null
+                  ? null
+                  : Text(
+                      l10n.appVersionLabel(
+                        packageInfoAsync.value!.version,
+                        packageInfoAsync.value!.buildNumber,
+                      ),
+                    ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showAboutDialog(
+                context: context,
+                applicationName: 'Amicus',
+                applicationVersion: packageInfoAsync.value?.version,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

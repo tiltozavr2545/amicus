@@ -388,9 +388,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dislikeTooltip => 'Dislike';
 
   @override
-  String get darkThemeToggleTooltip => 'Toggle dark theme';
-
-  @override
   String get failedToLoadProfileError =>
       'Failed to load profile. Please try again.';
 
@@ -536,6 +533,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsTooltip => 'Settings';
+
+  @override
+  String get appearanceSectionTitle => 'Appearance';
+
+  @override
+  String get themeLabel => 'Theme';
+
+  @override
+  String get themeLightLabel => 'Light';
+
+  @override
+  String get themeDarkLabel => 'Dark';
+
+  @override
+  String get navigationStyleLabel => 'Navigation';
+
+  @override
+  String get navigationFloatingLabel => 'Floating';
+
+  @override
+  String get navigationClassicLabel => 'Classic';
+
+  @override
+  String get aboutTitle => 'About Amicus';
+
+  @override
+  String get authWelcomeMessage => 'A little closer to your people.';
 
   @override
   String get settingsTitle => 'Settings';

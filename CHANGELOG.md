@@ -2735,3 +2735,28 @@ Added out of order (before Stage 5, a deliberate deviation from the step-by-step
   quote, and the quote in a reply takes the original from the loaded list
   before the embed — and so shows its edited text. Eleven probes on the live
   database (before and after applying), fourteen new tests, 372 in total.
+
+## 0.19.0
+
+- **A new Amicus interface:** teal light/dark palettes, bundled Sofia Sans,
+  clearer post headers, profile panels, room lists and chat bubbles, consistent
+  controls and readable widths on larger screens. Authentication forms scroll
+  above the keyboard. The app symbol has no colored background and stays
+  contrasting in both themes. Android notifications use a stronger vector icon.
+- **Profile shortcuts:** tap an author's avatar/name area in the feed or the
+  full Connection row to open their profile. Post headers display profile photos
+  through the shared image cache, with initials as a fallback.
+- **Navigation:** floating and classic bottom bars are available in Settings.
+  The floating bar keeps its glass selection and synchronized page gestures.
+  Only primary destinations, including composing, display the bar; secondary
+  screens open above it. Scroll tails and floating actions clear the bar and
+  device gesture area.
+- **Settings:** language, navigation and System default / Light / Dark theme
+  use adaptive dropdowns. Theme selection moves out of the main app bars.
+  Notification preferences show the saved account-specific snapshot and refresh
+  in place without a loading indicator. Errors do not block other settings.
+- **Post drafts:** text, audience and ordered attachments are saved locally per
+  account and restored after leaving or restarting. Picker files are copied into
+  persistent app storage. Successful publication clears the draft; failed
+  attempts retain their retry token. Sign-out retains the account's draft;
+  account deletion removes it. Editing an existing post keeps this draft intact.

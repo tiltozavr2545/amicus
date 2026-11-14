@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:amicus/features/connections/connections_repository.dart';
 import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/features/feed/post_list_view.dart';
 import 'package:amicus/l10n/app_localizations.dart';
+import 'package:amicus/features/profile/profile_repository.dart';
 
 /// Only [fetchPage] and [resolveMediaUrls] need real behaviour; the rest
 /// satisfy the `implements` contract via `noSuchMethod`, same trick as the
@@ -125,11 +127,13 @@ Post _post(
   String id, {
   List<PostMedia> media = const [],
   String authorId = 'author-1',
+  String? avatarPath,
   PostVisibility visibility = PostVisibility.connections,
 }) => Post(
   id: id,
   authorId: authorId,
   authorName: 'Alice',
+  authorAvatarPath: avatarPath,
   createdAt: DateTime(2026, 1, 1, 12),
   clientToken: 'token-of-$id',
   visibility: visibility,
@@ -153,6 +157,20 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _AvatarRepository implements ProfileRepository {
+  final image = Completer<Uint8List>();
+  int downloads = 0;
+
+  @override
+  Future<Uint8List> downloadAvatar(String path) {
+    downloads++;
+    return image.future;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 /// [container], when given, lets a test poke providers from the outside —
 /// bumping [feedRefreshTickProvider] the way muting or saving an edit does.
 /// [authorId] scopes the list to one author, which is what a profile page
@@ -162,6 +180,7 @@ Widget _wrap(
   ProviderContainer? container,
   _FakeConnectionsRepository? connections,
   String? authorId,
+  _AvatarRepository? avatars,
 }) {
   final app = MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -175,6 +194,7 @@ Widget _wrap(
     overrides: [
       currentUserIdProvider.overrideWithValue('test-user'),
       feedRepositoryProvider.overrideWithValue(repo),
+      if (avatars != null) profileRepositoryProvider.overrideWithValue(avatars),
       connectionsRepositoryProvider.overrideWithValue(
         connections ?? _FakeConnectionsRepository(),
       ),
@@ -226,6 +246,78 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
+
+  testWidgets(
+    'Author photos share the profile cache and survive reaction updates',
+    (tester) async {
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [
+          _post('p1', avatarPath: 'avatars/author-1/main.jpg'),
+          _post('p2', avatarPath: 'avatars/author-1/main.jpg'),
+        ];
+      final avatars = _AvatarRepository();
+      await tester.pumpWidget(_wrap(repo, avatars: avatars));
+      await tester.pump();
+      await tester.pump();
+      expect(avatars.downloads, 1);
+      expect(
+        tester
+            .widgetList<CircleAvatar>(find.byType(CircleAvatar))
+            .every((a) => a.backgroundImage == null),
+        isTrue,
+      );
+
+      final bytes = base64Decode(
+        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      );
+      avatars.image.complete(bytes);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<CircleAvatar>(find.byType(CircleAvatar))
+            .where((a) => a.backgroundImage != null),
+        hasLength(2),
+      );
+      final image =
+          tester
+                  .widget<CircleAvatar>(find.byType(CircleAvatar).first)
+                  .backgroundImage!
+              as ResizeImage;
+      expect((image.imageProvider as MemoryImage).bytes, bytes);
+      await tester.tap(find.byTooltip(_likeTooltip).first);
+      await tester.pump();
+      repo.reactionCalls.single.complete();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CircleAvatar>(find.byType(CircleAvatar).first)
+            .backgroundImage,
+        isNotNull,
+      );
+      expect(avatars.downloads, 1);
+    },
+  );
+
+  testWidgets(
+    'An unavailable author photo keeps the initials and post readable',
+    (tester) async {
+      final repo = _FakeFeedRepository()
+        ..pageToReturn = [_post('p1', avatarPath: 'avatars/missing.jpg')];
+      final avatars = _AvatarRepository();
+      await tester.pumpWidget(_wrap(repo, avatars: avatars));
+      await tester.pump();
+      await tester.pump();
+      avatars.image.completeError(Exception('offline'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<CircleAvatar>(find.byType(CircleAvatar)).backgroundImage,
+        isNull,
+      );
+      expect(find.text('A'), findsOneWidget);
+      expect(find.text('text of p1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   group('a reaction that fails while another is in flight', () {
     // `.timeout()` stops waiting without cancelling, so "the request failed"

@@ -8,3 +8,11 @@ Running from this folder:
 flutter pub get
 flutter run --dart-define-from-file=.env
 ```
+
+Client-specific references:
+
+- [Client architecture](../docs/client-architecture.md): navigation, preferences,
+  media caching and account-scoped post drafts.
+- [Interface design](../docs/interface-design.md): themes, typography and layout.
+- `make verify` from the repository root runs dependency, formatting, analysis
+  and test checks.

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A notification-sized silhouette: stronger strokes and no launcher safe-zone padding. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="0.75"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,1.4 A10.6,10.6 0,1 1,12,22.6 A10.6,10.6 0,1 1,12,1.4 Z M12,2.8 L20.2,7.4 L20.2,16.6 L12,21.2 L3.8,16.6 L3.8,7.4 Z M12,2.8 L12,21.2 M3.8,7.4 L20.2,16.6 M20.2,7.4 L3.8,16.6" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.2,2.8 a1.8,1.8 0,1 0,3.6,0 a1.8,1.8 0,1 0,-3.6,0 M18.4,7.4 a1.8,1.8 0,1 0,3.6,0 a1.8,1.8 0,1 0,-3.6,0 M18.4,16.6 a1.8,1.8 0,1 0,3.6,0 a1.8,1.8 0,1 0,-3.6,0 M10.2,21.2 a1.8,1.8 0,1 0,3.6,0 a1.8,1.8 0,1 0,-3.6,0 M2,16.6 a1.8,1.8 0,1 0,3.6,0 a1.8,1.8 0,1 0,-3.6,0 M2,7.4 a1.8,1.8 0,1 0,3.6,0 a1.8,1.8 0,1 0,-3.6,0 M9.8,12 a2.2,2.2 0,1 0,4.4,0 a2.2,2.2 0,1 0,-4.4,0" />
+</vector>

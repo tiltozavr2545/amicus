@@ -15,7 +15,8 @@ Deployed on Android (Google Play, Closed testing — the `alpha` track) and on i
 ## Features
 
 - Sign-in/sign-up, a profile with a photo gallery (up to 80) and your own wall of posts
-- Connections via an invite link — with access to the connection's profile and posts
+- Connections via an invite link — with access to the connection's profile and posts; open profiles from post author blocks or full Connection rows
+- Local post drafts restore text, audience and ordered attachments after leaving or restarting; successful publication clears the draft
 - Feed: text and up to 20 photos/videos per post, reactions, comments with replies (one level of nesting)
 - Post visibility: when publishing (and later, when editing) you can choose who sees it — all connections or only selected ones
 - Rooms: a separate chat for the people you invited — messages arrive via a realtime subscription, with unread counts, "Delivered"/"Read" ticks, "online"/"typing…" statuses and pushes; a message can carry up to 10 photos/videos, you can reply to a specific message with a quote, and mute the chat itself separately from everything else; the list is split by day ("Today", "Yesterday", a date)
@@ -23,12 +24,14 @@ Deployed on Android (Google Play, Closed testing — the `alpha` track) and on i
 - Connection request — to a member of a shared room if you aren't connected yet: the only way to connect without meeting in person, and it's available only where people already share a chat
 - Mute, block and favorites — with push notifications and fine-grained per-source settings
 - Report a post, a comment, a room message or the person themselves: the author never learns who reported, and reports are reviewed from the local console — hide, delete, impose a write ban or lock the account
-- Dark theme, two locales (en/ru) with a language switcher
+- Light, dark and system themes, two locales (en/ru), and floating/classic navigation, all selectable in Settings
 - Sign-out and account deletion, both with confirmation
 
 Full feature history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
+
+These screenshots predate the 0.19.0 interface redesign.
 
 <table>
 <tr>
@@ -88,6 +91,7 @@ flutter run --dart-define-from-file=.env
 Current:
 
 - [Schema and visibility rule](docs/data-model.md) — tables, RLS, storage policies; the main document if you're figuring out how things work
+- [Interface design](docs/interface-design.md) — visual tokens, layout and interaction principles
 - [Client architecture](docs/client-architecture.md) — what the app is built with and what the client itself does on top of the schema
 - [Operations](docs/operations.md) — scheduled jobs, secrets, release, Edge Function deployment, update-notification broadcast
 - [Console](console/README.md) — the local admin console: what it does, how to run it and why it has a server half

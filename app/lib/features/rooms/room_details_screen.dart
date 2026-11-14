@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/content_width.dart';
 import '../../shared/write_ban.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/refresh_after_await.dart';
@@ -358,118 +359,120 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
             ),
         ],
       ),
-      body: ListView(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              children: [
-                RoomAvatar(room: room, viewerId: viewerId, radius: 44),
-                if (canManage) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.photo_outlined),
-                        label: Text(l10n.changeRoomAvatarButton),
-                        onPressed: _isBusy ? null : () => _pickAvatar(room),
-                      ),
-                      if (room.avatarPath != null)
-                        TextButton(
-                          onPressed: _isBusy
-                              ? null
-                              : () => _run(
-                                  () => ref
-                                      .read(roomsRepositoryProvider)
-                                      .clearRoomAvatar(room.id),
-                                  l10n.failedToUpdateRoomAvatarError,
-                                ),
-                          child: Text(l10n.removeRoomAvatarButton),
-                        ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          ListTile(
-            title: Text(
-              l10n.roomMembersTitle,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            subtitle: Text(l10n.roomMembersCount(room.members.length)),
-          ),
-          for (final member in room.members)
-            ListTile(
-              leading: FriendAvatar(avatarPath: member.avatarPath),
-              title: Text(member.name),
-              subtitle: showsOwnership && member.userId == room.ownerId
-                  ? Text(l10n.roomOwnerLabel)
-                  : null,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+      body: ContentWidth(
+        child: ListView(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
                 children: [
-                  if (member.userId != viewerId)
-                    _ConnectAction(
-                      member: member,
-                      isBusy: _asking.contains(member.userId),
-                      onAsk: () => _askToConnect(member),
+                  RoomAvatar(room: room, viewerId: viewerId, radius: 44),
+                  if (canManage) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.photo_outlined),
+                          label: Text(l10n.changeRoomAvatarButton),
+                          onPressed: _isBusy ? null : () => _pickAvatar(room),
+                        ),
+                        if (room.avatarPath != null)
+                          TextButton(
+                            onPressed: _isBusy
+                                ? null
+                                : () => _run(
+                                    () => ref
+                                        .read(roomsRepositoryProvider)
+                                        .clearRoomAvatar(room.id),
+                                    l10n.failedToUpdateRoomAvatarError,
+                                  ),
+                            child: Text(l10n.removeRoomAvatarButton),
+                          ),
+                      ],
                     ),
-                  if (canManage && member.userId != viewerId)
-                    IconButton(
-                      icon: const Icon(Icons.person_remove_outlined),
-                      tooltip: l10n.removeMemberTooltip,
-                      onPressed: _isBusy
-                          ? null
-                          : () => _removeMember(room, member),
-                    ),
+                  ],
                 ],
               ),
             ),
-          if (canManage)
             ListTile(
-              leading: const Icon(Icons.person_add_outlined),
-              title: Text(l10n.addMemberButton),
-              onTap: _isBusy ? null : () => _addMember(room),
+              title: Text(
+                l10n.roomMembersTitle,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              subtitle: Text(l10n.roomMembersCount(room.members.length)),
             ),
-          const Divider(),
-          // Per member, not per room: the flag is on this viewer's own
-          // `room_members` row, so nobody else in the room can tell. It
-          // silences pushes and nothing else — the unread badge in the list
-          // keeps counting, because muting a noisy room is not the same as
-          // no longer reading it.
-          SwitchListTile(
-            secondary: Icon(
-              room.notificationsMuted
-                  ? Icons.notifications_off_outlined
-                  : Icons.notifications_outlined,
+            for (final member in room.members)
+              ListTile(
+                leading: FriendAvatar(avatarPath: member.avatarPath),
+                title: Text(member.name),
+                subtitle: showsOwnership && member.userId == room.ownerId
+                    ? Text(l10n.roomOwnerLabel)
+                    : null,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (member.userId != viewerId)
+                      _ConnectAction(
+                        member: member,
+                        isBusy: _asking.contains(member.userId),
+                        onAsk: () => _askToConnect(member),
+                      ),
+                    if (canManage && member.userId != viewerId)
+                      IconButton(
+                        icon: const Icon(Icons.person_remove_outlined),
+                        tooltip: l10n.removeMemberTooltip,
+                        onPressed: _isBusy
+                            ? null
+                            : () => _removeMember(room, member),
+                      ),
+                  ],
+                ),
+              ),
+            if (canManage)
+              ListTile(
+                leading: const Icon(Icons.person_add_outlined),
+                title: Text(l10n.addMemberButton),
+                onTap: _isBusy ? null : () => _addMember(room),
+              ),
+            const Divider(),
+            // Per member, not per room: the flag is on this viewer's own
+            // `room_members` row, so nobody else in the room can tell. It
+            // silences pushes and nothing else — the unread badge in the list
+            // keeps counting, because muting a noisy room is not the same as
+            // no longer reading it.
+            SwitchListTile(
+              secondary: Icon(
+                room.notificationsMuted
+                    ? Icons.notifications_off_outlined
+                    : Icons.notifications_outlined,
+              ),
+              title: Text(l10n.roomNotificationsLabel),
+              subtitle: Text(l10n.roomNotificationsDescription),
+              value: !room.notificationsMuted,
+              onChanged: _isBusy
+                  ? null
+                  : (value) => _run(
+                      () => ref
+                          .read(roomsRepositoryProvider)
+                          .setRoomMuted(roomId: room.id, muted: !value),
+                      l10n.failedToUpdateRoomNotificationsError,
+                    ),
             ),
-            title: Text(l10n.roomNotificationsLabel),
-            subtitle: Text(l10n.roomNotificationsDescription),
-            value: !room.notificationsMuted,
-            onChanged: _isBusy
-                ? null
-                : (value) => _run(
-                    () => ref
-                        .read(roomsRepositoryProvider)
-                        .setRoomMuted(roomId: room.id, muted: !value),
-                    l10n.failedToUpdateRoomNotificationsError,
-                  ),
-          ),
-          const Divider(),
-          ListTile(
-            leading: Icon(
-              Icons.logout,
-              color: Theme.of(context).colorScheme.error,
+            const Divider(),
+            ListTile(
+              leading: Icon(
+                Icons.logout,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                l10n.leaveRoomButton,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: _isBusy ? null : () => _leave(room),
             ),
-            title: Text(
-              l10n.leaveRoomButton,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            onTap: _isBusy ? null : () => _leave(room),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

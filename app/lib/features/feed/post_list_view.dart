@@ -5,13 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/bottom_navigation_inset.dart';
 import '../../shared/refresh_after_await.dart';
+import '../../shared/sized_memory_image.dart';
 import '../../shared/write_ban.dart';
 import '../moderation/report_repository.dart';
 import '../moderation/report_sheet.dart';
 import '../../shared/media_gallery.dart';
 import '../auth/auth_providers.dart';
 import '../connections/connections_repository.dart';
+import '../connections/friend_profile_screen.dart';
+import '../profile/profile_repository.dart';
 import 'carousel_position_cache.dart';
 import 'comments_screen.dart';
 import 'create_post_screen.dart';
@@ -354,7 +358,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 
   Future<void> _editPost(Post post) async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context, rootNavigator: true).push<bool>(
       MaterialPageRoute(builder: (_) => CreatePostScreen(existingPost: post)),
     );
     // The post's text/media may have changed — simplest correct thing is to
@@ -481,7 +485,12 @@ class _PostListViewState extends ConsumerState<PostListView> {
       child: _posts.isEmpty && !_isLoading
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + BottomNavigationInset.of(context),
+              ),
               children: [
                 if (header != null) header,
                 if (_errorMessage != null)
@@ -501,7 +510,12 @@ class _PostListViewState extends ConsumerState<PostListView> {
           : ListView.separated(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + BottomNavigationInset.of(context),
+              ),
               itemCount: _posts.length + 1 + (header != null ? 1 : 0),
               separatorBuilder: (context, index) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
@@ -538,15 +552,16 @@ class _PostListViewState extends ConsumerState<PostListView> {
                     kind: ReportTargetKind.post,
                     targetId: post.id,
                   ),
-                  onOpenComments: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CommentsScreen(
-                        postId: post.id,
-                        onCountChanged: (count) =>
-                            _updateCommentCount(post.id, count),
+                  onOpenComments: () =>
+                      Navigator.of(context, rootNavigator: true).push(
+                        MaterialPageRoute(
+                          builder: (_) => CommentsScreen(
+                            postId: post.id,
+                            onCountChanged: (count) =>
+                                _updateCommentCount(post.id, count),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
                 );
               },
             ),
@@ -554,7 +569,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 }
 
-class _PostCard extends StatelessWidget {
+class _PostCard extends ConsumerWidget {
   const _PostCard({
     required this.post,
     required this.isOwnPost,
@@ -574,55 +589,90 @@ class _PostCard extends StatelessWidget {
   final VoidCallback onOpenComments;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    final avatarPath = post.authorAvatarPath;
+    final avatarBytes = avatarPath == null
+        ? null
+        : ref.watch(avatarBytesProvider(avatarPath)).value;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    post.authorName,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                // Only on one's own posts, and only on the narrowed ones: it
-                // is a reminder of a choice the author made, not information
-                // about the post for its readers. Whoever sees the post can
-                // already see it — telling them it is "for favourites only"
-                // would say something about the author's list, which is
-                // private.
-                if (isOwnPost && post.visibility == PostVisibility.favorites)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Chip(
-                      avatar: const Icon(Icons.star_outline, size: 16),
-                      label: Text(l10n.visibilityFavoritesBadge),
-                      labelStyle: Theme.of(context).textTheme.labelSmall,
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  child: InkWell(
+                    onTap: () =>
+                        Navigator.of(context, rootNavigator: true).push(
+                          MaterialPageRoute(
+                            builder: (_) => FriendProfileScreen(
+                              friendId: post.authorId,
+                              friendName: post.authorName,
+                              avatarPath: post.authorAvatarPath,
+                            ),
+                          ),
+                        ),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 21,
+                          backgroundImage: avatarBytes == null
+                              ? null
+                              : sizedMemoryImage(
+                                  context,
+                                  avatarBytes,
+                                  logicalWidth: 42,
+                                ),
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primaryContainer,
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                          child: avatarBytes == null
+                              ? Text(
+                                  post.authorName.trim().isEmpty
+                                      ? '?'
+                                      : post.authorName
+                                            .trim()
+                                            .characters
+                                            .first
+                                            .toUpperCase(),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                post.authorName,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                DateFormat(
+                                  'd MMM y, HH:mm',
+                                  l10n.localeName,
+                                ).format(post.createdAt),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                // Every post has a menu, but its items depend on whose post it
-                // is: you manage your own post, you report someone else's. A
-                // "report" item on your own post would be not just superfluous
-                // — reporting yourself is rejected by the server (AMR02), and
-                // offering an action that is bound not to work is worse than
-                // not offering it at all. The size is set by an outer frame,
-                // not by a button property: `PopupMenuButton` doesn't accept
-                // `visualDensity`, and the default 48px tap target adds an
-                // extra ~28px of height to the header of EVERY card. While only
-                // your own posts had the menu, that affected a handful in the
-                // list; now everyone's does, and the feed would visibly
-                // stretch. We don't go smaller than the neighbouring chip —
-                // it's what this is aligned to.
+                ),
+                // Keep the menu's full tap target without changing the header height.
                 SizedBox(
-                  height: 32,
-                  width: 32,
+                  height: 48,
+                  width: 48,
                   child: PopupMenuButton<void>(
                     icon: const Icon(Icons.more_vert),
                     padding: EdgeInsets.zero,
@@ -648,31 +698,43 @@ class _PostCard extends StatelessWidget {
                 ),
               ],
             ),
-            Text(
-              DateFormat(
-                'd MMM y, HH:mm',
-                l10n.localeName,
-              ).format(post.createdAt),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            // Only on one's own posts, and only on the narrowed ones: it
+            // is a reminder of a choice the author made, not information
+            // about the post for its readers. Whoever sees the post can
+            // already see it — telling them it is "for favourites only"
+            // would say something about the author's list, which is
+            // private.
+            if (isOwnPost && post.visibility == PostVisibility.favorites)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Chip(
+                  avatar: const Icon(Icons.star_outline, size: 16),
+                  label: Text(l10n.visibilityFavoritesBadge),
+                  labelStyle: Theme.of(context).textTheme.labelSmall,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             if (post.text != null) ...[
-              const SizedBox(height: 8),
-              Text(post.text!),
+              const SizedBox(height: 18),
+              Text(post.text!, style: Theme.of(context).textTheme.bodyLarge),
             ],
             if (post.media.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 child: _MediaCarousel(postId: post.id, media: post.media),
               ),
             ],
-            const SizedBox(height: 4),
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 6),
             Row(
               children: [
                 _ReactionButton(
                   selectedIcon: Icons.thumb_up,
                   unselectedIcon: Icons.thumb_up_outlined,
-                  color: Colors.green,
+                  color: Theme.of(context).colorScheme.primary,
                   tooltip: l10n.likeTooltip,
                   count: post.likeCount,
                   selected: post.myReaction == ReactionType.like,
@@ -681,7 +743,7 @@ class _PostCard extends StatelessWidget {
                 _ReactionButton(
                   selectedIcon: Icons.sentiment_neutral,
                   unselectedIcon: Icons.sentiment_neutral_outlined,
-                  color: Colors.amber,
+                  color: Theme.of(context).colorScheme.tertiary,
                   tooltip: l10n.neutralTooltip,
                   count: post.neutralCount,
                   selected: post.myReaction == ReactionType.neutral,
@@ -694,7 +756,7 @@ class _PostCard extends StatelessWidget {
                   _ReactionButton(
                     selectedIcon: Icons.thumb_down,
                     unselectedIcon: Icons.thumb_down_outlined,
-                    color: Colors.red,
+                    color: Theme.of(context).colorScheme.error,
                     tooltip: l10n.dislikeTooltip,
                     count: post.dislikeCount,
                     selected: post.myReaction == ReactionType.dislike,
@@ -703,7 +765,7 @@ class _PostCard extends StatelessWidget {
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.mode_comment_outlined),
-                  visualDensity: VisualDensity.compact,
+                  tooltip: l10n.commentsTitle,
                   onPressed: onOpenComments,
                 ),
                 Text('${post.commentCount}'),
@@ -846,7 +908,7 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
   }
 
   void _openFullscreen(int index) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => FullscreenMediaViewer(

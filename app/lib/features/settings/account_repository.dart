@@ -8,6 +8,7 @@ import '../../shared/signed_url_cache.dart';
 import '../auth/auth_providers.dart';
 import '../feed/carousel_position_cache.dart';
 import '../feed/feed_cache.dart';
+import '../feed/post_draft_store.dart';
 import '../notifications/push_notifications_repository.dart';
 
 class AccountRepository {
@@ -16,8 +17,11 @@ class AccountRepository {
     this._pushRepository,
     this._feedCache,
     this._carouselPositions,
-    this._signedUrls,
-  );
+    this._signedUrls, {
+    PostDraftStore? drafts,
+  }) : _drafts = drafts;
+
+  final PostDraftStore? _drafts;
 
   final SupabaseClient _client;
   final PushNotificationsRepository _pushRepository;
@@ -176,6 +180,7 @@ class AccountRepository {
     // Not best-effort, and not conditional on the cleanup above: the cached
     // pages are this account's content sitting in plain SharedPreferences,
     // and the account it belonged to no longer exists to re-authorize them.
+    await _drafts?.clear(userId);
     await _feedCache.clear();
     _carouselPositions.clear();
     _signedUrls.clear();
@@ -224,5 +229,6 @@ final accountRepositoryProvider = Provider<AccountRepository>((ref) {
     ref.watch(feedCacheProvider),
     ref.watch(carouselPositionCacheProvider),
     ref.watch(signedUrlCacheProvider),
+    drafts: ref.watch(postDraftStoreProvider),
   );
 });

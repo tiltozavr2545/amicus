@@ -193,7 +193,6 @@ Widget _wrap(_FakeConnectionsRepository repo) {
 
 void main() {
   setUp(() {
-    // ThemeToggleSwitch (in the AppBar) reads shared_preferences on build.
     SharedPreferences.setMockInitialValues({});
   });
 

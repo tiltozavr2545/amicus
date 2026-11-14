@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -44,5 +45,10 @@ Future<void> main() async {
       authFlowType: AuthFlowType.implicit,
     ),
   );
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks([
+      'Sofia Sans',
+    ], await rootBundle.loadString('assets/fonts/OFL.txt'));
+  });
   runApp(const ProviderScope(child: KrugApp()));
 }

@@ -49,6 +49,90 @@ else) should be recorded here too, so they don't silently drift from reality.
   legacy anon/service_role) — `SUPABASE_ANON_KEY` holds the Publishable key
   (`sb_publishable_…`); the Secret key is not used anywhere in client code
 
+## Interface and local preferences
+
+`lib/theme/amicus_theme.dart` defines both themes, bundled Sofia Sans typography
+and shared controls. The palette and layout rationale live in
+[interface-design.md](interface-design.md). `ContentWidth` bounds reading and
+form widths on tablets; authentication forms scroll above the keyboard.
+
+The header and welcome screen use the launcher's foreground without its colored
+background or adaptive-icon padding. The artwork is white in the dark theme and
+tinted with the primary teal in the light theme. Android notifications use a
+separate 24 dp vector with stronger lines and nodes for small display sizes.
+Its appearance on Samsung One UI still needs device verification.
+
+### Navigation and profiles
+
+The bottom bar appears only on the four primary tabs and the new-post compose
+destination. Secondary screens use the root navigator above the shell: comments,
+chats, Connection profiles, room creation/details, blocked users, post editing,
+photo viewers and photo ordering/deletion do not display either bar style.
+Returning restores the underlying tab and its state. Creating a room replaces
+the creation screen with its chat, so Back returns to the room list.
+
+The author block in a post (avatar, name and date) and the full Connection row
+open that person's profile. Post menus and trailing relationship controls keep
+their separate actions. Feed queries join the author's `avatar_path`; post copies
+and the per-viewer feed cache preserve it. Cards share `avatarBytesProvider` with
+profiles and Connections, so posts by one author reuse a download. Initials are
+the fallback while a photograph is unavailable.
+
+Floating navigation synchronizes its glass selection and pages through one
+animation controller. Dragging the bar or swiping a primary page changes tabs;
+cancelling returns to the starting tab. Reduced motion skips settling animations.
+`BottomNavigationInset` clears the full floating bar, its gaps and the system
+safe area at scroll tails and below the room creation action. Classic navigation
+reserves layout space instead. The composer uses a temporary slot; its local
+snapshot survives the widget being disposed (see "Post drafts" below).
+
+### Settings
+
+Settings follow Framebook's icon-led rows and adaptive dropdown pattern; the
+remaining visual design belongs to Amicus. SharedPreferences stores language,
+System default / Light / Dark theme, and floating/classic navigation. The theme
+selector lives only in Settings, preserves previous light/dark preferences and
+can restore following device brightness. Its six-change system-account shortcut
+is retained.
+
+Notification preferences remain server-backed. A per-account local snapshot
+appears while the server refresh runs, without a loading indicator. The first
+visit without a snapshot shows the standard defaults. A later server response
+updates the switches in place unless the user has already edited them. Changes
+save optimistically, with per-field rollback and a visible error on failure.
+Loading failures leave the switches and other settings available, with a retry
+action. Account actions still require confirmation.
+
+### Interface verification
+
+`test/interface_layout_test.dart` checks narrow/tablet widths, Russian text,
+both themes, gestures and cancellation, secondary-screen navigation, scroll tails
+and keyboard clearance. Optional previews use synthetic content:
+
+```bash
+cd app
+flutter test test/interface_layout_test.dart \
+  --dart-define=AMICUS_PREVIEW_DIR=/private/tmp/amicus-previews
+```
+
+## Post drafts
+
+A new post has one local draft per account in application-support storage. Text
+is debounced for 250 ms, with an immediate flush on leaving the screen or
+backgrounding the app. Attachment changes are saved immediately. Images and
+videos are copied out of picker temporary storage; order, audience, media tokens
+and the submission idempotency token are restored with the text. A successful
+publication clears the draft; failed publication retains it. Editing a published
+post does not replace the new-post draft. Account deletion removes that account's
+draft; sign-out retains it for the same account, with separate storage for others.
+
+The storage implementation is `lib/features/feed/post_draft_store.dart`. Writes
+are serialized; media are staged before metadata is replaced. Removing an
+attachment removes its private draft copy, and an empty draft removes its folder.
+Drafts stay on this device and are not synchronized or uploaded until publishing.
+Storage and widget tests cover restoration, file retention, account isolation,
+write ordering, leaving the composer, retry-token reuse and successful cleanup.
+
 ## Rows first, then objects
 
 A rule that `data-model.md` refers to by name

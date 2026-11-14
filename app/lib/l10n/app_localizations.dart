@@ -776,12 +776,6 @@ abstract class AppLocalizations {
   /// **'Dislike'**
   String get dislikeTooltip;
 
-  /// No description provided for @darkThemeToggleTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Toggle dark theme'**
-  String get darkThemeToggleTooltip;
-
   /// No description provided for @failedToLoadProfileError.
   ///
   /// In en, this message translates to:
@@ -991,6 +985,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get settingsTooltip;
+
+  /// No description provided for @appearanceSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get appearanceSectionTitle;
+
+  /// No description provided for @themeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get themeLabel;
+
+  /// No description provided for @themeLightLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLightLabel;
+
+  /// No description provided for @themeDarkLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDarkLabel;
+
+  /// No description provided for @navigationStyleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Navigation'**
+  String get navigationStyleLabel;
+
+  /// No description provided for @navigationFloatingLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Floating'**
+  String get navigationFloatingLabel;
+
+  /// No description provided for @navigationClassicLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Classic'**
+  String get navigationClassicLabel;
+
+  /// No description provided for @aboutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'About Amicus'**
+  String get aboutTitle;
+
+  /// No description provided for @authWelcomeMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'A little closer to your people.'**
+  String get authWelcomeMessage;
 
   /// No description provided for @settingsTitle.
   ///

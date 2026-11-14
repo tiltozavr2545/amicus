@@ -16,6 +16,7 @@ void main() {
     id: id,
     authorId: 'author-1',
     authorName: 'Alice',
+    authorAvatarPath: 'avatars/author-1/main.jpg',
     createdAt: DateTime(2026, 1, 1, 12),
     clientToken: 'client-token-1',
     authorDislikesDisabled: true,
@@ -29,6 +30,11 @@ void main() {
   );
 
   group('Post cache round trip', () {
+    test('reads a cache written before author avatars were included', () {
+      final legacy = post().toCacheJson()..remove('author_avatar_path');
+      expect(Post.fromCacheJson(legacy).authorAvatarPath, isNull);
+    });
+
     test('preserves every field, including a reaction and its media', () {
       final original = post(
         media: const [
@@ -55,6 +61,7 @@ void main() {
       expect(restored.id, original.id);
       expect(restored.authorId, original.authorId);
       expect(restored.authorName, original.authorName);
+      expect(restored.authorAvatarPath, original.authorAvatarPath);
       expect(restored.createdAt, original.createdAt);
       expect(restored.clientToken, original.clientToken);
       expect(restored.authorDislikesDisabled, original.authorDislikesDisabled);

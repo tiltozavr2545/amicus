@@ -1,10 +1,11 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../theme/navigation_style_provider.dart';
+import '../../shared/bottom_navigation_inset.dart';
+import 'navigation_motion.dart';
 import '../../shared/sized_memory_image.dart';
 import '../feed/comments_screen.dart';
 import '../feed/create_post_screen.dart';
@@ -16,8 +17,8 @@ import '../profile/profile_repository.dart';
 import '../rooms/room_chat_screen.dart';
 
 /// Destination index of the "new post" button in the bottom bar. It doesn't
-/// correspond to a shell branch — tapping it pushes [CreatePostScreen] on top
-/// instead of switching tabs.
+/// correspond to a shell branch: the motion container displays the composer
+/// in a temporary slot; its draft is persisted separately by the composer.
 ///
 /// Second from the left, with rooms in the middle: the bar reads
 /// feed · new post · rooms · connections · profile.
@@ -45,7 +46,82 @@ class MainShellScreen extends ConsumerStatefulWidget {
   ConsumerState<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends ConsumerState<MainShellScreen> {
+class _MainShellScreenState extends ConsumerState<MainShellScreen>
+    with SingleTickerProviderStateMixin {
+  late final _position = AnimationController.unbounded(
+    vsync: this,
+    value: MainShellScreen._destinationIndexForBranch(
+      widget.navigationShell.currentIndex,
+    ).toDouble(),
+  );
+  late int _routeIndex = _selectedIndex(widget.navigationShell);
+  bool _dragging = false;
+  int _dragOrigin = 0;
+
+  @override
+  void dispose() {
+    _position.dispose();
+    super.dispose();
+  }
+
+  void _settle(int index, {bool reset = false}) {
+    _dragging = false;
+    _routeIndex = index;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _position.value = index.toDouble();
+    } else {
+      _position.animateTo(
+        index.toDouble(),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    _onDestinationSelected(index, widget.navigationShell, reset: reset);
+  }
+
+  void _select(int index) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _settle(index, reset: true);
+  }
+
+  void _startDrag() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _position.stop();
+    _dragOrigin = _selectedIndex(widget.navigationShell);
+    _dragging = true;
+  }
+
+  void _startPageDrag() {
+    final shell = widget.navigationShell;
+    final navigator =
+        shell.route.branches[shell.currentIndex].navigatorKey.currentState;
+    if (!_composing && (navigator?.canPop() ?? false)) return;
+    _startDrag();
+  }
+
+  void _updateDrag(double delta) {
+    if (!_dragging) return;
+    _position.value = (_position.value + delta).clamp(0.0, 4.0);
+    final index = _position.value.round();
+    if (index != _selectedIndex(widget.navigationShell)) {
+      _routeIndex = index;
+      _onDestinationSelected(index, widget.navigationShell, reset: false);
+    }
+  }
+
+  void _endDrag(double velocity) {
+    if (!_dragging) return;
+    _settle(
+      (_position.value + (velocity.abs() > 2 ? velocity.sign * .35 : 0))
+          .round()
+          .clamp(0, 4),
+    );
+  }
+
+  void _cancelDrag() {
+    if (_dragging) _settle(_dragOrigin);
+  }
+
   /// Whether the composer is showing in place of [navigationShell].
   ///
   /// Composing used to push [CreatePostScreen] as its own route, which
@@ -129,20 +205,54 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     ref.listen(pushTapsProvider, (previous, next) {
       if (next.value case final target?) _openPushTarget(target);
     });
+    final selected = _selectedIndex(navigationShell);
+    if (!_dragging && _routeIndex != selected) {
+      _routeIndex = selected;
+      _position.value = selected.toDouble();
+    }
+    final floating = ref.watch(floatingNavigationProvider);
+    final barInset = floating
+        ? (NavigationBarTheme.of(context).height ?? 68) +
+              8 +
+              MediaQuery.paddingOf(context).bottom.clamp(12.0, double.infinity)
+        : 0.0;
     return Scaffold(
-      body: _composing
-          // `canPop: false` scopes the back-button interception to exactly
-          // while the composer is showing, instead of a permanent PopScope
-          // on the shell that would swallow "back exits the app" from the
-          // home tab too.
-          ? PopScope(
-              canPop: false,
-              onPopInvokedWithResult: (didPop, result) {
-                if (!didPop) _closeCompose(false);
-              },
-              child: CreatePostScreen(onClose: _closeCompose),
-            )
-          : navigationShell,
+      extendBody: floating,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final direction = Directionality.of(context) == TextDirection.rtl
+              ? 1.0
+              : -1.0;
+          return GestureDetector(
+            key: const ValueKey('tab-page-swipe'),
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragStart: (_) => _startPageDrag(),
+            onHorizontalDragUpdate: (details) => _updateDrag(
+              details.delta.dx / constraints.maxWidth * direction,
+            ),
+            onHorizontalDragEnd: (details) => _endDrag(
+              (details.primaryVelocity ?? 0) / constraints.maxWidth * direction,
+            ),
+            onHorizontalDragCancel: _cancelDrag,
+            child: BottomNavigationInset(
+              height: barInset,
+              child: NavigationMotion(
+                position: _position,
+                selectedIndex: selected,
+                enabled: true,
+                composer: PopScope(
+                  canPop: !_composing,
+                  onPopInvokedWithResult: (didPop, result) {
+                    if (!didPop && _composing) _closeCompose(false);
+                  },
+                  child: CreatePostScreen(onClose: _closeCompose),
+                ),
+                child: navigationShell,
+              ),
+            ),
+          );
+        },
+      ),
       bottomNavigationBar: _bottomNavigationBar(l10n, navigationShell),
     );
   }
@@ -155,25 +265,23 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   void _onDestinationSelected(
     int index,
-    StatefulNavigationShell navigationShell,
-  ) {
+    StatefulNavigationShell navigationShell, {
+    bool reset = true,
+  }) {
     if (index == _addPostDestinationIndex) {
       setState(() => _composing = true);
       return;
     }
-    // Leaving the tab underneath the composer without saving; there is
-    // no draft to preserve once it's gone from screen.
+    // The composer flushes its local draft when this transition disposes it.
     if (_composing) setState(() => _composing = false);
     final branchIndex = index < _addPostDestinationIndex ? index : index - 1;
     navigationShell.goBranch(
       branchIndex,
-      initialLocation: branchIndex == navigationShell.currentIndex,
+      initialLocation: reset && branchIndex == navigationShell.currentIndex,
     );
   }
 
-  /// The bottom bar's icons/labels, shared between the iOS-only [_BottomBar]
-  /// and Android's stock [NavigationBar] below — only the *container*
-  /// differs per platform, not what's in it.
+  /// Labels and icons are shared by both navigation presentations.
   List<_BottomBarDestination> _destinations(AppLocalizations l10n) => [
     _BottomBarDestination(
       icon: Icons.home_outlined,
@@ -197,52 +305,41 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     _BottomBarDestination(iconBuilder: _profileIcon, label: l10n.profileTitle),
   ];
 
-  /// iOS gets the custom [_BottomBar] (IMM-195: [NavigationBar] bakes in an
-  /// asymmetric icon row that no wrapping can fix — see its doc comment).
-  /// Android's [NavigationBar] never had that asymmetry (no home-indicator
-  /// safe-area to expose it) and the IMM-195 ticket required Android's bar
-  /// to stay unchanged, so Android keeps using the stock widget.
   Widget _bottomNavigationBar(
     AppLocalizations l10n,
     StatefulNavigationShell navigationShell,
   ) {
-    final selectedIndex = _selectedIndex(navigationShell);
-    void onSelected(int index) =>
-        _onDestinationSelected(index, navigationShell);
-    if (Platform.isIOS) {
-      return _BottomBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onSelected,
-        destinations: _destinations(l10n),
+    if (ref.watch(floatingNavigationProvider)) {
+      return AmicusNavigationBar(
+        position: _position,
+        selectedIndex: _selectedIndex(navigationShell),
+        destinations: [
+          for (final destination in _destinations(l10n))
+            NavigationDestination(
+              icon: destination.iconBuilder?.call(25) ?? Icon(destination.icon),
+              selectedIcon:
+                  destination.iconBuilder?.call(25) ??
+                  Icon(destination.selectedIcon ?? destination.icon),
+              label: destination.label,
+            ),
+        ],
+        onSelected: _select,
+        onDragStart: _startDrag,
+        onDragUpdate: _updateDrag,
+        onDragEnd: _endDrag,
+        onDragCancel: _cancelDrag,
       );
     }
-    return NavigationBar(
-      // Icons only. The labels stay in the tree (`label` is what a screen
-      // reader announces and what the long-press tooltip shows), they are
-      // just not painted — five of them across a phone would either wrap or
-      // shrink to unreadable.
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onSelected,
-      destinations: [
-        for (final destination in _destinations(l10n))
-          NavigationDestination(
-            icon: destination.iconBuilder?.call(24) ?? Icon(destination.icon),
-            selectedIcon:
-                destination.iconBuilder?.call(24) ??
-                (destination.selectedIcon == null
-                    ? null
-                    : Icon(destination.selectedIcon)),
-            label: destination.label,
-          ),
-      ],
+    return _BottomBar(
+      selectedIndex: _selectedIndex(navigationShell),
+      onDestinationSelected: _select,
+      destinations: _destinations(l10n),
+      floating: ref.watch(floatingNavigationProvider),
     );
   }
 }
 
-/// One tappable entry in [_BottomBar]. Either a Material [icon] (with an
-/// optional [selectedIcon] variant), or a fully custom [iconWidget] (the
-/// profile avatar) — never both.
+/// A tab with a standard icon or the current user's avatar.
 class _BottomBarDestination {
   const _BottomBarDestination({
     this.icon,
@@ -260,82 +357,66 @@ class _BottomBarDestination {
   final String label;
 }
 
-/// A from-scratch bottom tab bar, replacing Material's [NavigationBar].
-///
-/// [NavigationBar] bakes in an asymmetric icon row: it reserves space below
-/// the icon for a label even with [NavigationDestinationLabelBehavior
-/// .alwaysHide], so the icon row itself sits closer to the top than the
-/// bottom no matter how the surrounding padding or safe area is adjusted
-/// (IMM-195). Building the bar directly gives full control over that
-/// spacing: an explicit, symmetric [_verticalPadding] around the icon row,
-/// with the bottom safe area reserved *outside* it via [SafeArea] and zero
-/// gap in between.
+/// Both styles reserve their own space: content is never hidden under the bar.
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.destinations,
     required this.selectedIndex,
     required this.onDestinationSelected,
+    required this.floating,
   });
 
   final List<_BottomBarDestination> destinations;
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
-
-  static const _verticalPadding = 12.0;
-  static const _phoneIconSize = 26.0;
-  static const _tabletIconSize = 38.0;
-  // iPad's own multitasking-window breakpoint (see Scaffold.of usage
-  // elsewhere); anything narrower is a phone, however large its pixel count.
-  static const _tabletShortestSide = 600.0;
+  final bool floating;
 
   @override
   Widget build(BuildContext context) {
-    final navBarTheme = NavigationBarTheme.of(context);
-    final colorScheme = ColorScheme.of(context);
-    final backgroundColor =
-        navBarTheme.backgroundColor ?? colorScheme.surfaceContainer;
-    final indicatorColor =
-        navBarTheme.indicatorColor ?? colorScheme.secondaryContainer;
-    final selectedColor =
-        navBarTheme.iconTheme?.resolve({WidgetState.selected})?.color ??
-        colorScheme.onSecondaryContainer;
-    final unselectedColor =
-        navBarTheme.iconTheme?.resolve(const {})?.color ??
-        colorScheme.onSurfaceVariant;
-    final isTablet =
-        MediaQuery.sizeOf(context).shortestSide >= _tabletShortestSide;
-    final iconSize = isTablet ? _tabletIconSize : _phoneIconSize;
-    return ColoredBox(
-      color: backgroundColor,
-      // Reserves the bottom inset (home indicator / iPad window chrome)
-      // *outside* the padded icon row below, rather than growing the row's
-      // own padding — that is what keeps the space above and below the
-      // icons equal regardless of the device's safe area.
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.only(
-            // A hair more on top than bottom: at this padding scale the
-            // rendered result reads as visually equal — matching pixels
-            // exactly left the top looking very slightly shy (Madrus,
-            // IMM-195 verification pass).
-            top: _verticalPadding + 8,
-            bottom: _verticalPadding,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              for (final (index, destination) in destinations.indexed)
-                _BottomBarIcon(
-                  destination: destination,
-                  selected: index == selectedIndex,
-                  iconSize: iconSize,
-                  indicatorColor: indicatorColor,
-                  selectedColor: selectedColor,
-                  unselectedColor: unselectedColor,
-                  onTap: () => onDestinationSelected(index),
+    final scheme = Theme.of(context).colorScheme;
+    final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: floating
+            ? const EdgeInsets.fromLTRB(16, 8, 16, 12)
+            : EdgeInsets.zero,
+        child: Align(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: floating ? 560 : double.infinity,
+            ),
+            child: Material(
+              color: scheme.surfaceContainerLowest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(floating ? 24 : 0),
+                side: BorderSide(
+                  color: scheme.outlineVariant.withValues(alpha: .65),
                 ),
-            ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    for (final (index, destination) in destinations.indexed)
+                      Expanded(
+                        child: _BottomBarIcon(
+                          destination: destination,
+                          selected: index == selectedIndex,
+                          compose: index == _addPostDestinationIndex,
+                          iconSize: isTablet ? 30 : 25,
+                          onTap: () => onDestinationSelected(index),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -347,58 +428,63 @@ class _BottomBarIcon extends StatelessWidget {
   const _BottomBarIcon({
     required this.destination,
     required this.selected,
+    required this.compose,
     required this.iconSize,
-    required this.indicatorColor,
-    required this.selectedColor,
-    required this.unselectedColor,
     required this.onTap,
   });
 
   final _BottomBarDestination destination;
   final bool selected;
+  final bool compose;
   final double iconSize;
-  final Color indicatorColor;
-  final Color selectedColor;
-  final Color unselectedColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = compose
+        ? scheme.onPrimary
+        : selected
+        ? scheme.primary
+        : scheme.onSurfaceVariant;
     final icon =
         destination.iconBuilder?.call(iconSize) ??
         Icon(
-          selected
+          compose
+              ? Icons.add
+              : selected
               ? (destination.selectedIcon ?? destination.icon)
               : destination.icon,
           size: iconSize,
-          color: selected ? selectedColor : unselectedColor,
+          color: color,
         );
-    // Fixed width/height rather than symmetric padding: padding only
-    // guarantees centering if nothing upstream (InkResponse's own minimum
-    // tap-target inset, in particular) nudges the box afterwards. A pinned
-    // size plus `Center` centers the icon unconditionally, independent of
-    // whatever wraps it outside — which is what "not vertically centered"
-    // on the selected pill turned out to need (IMM-195).
-    final pillWidth = iconSize * 2;
-    final pillHeight = iconSize * 1.5;
     return Tooltip(
       message: destination.label,
       child: Semantics(
         button: true,
         selected: selected,
         label: destination.label,
-        child: InkResponse(
+        child: InkWell(
           onTap: onTap,
-          radius: iconSize,
-          child: Container(
-            width: pillWidth,
-            height: pillHeight,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? indicatorColor : Colors.transparent,
-              borderRadius: BorderRadius.circular(pillHeight),
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 48,
+            child: Center(
+              child: Container(
+                width: 48,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: compose
+                      ? scheme.primary
+                      : selected
+                      ? scheme.primaryContainer
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(compose ? 16 : 14),
+                ),
+                child: ExcludeSemantics(child: icon),
+              ),
             ),
-            child: icon,
           ),
         ),
       ),

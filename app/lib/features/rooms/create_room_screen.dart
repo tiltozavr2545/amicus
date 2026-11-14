@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../shared/bottom_navigation_inset.dart';
+import '../../shared/content_width.dart';
 import '../../shared/refresh_after_await.dart';
 import '../connections/connections_repository.dart';
 import '../connections/connections_screen.dart';
@@ -60,23 +62,19 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           );
       container.read(roomsRefreshTickProvider.notifier).bump();
       if (!mounted) return;
-      // Straight into the new room's chat: the room was created to be used,
-      // and coming back to a list to find it again is a wasted tap. Replacing
-      // this route rather than stacking on it keeps Back going to the list.
-      //
-      // `unawaited`, and an `await` here would be a bug: the Future from
-      // `pushReplacement()` completes only once the CHAT has itself been left,
-      // while the `finally` below clears `_isSubmitting` - that is, on a screen
-      // that no longer exists by then, where `mounted` is already false. There
-      // is nothing to wait for: this route is being replaced and the function
-      // has no continuation.
-      unawaited(
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => RoomChatScreen(roomId: roomId),
-          ),
-        ),
+      // Close creation, then cover the shell with the chat. Back returns to
+      // the room list, and the bottom navigation never enters the conversation.
+      final local = Navigator.of(context);
+      final root = Navigator.of(context, rootNavigator: true);
+      final chat = MaterialPageRoute<void>(
+        builder: (_) => RoomChatScreen(roomId: roomId),
       );
+      if (identical(local, root)) {
+        unawaited(root.pushReplacement(chat));
+      } else {
+        local.pop();
+        unawaited(root.push(chat));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _errorMessage = l10n.failedToCreateRoomError);
@@ -106,70 +104,79 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           ),
         ],
       ),
-      body: friendsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(child: Text(l10n.unexpectedError)),
-        data: (friends) {
-          // A blocked connection is filtered out here because the server
-          // refuses to put the two of you in one room (the one thing a block
-          // still does once you are both inside a room is nothing — see the
-          // rooms migration).
-          final candidates = [
-            for (final friend in friends)
-              if (!friend.isBlocked) friend,
-          ];
-          if (candidates.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text(
-                l10n.noConnectionsYetMessage,
-                textAlign: TextAlign.center,
-              ),
-            );
-          }
+      body: ContentWidth(
+        child: friendsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => Center(child: Text(l10n.unexpectedError)),
+          data: (friends) {
+            // A blocked connection is filtered out here because the server
+            // refuses to put the two of you in one room (the one thing a block
+            // still does once you are both inside a room is nothing — see the
+            // rooms migration).
+            final candidates = [
+              for (final friend in friends)
+                if (!friend.isBlocked) friend,
+            ];
+            if (candidates.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text(
+                  l10n.noConnectionsYetMessage,
+                  textAlign: TextAlign.center,
+                ),
+              );
+            }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(l10n.selectRoomMembersMessage),
-              if (_selected.length > 1) ...[
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _nameController,
-                  maxLength: 100,
-                  decoration: InputDecoration(
-                    labelText: l10n.roomNameLabel,
-                    helperText: l10n.roomNameHint,
-                    border: const OutlineInputBorder(),
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + BottomNavigationInset.of(context),
+              ),
+              children: [
+                Text(l10n.selectRoomMembersMessage),
+                if (_selected.length > 1) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _nameController,
+                    maxLength: 100,
+                    decoration: InputDecoration(
+                      labelText: l10n.roomNameLabel,
+                      helperText: l10n.roomNameHint,
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
-                ),
+                ],
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                for (final friend in candidates)
+                  CheckboxListTile(
+                    value: _selected.contains(friend.userId),
+                    secondary: FriendAvatar(avatarPath: friend.avatarPath),
+                    title: Text(friend.name),
+                    onChanged: _isSubmitting
+                        ? null
+                        : (value) => setState(() {
+                            if (value ?? false) {
+                              _selected.add(friend.userId);
+                            } else {
+                              _selected.remove(friend.userId);
+                            }
+                          }),
+                  ),
               ],
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              const SizedBox(height: 8),
-              for (final friend in candidates)
-                CheckboxListTile(
-                  value: _selected.contains(friend.userId),
-                  secondary: FriendAvatar(avatarPath: friend.avatarPath),
-                  title: Text(friend.name),
-                  onChanged: _isSubmitting
-                      ? null
-                      : (value) => setState(() {
-                          if (value ?? false) {
-                            _selected.add(friend.userId);
-                          } else {
-                            _selected.remove(friend.userId);
-                          }
-                        }),
-                ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

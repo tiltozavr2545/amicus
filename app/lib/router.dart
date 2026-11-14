@@ -14,6 +14,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/main_shell_screen.dart';
+import 'features/shell/navigation_motion.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authChanges = ref.watch(supabaseClientProvider).auth.onAuthStateChange;
@@ -37,11 +38,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       );
     },
     routes: [
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
+        navigatorContainerBuilder: (context, shell, children) =>
+            NavigationPages(shell: shell, children: children),
         builder: (context, state, navigationShell) =>
             MainShellScreen(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/',
@@ -50,6 +54,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/rooms',
@@ -58,6 +63,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/connections',
@@ -66,6 +72,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/profile',
