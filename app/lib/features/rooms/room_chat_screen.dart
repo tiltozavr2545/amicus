@@ -21,7 +21,9 @@ import '../../shared/refresh_after_await.dart';
 import '../../shared/signed_url_cache.dart';
 import '../../shared/sized_memory_image.dart';
 import '../auth/auth_providers.dart';
+import '../connections/friend_profile_screen.dart';
 import 'room_details_screen.dart';
+import 'room_avatar.dart';
 import 'rooms_repository.dart';
 
 /// How long after the last keystroke this viewer stops being "typing".
@@ -402,7 +404,10 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           // keystroke that should have re-raised the indicator.
           onSubscribed: () {
             if (!mounted) return false;
-            final typing = _textController.text.trim().isNotEmpty;
+            final typing =
+                _editTarget == null &&
+                _textController.text.trim().isNotEmpty &&
+                (_typingTimer?.isActive ?? false);
             _announcedTyping = typing;
             return typing;
           },
@@ -461,6 +466,18 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     return room.isDirect
         ? l10n.onlineStatus
         : l10n.onlineCountStatus(present.length);
+  }
+
+  void _openMemberProfile(RoomMember member) {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (_) => FriendProfileScreen(
+          friendId: member.userId,
+          friendName: member.name,
+          avatarPath: member.avatarPath,
+        ),
+      ),
+    );
   }
 
   Future<void> _markRead() async {
@@ -1093,34 +1110,76 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              room == null
-                  ? l10n.roomChatTitle
-                  : roomDisplayName(
-                      room,
-                      viewerId,
-                      fallback: l10n.roomFallbackName,
+        titleSpacing: 0,
+        title: Tooltip(
+          message: room?.isDirect == true
+              ? l10n.profileTitle
+              : l10n.roomMembersTitle,
+          child: InkWell(
+            key: const ValueKey('chat-header-link'),
+            borderRadius: BorderRadius.circular(12),
+            onTap: room == null
+                ? null
+                : () {
+                    final others = room.othersThan(viewerId);
+                    if (room.isDirect && others.isNotEmpty) {
+                      _openMemberProfile(others.first);
+                    } else {
+                      Navigator.of(context, rootNavigator: true).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              RoomDetailsScreen(roomId: widget.roomId),
+                        ),
+                      );
+                    }
+                  },
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: [
+                  if (room != null) ...[
+                    RoomAvatar(room: room, viewerId: viewerId, radius: 18),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          room == null
+                              ? l10n.roomChatTitle
+                              : roomDisplayName(
+                                  room,
+                                  viewerId,
+                                  fallback: l10n.roomFallbackName,
+                                ),
+                          style: Theme.of(context).textTheme.titleMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Under the name, where every messenger puts it — and only when
+                        // there is something to say: an empty second line would push the
+                        // name up for nothing.
+                        if (status != null)
+                          Text(
+                            status,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                      ],
                     ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            // Under the name, where every messenger puts it — and only when
-            // there is something to say: an empty second line would push the
-            // name up for nothing.
-            if (status != null)
-              Text(
-                status,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+                  ),
+                ],
               ),
-          ],
+            ),
+          ),
         ),
         actions: [
           // Who is in the room, its name and its picture — one level down
@@ -1206,6 +1265,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                               room?.memberById(message.authorId)?.name ??
                               message.authorName ??
                               l10n.formerMemberLabel,
+                          onOpenAuthor: switch (room?.memberById(
+                            message.authorId,
+                          )) {
+                            final member? when member.userId != viewerId =>
+                              () => _openMemberProfile(member),
+                            _ => null,
+                          },
                           room: room,
                           receipts: _receipts,
                           replyPreview: _resolveReplyPreview(message, room),
@@ -1289,7 +1355,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
             ),
           SafeArea(
             top: false,
-            child: Padding(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+              ),
               padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1310,6 +1384,23 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: l10n.messageHint,
+                        fillColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerLow,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
                         // The counter only matters as one approaches the
                         // limit, and a chat field with a permanent "0/5000"
                         // under it looks like a form.
@@ -1783,6 +1874,7 @@ class _MessageBubble extends StatelessWidget {
     this.onEdit,
     this.onReply,
     this.onTapReply,
+    this.onOpenAuthor,
   });
 
   final RoomMessage message;
@@ -1821,6 +1913,7 @@ class _MessageBubble extends StatelessWidget {
   /// Scrolls to and highlights the message this one quotes. Null when
   /// [message] isn't a reply.
   final VoidCallback? onTapReply;
+  final VoidCallback? onOpenAuthor;
 
   /// Ticks for [message], drawn only on the viewer's own, non-tombstoned
   /// messages — a direct room gets an icon (sent/delivered/read, the
@@ -1972,7 +2065,7 @@ class _MessageBubble extends StatelessWidget {
             color: isHighlighted
                 ? scheme.primary.withValues(alpha: 0.25)
                 : (isMine
-                      ? scheme.primaryContainer
+                      ? scheme.surfaceContainerHighest
                       : scheme.surfaceContainerLowest),
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(20),
@@ -1993,10 +2086,21 @@ class _MessageBubble extends StatelessWidget {
               // screen already says who wrote them.
               if (!isMine)
                 SelectionContainer.disabled(
-                  child: Text(
-                    authorName,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.primary,
+                  child: InkWell(
+                    key: ValueKey('message-author-${message.authorId}'),
+                    onTap: onOpenAuthor,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 40),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          authorName,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.primary,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

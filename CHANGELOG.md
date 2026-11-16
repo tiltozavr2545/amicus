@@ -2760,3 +2760,27 @@ Added out of order (before Stage 5, a deliberate deviation from the step-by-step
   persistent app storage. Successful publication clears the draft; failed
   attempts retain their retry token. Sign-out retains the account's draft;
   account deletion removes it. Editing an existing post keeps this draft intact.
+
+
+## 0.19.1
+
+- **A quieter visual identity:** neutral white and graphite surfaces replace the
+  teal tint in both themes. A restrained berry accent marks actions and active
+  controls, while favorites use amber. Profiles, avatars, chat bubbles, settings
+  headings and navigation selection give more space to people and content.
+- **Reworked screen composition:** the feed becomes a continuous reading surface
+  instead of repeated cards. Profiles pair the photo with an editable name;
+  gallery tools are available from a camera control on the avatar. Connections
+  keep expandable invitation tools at the top, with a single labeled action
+  menu per person and compact status indicators beside names. The same indicators appear beside post authors
+  and update when relationship settings change.
+- **Writing and conversations:** a spacious post editor, conversation avatars in
+  chat headers, separate input trays in chats and comments, and room previews
+  with dates and stronger unread titles. Authentication has a compact brand
+  signature and a separate form; settings collect related controls into groups.
+- **Matching app icon:** berry launcher backgrounds on Android and iOS,
+  original circle artwork preserved, and neutral launch surfaces.
+- **Chat profiles and presence:** tap the direct-chat header or a member's name
+  above a message to open their profile. Reconnecting no longer announces an
+  idle draft or an edited message as typing. Typing replaces the online status
+  and clears after four seconds without input.

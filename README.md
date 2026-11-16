@@ -31,7 +31,7 @@ Full feature history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
-These screenshots predate the 0.19.0 interface redesign.
+Interface previews from 0.19.1, using fictional people and content.
 
 <table>
 <tr>

@@ -496,9 +496,19 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
               children: [
                 TextField(
                   controller: _textController,
-                  maxLines: 5,
+                  minLines: 7,
+                  maxLines: null,
+                  style: Theme.of(context).textTheme.bodyLarge,
                   maxLength: 5000,
-                  decoration: InputDecoration(hintText: l10n.whatsNewHint),
+                  decoration: InputDecoration(
+                    hintText: l10n.whatsNewHint,
+                    fillColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerLowest,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

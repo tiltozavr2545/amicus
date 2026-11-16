@@ -58,9 +58,19 @@ form widths on tablets; authentication forms scroll above the keyboard.
 
 The header and welcome screen use the launcher's foreground without its colored
 background or adaptive-icon padding. The artwork is white in the dark theme and
-tinted with the primary teal in the light theme. Android notifications use a
+tinted with the primary berry in the light theme. Android notifications use a
 separate 24 dp vector with stronger lines and nodes for small display sizes.
 Its appearance on Samsung One UI still needs device verification.
+
+In a direct chat, tapping the header opens the other person's profile. Group
+headers open room details, while member names above messages link to their
+profiles. These are root-navigator routes; returning retains the chat and draft.
+Profile data continues to use its existing visibility rules.
+
+Presence means the other person has this chat open. Typing takes priority over
+online and expires after four seconds without input. Rejoins announce typing
+only while that input timer is active and the composer is not editing a message;
+an idle, nonempty draft must not revive the typing indicator.
 
 ### Navigation and profiles
 
@@ -76,9 +86,13 @@ open that person's profile. Post menus and trailing relationship controls keep
 their separate actions. Feed queries join the author's `avatar_path`; post copies
 and the per-viewer feed cache preserve it. Cards share `avatarBytesProvider` with
 profiles and Connections, so posts by one author reuse a download. Initials are
-the fallback while a photograph is unavailable.
+the fallback while a photograph is unavailable. `ConnectionName` shares private
+favorite/mute/block indicators between author headers and Connections. The
+`connectionsByIdProvider` lookup reuses `friendsProvider`, so relationship changes
+update visible badges without fetching posts again; a missing relationship
+snapshot leaves the name visible without badges.
 
-Floating navigation synchronizes its glass selection and pages through one
+Floating navigation synchronizes its neutral glass selection and pages through one
 animation controller. Dragging the bar or swiping a primary page changes tabs;
 cancelling returns to the starting tab. Reduced motion skips settling animations.
 `BottomNavigationInset` clears the full floating bar, its gaps and the system

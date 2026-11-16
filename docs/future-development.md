@@ -64,9 +64,6 @@ to the App Store:
 - Verify the updated notification silhouette on a Samsung One UI device. The
   notification resource builds successfully, but Samsung rendering has not yet
   been checked on hardware.
-- Replace the README's pre-0.19.0 screenshots with sanitized captures of the
-  redesigned interface. Keep real contact lists and private account content out
-  of published images.
 
 The current design and client behavior are recorded in
 [interface-design.md](interface-design.md) and

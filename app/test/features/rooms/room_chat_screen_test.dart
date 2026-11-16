@@ -6,11 +6,32 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'package:amicus/features/auth/auth_providers.dart';
+import 'package:amicus/features/connections/friend_profile_screen.dart';
+import 'package:amicus/features/profile/profile_repository.dart';
+import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/features/rooms/room_chat_screen.dart';
 import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 import 'package:amicus/shared/media_picking.dart';
 import 'package:amicus/shared/signed_url_cache.dart';
+
+class _Profile implements ProfileRepository {
+  @override
+  Future<List<ProfilePhoto>> fetchPhotos(String userId) async => [];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Feed implements FeedRepository {
+  @override
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    Set<String> mutedAuthorIds = const {},
+  }) async => [];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 /// Only the members the chat screen calls need real behaviour; the rest
 /// satisfy the `implements` contract via `noSuchMethod`, the same trick the
@@ -316,6 +337,8 @@ Widget _wrap(
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('me'),
+      profileRepositoryProvider.overrideWithValue(_Profile()),
+      feedRepositoryProvider.overrideWithValue(_Feed()),
       roomsRepositoryProvider.overrideWithValue(repo),
       myRoomsProvider.overrideWith((ref) => rooms.isEmpty ? [_room] : rooms),
     ],
@@ -330,6 +353,70 @@ Widget _wrap(
 }
 
 void main() {
+  testWidgets(
+    'a direct chat header opens the peer profile and returns to chat',
+    (tester) async {
+      final direct = Room(
+        id: 'room-1',
+        isDirect: true,
+        ownerId: 'me',
+        createdAt: DateTime(2026),
+        members: _room.members,
+      );
+      await tester.pumpWidget(_wrap(_FakeRoomsRepository(), rooms: [direct]));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chat-header-link')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FriendProfileScreen>(find.byType(FriendProfileScreen))
+            .friendId,
+        'anya',
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(RoomChatScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets('a message author opens that member profile', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        _FakeRoomsRepository(
+          messages: [
+            _message(id: 'author-link', authorId: 'anya', text: 'hello'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('message-author-anya')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FriendProfileScreen>(find.byType(FriendProfileScreen))
+          .friendId,
+      'anya',
+    );
+    expect(find.text('Reply'), findsNothing);
+  });
+
+  testWidgets('typing replaces online and clears back to online', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    repo.onPresence!({'me', 'anya'}, {'anya'});
+    await tester.pump();
+    expect(find.text('Аня is typing…'), findsOneWidget);
+    expect(find.text('1 online'), findsNothing);
+    repo.onPresence!({'me', 'anya'}, {});
+    await tester.pump();
+    expect(find.text('Аня is typing…'), findsNothing);
+    expect(find.text('1 online'), findsOneWidget);
+  });
+
   testWidgets('shows the room name and its messages', (tester) async {
     final repo = _FakeRoomsRepository(
       messages: [
@@ -429,6 +516,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.typingAnnounced, [true, false]);
+  });
+
+  testWidgets('a rejoin does not revive typing from an idle draft', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'unfinished draft');
+    await tester.pump(const Duration(seconds: 5));
+    expect(repo.typingAnnounced, [true, false]);
+    expect(repo.announceSelf!(), isFalse);
+  });
+
+  testWidgets('a rejoin does not announce editing as typing', (tester) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'edit-me',
+          authorId: 'me',
+          text: 'old text',
+          createdAt: DateTime.now(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    await tester.tap(_messageText('old text'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    expect(repo.announceSelf!(), isFalse);
   });
 
   testWidgets('a join announces the draft rather than wiping it', (

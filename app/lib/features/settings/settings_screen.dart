@@ -233,12 +233,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Widget _group(List<Widget> children) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    ),
+  );
+
   Widget _section(String label) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
     child: Text(
       label,
       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     ),
   );
@@ -267,163 +280,170 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           padding: const EdgeInsets.only(bottom: 32),
           children: [
             _section(l10n.notificationsSectionTitle),
-            Builder(
-              builder: (context) {
-                final prefs =
-                    _prefs ??
-                    prefsAsync.asData?.value ??
-                    const NotificationPreferences();
-                return Column(
-                  children: [
-                    SwitchListTile(
-                      secondary: const Icon(Icons.campaign_outlined),
-                      title: Text(l10n.notifyAppUpdatesLabel),
-                      value: prefs.systemAccount,
-                      onChanged: (v) =>
-                          _toggle((p, v) => p.copyWith(systemAccount: v), v),
-                    ),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.star_outline),
-                      title: Text(l10n.notifyFavoritesLabel),
-                      value: prefs.favorites,
-                      onChanged: (v) =>
-                          _toggle((p, v) => p.copyWith(favorites: v), v),
-                    ),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.chat_bubble_outline),
-                      title: Text(l10n.notifyCommentsLabel),
-                      value: prefs.comments,
-                      onChanged: (v) =>
-                          _toggle((p, v) => p.copyWith(comments: v), v),
-                    ),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.view_agenda_outlined),
-                      title: Text(l10n.notifyDigestLabel),
-                      value: prefs.digest,
-                      onChanged: (v) =>
-                          _toggle((p, v) => p.copyWith(digest: v), v),
-                    ),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.schedule_outlined),
-                      title: Text(l10n.notifyInactiveLabel),
-                      value: prefs.inactiveWeek,
-                      onChanged: (v) =>
-                          _toggle((p, v) => p.copyWith(inactiveWeek: v), v),
-                    ),
-                    SwitchListTile(
-                      secondary: const Icon(Icons.forum_outlined),
-                      title: Text(l10n.notifyRoomMessagesLabel),
-                      value: prefs.roomMessages,
-                      onChanged: (v) =>
-                          _toggle((p, v) => p.copyWith(roomMessages: v), v),
-                    ),
-                  ],
-                );
-              },
-            ),
-            if (prefsAsync.hasError)
-              ListTile(
-                title: Text(l10n.failedToLoadSettingsError),
-                trailing: IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () =>
-                      ref.invalidate(_notificationPreferencesProvider),
-                ),
-              ),
-            const Divider(height: 32, indent: 20, endIndent: 20),
-            _section(l10n.appearanceSectionTitle),
-            SettingsChoice(
-              icon: Icons.view_day_outlined,
-              title: l10n.navigationStyleLabel,
-              selection: DropdownButton<bool>(
-                isExpanded: true,
-                itemHeight: null,
-                style: dropdownStyle,
-                value: ref.watch(floatingNavigationProvider),
-                underline: const SizedBox.shrink(),
-                onChanged: (floating) {
-                  if (floating != null) {
-                    final notifier = ref.read(
-                      floatingNavigationProvider.notifier,
-                    );
-                    _savePreference(() => notifier.setFloating(floating));
-                  }
-                },
-                items: [
-                  DropdownMenuItem(
-                    value: true,
-                    child: Text(l10n.navigationFloatingLabel),
-                  ),
-                  DropdownMenuItem(
-                    value: false,
-                    child: Text(l10n.navigationClassicLabel),
-                  ),
-                ],
-              ),
-            ),
-            SettingsChoice(
-              icon: Icons.language,
-              title: l10n.languageSectionTitle,
-              selection: DropdownButton<String>(
-                isExpanded: true,
-                itemHeight: null,
-                style: dropdownStyle,
-                value: ref.watch(localeProvider)?.languageCode ?? '',
-                underline: const SizedBox.shrink(),
-                onChanged: (code) {
-                  if (code == null) return;
-                  final notifier = ref.read(localeProvider.notifier);
-                  _savePreference(
-                    () =>
-                        notifier.setLocale(code.isEmpty ? null : Locale(code)),
+            _group([
+              Builder(
+                builder: (context) {
+                  final prefs =
+                      _prefs ??
+                      prefsAsync.asData?.value ??
+                      const NotificationPreferences();
+                  return Column(
+                    children: [
+                      SwitchListTile(
+                        secondary: const Icon(Icons.campaign_outlined),
+                        title: Text(l10n.notifyAppUpdatesLabel),
+                        value: prefs.systemAccount,
+                        onChanged: (v) =>
+                            _toggle((p, v) => p.copyWith(systemAccount: v), v),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.star_outline),
+                        title: Text(l10n.notifyFavoritesLabel),
+                        value: prefs.favorites,
+                        onChanged: (v) =>
+                            _toggle((p, v) => p.copyWith(favorites: v), v),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.chat_bubble_outline),
+                        title: Text(l10n.notifyCommentsLabel),
+                        value: prefs.comments,
+                        onChanged: (v) =>
+                            _toggle((p, v) => p.copyWith(comments: v), v),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.view_agenda_outlined),
+                        title: Text(l10n.notifyDigestLabel),
+                        value: prefs.digest,
+                        onChanged: (v) =>
+                            _toggle((p, v) => p.copyWith(digest: v), v),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.schedule_outlined),
+                        title: Text(l10n.notifyInactiveLabel),
+                        value: prefs.inactiveWeek,
+                        onChanged: (v) =>
+                            _toggle((p, v) => p.copyWith(inactiveWeek: v), v),
+                      ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.forum_outlined),
+                        title: Text(l10n.notifyRoomMessagesLabel),
+                        value: prefs.roomMessages,
+                        onChanged: (v) =>
+                            _toggle((p, v) => p.copyWith(roomMessages: v), v),
+                      ),
+                    ],
                   );
                 },
-                items: [
-                  DropdownMenuItem(
-                    value: '',
-                    child: Text(l10n.languageSystemLabel),
+              ),
+              if (prefsAsync.hasError)
+                ListTile(
+                  title: Text(l10n.failedToLoadSettingsError),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () =>
+                        ref.invalidate(_notificationPreferencesProvider),
                   ),
-                  const DropdownMenuItem(value: 'en', child: Text('English')),
-                  const DropdownMenuItem(value: 'ru', child: Text('Русский')),
-                ],
+                ),
+            ]),
+            const SizedBox(height: 8),
+            _section(l10n.appearanceSectionTitle),
+            _group([
+              SettingsChoice(
+                icon: Icons.view_day_outlined,
+                title: l10n.navigationStyleLabel,
+                selection: DropdownButton<bool>(
+                  isExpanded: true,
+                  itemHeight: null,
+                  style: dropdownStyle,
+                  value: ref.watch(floatingNavigationProvider),
+                  underline: const SizedBox.shrink(),
+                  onChanged: (floating) {
+                    if (floating != null) {
+                      final notifier = ref.read(
+                        floatingNavigationProvider.notifier,
+                      );
+                      _savePreference(() => notifier.setFloating(floating));
+                    }
+                  },
+                  items: [
+                    DropdownMenuItem(
+                      value: true,
+                      child: Text(l10n.navigationFloatingLabel),
+                    ),
+                    DropdownMenuItem(
+                      value: false,
+                      child: Text(l10n.navigationClassicLabel),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SettingsChoice(
-              icon: Icons.brightness_6_outlined,
-              title: l10n.themeLabel,
-              selection: const ThemeModeChoice(),
-            ),
-            const Divider(height: 32, indent: 20, endIndent: 20),
+              SettingsChoice(
+                icon: Icons.language,
+                title: l10n.languageSectionTitle,
+                selection: DropdownButton<String>(
+                  isExpanded: true,
+                  itemHeight: null,
+                  style: dropdownStyle,
+                  value: ref.watch(localeProvider)?.languageCode ?? '',
+                  underline: const SizedBox.shrink(),
+                  onChanged: (code) {
+                    if (code == null) return;
+                    final notifier = ref.read(localeProvider.notifier);
+                    _savePreference(
+                      () => notifier.setLocale(
+                        code.isEmpty ? null : Locale(code),
+                      ),
+                    );
+                  },
+                  items: [
+                    DropdownMenuItem(
+                      value: '',
+                      child: Text(l10n.languageSystemLabel),
+                    ),
+                    const DropdownMenuItem(value: 'en', child: Text('English')),
+                    const DropdownMenuItem(value: 'ru', child: Text('Русский')),
+                  ],
+                ),
+              ),
+              SettingsChoice(
+                icon: Icons.brightness_6_outlined,
+                title: l10n.themeLabel,
+                selection: const ThemeModeChoice(),
+              ),
+            ]),
+            const SizedBox(height: 8),
             _section(l10n.accountSectionTitle),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: Text(l10n.signOutButton),
-              trailing: _isSigningOut
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              onTap: busy ? null : _signOut,
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.person_remove_outlined,
-                color: Theme.of(context).colorScheme.error,
+            _group([
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: Text(l10n.signOutButton),
+                trailing: _isSigningOut
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+                onTap: busy ? null : _signOut,
               ),
-              title: Text(
-                l10n.deleteAccountLabel,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ListTile(
+                leading: Icon(
+                  Icons.person_remove_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  l10n.deleteAccountLabel,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                trailing: _isDeletingAccount
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+                onTap: busy ? null : _deleteAccount,
               ),
-              trailing: _isDeletingAccount
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              onTap: busy ? null : _deleteAccount,
-            ),
-            const Divider(height: 32, indent: 20, endIndent: 20),
+            ]),
+            const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.info_outline),
               title: Text(l10n.aboutTitle),

@@ -56,31 +56,41 @@ class FriendProfileScreen extends ConsumerWidget {
     final photosAsync = ref.watch(_friendPhotosProvider(friendId));
     final photos = photosAsync.value ?? const <ProfilePhoto>[];
 
-    final header = Container(
-      margin: const EdgeInsets.only(bottom: 8),
+    final header = Padding(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.primaryContainer.withValues(alpha: .45),
-        borderRadius: BorderRadius.circular(24),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(
-            child: GestureDetector(
-              onTap: photos.isEmpty ? null : () => _openViewer(context, photos),
-              child: CircleAvatar(
-                radius: 56,
-                backgroundImage: avatarBytes != null
-                    ? sizedMemoryImage(context, avatarBytes, logicalWidth: 112)
-                    : null,
-                child: avatarBytes == null
-                    ? const Icon(Icons.person, size: 46)
-                    : null,
+          Row(
+            children: [
+              GestureDetector(
+                onTap: photos.isEmpty
+                    ? null
+                    : () => _openViewer(context, photos),
+                child: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHigh,
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  radius: 40,
+                  backgroundImage: avatarBytes != null
+                      ? sizedMemoryImage(context, avatarBytes, logicalWidth: 80)
+                      : null,
+                  child: avatarBytes == null
+                      ? const Icon(Icons.person, size: 46)
+                      : null,
+                ),
               ),
-            ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  friendName,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+              ),
+            ],
           ),
           // Same reasoning as ProfileScreen: without this, a failed load looks
           // exactly like a friend who has posted no photos — the avatar simply

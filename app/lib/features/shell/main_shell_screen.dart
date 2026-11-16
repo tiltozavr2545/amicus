@@ -177,6 +177,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       return Icon(Icons.person_outline, size: iconSize);
     }
     return CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
       radius: iconSize / 2,
       backgroundImage: sizedMemoryImage(
         context,
@@ -478,7 +480,7 @@ class _BottomBarIcon extends StatelessWidget {
                   color: compose
                       ? scheme.primary
                       : selected
-                      ? scheme.primaryContainer
+                      ? scheme.surfaceContainerHigh
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(compose ? 16 : 14),
                 ),

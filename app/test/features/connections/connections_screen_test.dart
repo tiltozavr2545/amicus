@@ -191,6 +191,13 @@ Widget _wrap(_FakeConnectionsRepository repo) {
   );
 }
 
+Future<void> _chooseAction(WidgetTester tester, String label) async {
+  await tester.tap(find.byType(PopupMenuButton<VoidCallback>).first);
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(PopupMenuItem<VoidCallback>, label));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -302,7 +309,7 @@ void main() {
       await tester.pumpWidget(_wrap(repo));
       await tester.pump();
 
-      await tester.tap(find.byTooltip('Mute'));
+      await _chooseAction(tester, 'Mute');
       await tester.pump();
 
       expect(find.text('Mute Alice?'), findsOneWidget);
@@ -312,7 +319,7 @@ void main() {
       await tester.pump();
       expect(repo.muteCalls, 0);
 
-      await tester.tap(find.byTooltip('Mute'));
+      await _chooseAction(tester, 'Mute');
       await tester.pump();
       await tester.tap(find.widgetWithText(TextButton, 'Mute'));
       await tester.pump();
@@ -336,7 +343,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Unmute'));
+    await _chooseAction(tester, 'Unmute');
     await tester.pump();
 
     expect(find.text('Mute Alice?'), findsNothing);
@@ -359,7 +366,7 @@ void main() {
       await tester.pumpWidget(_wrap(repo));
       await tester.pump();
 
-      await tester.tap(find.byTooltip('Block'));
+      await _chooseAction(tester, 'Block');
       await tester.pump();
 
       expect(find.text('Block Alice?'), findsOneWidget);
@@ -387,7 +394,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Unblock'));
+    await _chooseAction(tester, 'Unblock');
     await tester.pump();
 
     expect(find.text('Block Alice?'), findsNothing);
@@ -462,7 +469,7 @@ void main() {
     );
     final before = container.read(feedRefreshTickProvider);
 
-    await tester.tap(find.byTooltip('Mute'));
+    await _chooseAction(tester, 'Mute');
     await tester.pump();
     await tester.tap(find.widgetWithText(TextButton, 'Mute'));
     await tester.pump();
@@ -489,7 +496,7 @@ void main() {
     );
     final before = container.read(feedRefreshTickProvider);
 
-    await tester.tap(find.byTooltip('Unblock'));
+    await _chooseAction(tester, 'Unblock');
     await tester.pump();
 
     expect(repo.unblockCalls, 1);
@@ -531,7 +538,12 @@ void main() {
 
     // Back on the connections list, the row must have caught up.
     expect(find.byTooltip('Unblock'), findsNothing);
-    expect(find.byTooltip('Block'), findsOneWidget);
+    await tester.tap(find.byType(PopupMenuButton<VoidCallback>).first);
+    await tester.pumpAndSettle();
+    expect(
+      find.widgetWithText(PopupMenuItem<VoidCallback>, 'Block'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('A failed mute does not bump the feed refresh tick', (
@@ -554,7 +566,7 @@ void main() {
     );
     final before = container.read(feedRefreshTickProvider);
 
-    await tester.tap(find.byTooltip('Mute'));
+    await _chooseAction(tester, 'Mute');
     await tester.pump();
     await tester.tap(find.widgetWithText(TextButton, 'Mute'));
     await tester.pump();

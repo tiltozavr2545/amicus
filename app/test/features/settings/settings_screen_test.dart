@@ -126,6 +126,7 @@ void main() {
       await tester.scrollUntilVisible(choice, 200);
       await tester.scrollUntilVisible(choice, 200);
       await tester.ensureVisible(choice);
+      await tester.pumpAndSettle();
       await tester.tap(choice);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Dark').last);
@@ -163,6 +164,7 @@ void main() {
       final choice = find.byType(DropdownButton<ThemeMode>);
       await tester.scrollUntilVisible(choice, 200);
       await tester.ensureVisible(choice);
+      await tester.pumpAndSettle();
       await tester.tap(choice);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Light').last);
@@ -196,6 +198,7 @@ void main() {
       await tester.scrollUntilVisible(choice, 200);
       await tester.scrollUntilVisible(choice, 200);
       await tester.ensureVisible(choice);
+      await tester.pumpAndSettle();
       await tester.tap(choice);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Классическая').last);

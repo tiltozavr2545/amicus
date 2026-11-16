@@ -935,4 +935,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
     return 'You cannot post right now — the restriction lasts until $dateString.';
   }
+
+  @override
+  String connectionActionsTooltip(String name) {
+    return 'Actions for $name';
+  }
+
+  @override
+  String get managePhotosTitle => 'Profile photos';
 }

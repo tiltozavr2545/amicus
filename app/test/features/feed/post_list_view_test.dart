@@ -144,6 +144,11 @@ Post _post(
 /// The list reads its muted-author ids from here — mute is a feed filter now,
 /// not a server-side visibility rule, so the widget has to ask for it.
 class _FakeConnectionsRepository implements ConnectionsRepository {
+  List<Friend> friends = const [];
+
+  @override
+  Future<List<Friend>> fetchFriends(String currentUserId) async => friends;
+
   Set<String> mutedIds = const {};
   int mutedFetches = 0;
 
@@ -243,6 +248,41 @@ Future<_FakeFeedRepository> _twoReactionsInFlight(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'Author marks follow relationship changes without reloading posts',
+    (tester) async {
+      final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+      final connections = _FakeConnectionsRepository()
+        ..friends = [
+          Friend(
+            userId: 'author-1',
+            name: 'Author',
+            connectedAt: DateTime(2026),
+            isFavorite: true,
+            isMuted: true,
+          ),
+        ];
+      final container = _container(repo, connections: connections);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        _wrap(repo, container: container, authorId: 'author-1'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.star), findsOneWidget);
+      expect(find.byIcon(Icons.volume_off_outlined), findsOneWidget);
+      connections.friends = [
+        Friend(userId: 'author-1', name: 'Author', connectedAt: DateTime(2026)),
+      ];
+      // The badge update must not rely on the post request succeeding again.
+      repo.throwOnFetch = true;
+      container.invalidate(friendsProvider);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.star), findsNothing);
+      expect(find.byIcon(Icons.volume_off_outlined), findsNothing);
+      expect(find.text('text of p1'), findsOneWidget);
+    },
+  );
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -504,6 +544,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await tester.ensureVisible(find.byType(PageView).first);
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(PageView).first, const Offset(-500, 0));
     await tester.pumpAndSettle();
     expect(find.text('2/3'), findsOneWidget);
@@ -536,6 +578,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await tester.ensureVisible(find.byType(PageView));
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(PageView), const Offset(-500, 0));
     await tester.pumpAndSettle();
     expect(find.text('2/3'), findsOneWidget);

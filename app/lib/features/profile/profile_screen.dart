@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -325,104 +326,198 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             final photos = photosAsync.value ?? const <ProfilePhoto>[];
             final nameChanged = _nameController.text.trim() != profile.name;
 
-            final header = Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primaryContainer.withValues(alpha: .45),
-                borderRadius: BorderRadius.circular(24),
-              ),
+            final header = Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final avatar = GestureDetector(
-                        onTap: photos.isEmpty
-                            ? null
-                            : () => _openViewer(photos),
-                        child: CircleAvatar(
-                          radius: 56,
-                          backgroundImage: avatarBytes != null
-                              ? sizedMemoryImage(
+                      final portrait = SizedBox(
+                        width: 88,
+                        height: 88,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            GestureDetector(
+                              onTap: photos.isEmpty
+                                  ? null
+                                  : () => _openViewer(photos),
+                              child: CircleAvatar(
+                                backgroundColor: Theme.of(
                                   context,
-                                  avatarBytes,
-                                  logicalWidth: 112,
-                                )
-                              : null,
-                          child: avatarBytes == null
-                              ? const Icon(Icons.person, size: 46)
-                              : null,
+                                ).colorScheme.surfaceContainerHigh,
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                radius: 40,
+                                backgroundImage: avatarBytes != null
+                                    ? sizedMemoryImage(
+                                        context,
+                                        avatarBytes,
+                                        logicalWidth: 80,
+                                      )
+                                    : null,
+                                child: avatarBytes == null
+                                    ? const Icon(Icons.person, size: 34)
+                                    : null,
+                              ),
+                            ),
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: IconButton.filledTonal(
+                                tooltip: l10n.managePhotosTitle,
+                                iconSize: 18,
+                                icon: _isAddingPhotos
+                                    ? const SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.photo_camera_outlined),
+                                onPressed: _isAddingPhotos
+                                    ? null
+                                    : () => showModalBottomSheet<void>(
+                                        context: context,
+                                        useRootNavigator: true,
+                                        useSafeArea: true,
+                                        isScrollControlled: true,
+                                        builder: (sheetContext) => SafeArea(
+                                          top: false,
+                                          child: SingleChildScrollView(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.fromLTRB(
+                                                        20,
+                                                        8,
+                                                        20,
+                                                        16,
+                                                      ),
+                                                  child: Text(
+                                                    l10n.managePhotosTitle,
+                                                    style: Theme.of(
+                                                      context,
+                                                    ).textTheme.headlineSmall,
+                                                  ),
+                                                ),
+
+                                                _PhotoMenuAction(
+                                                  icon: Icons
+                                                      .add_photo_alternate_outlined,
+                                                  label: l10n.addPhotoButton,
+                                                  loading: _isAddingPhotos,
+                                                  onPressed:
+                                                      !photosLoaded ||
+                                                          _isAddingPhotos ||
+                                                          photos.length >=
+                                                              _maxProfilePhotos
+                                                      ? null
+                                                      : () => _addPhotos(
+                                                          userId!,
+                                                          photos,
+                                                        ),
+                                                ),
+                                                _PhotoMenuAction(
+                                                  icon: Icons.swap_vert,
+                                                  label:
+                                                      l10n.reorderPhotosButton,
+                                                  onPressed:
+                                                      !photosLoaded ||
+                                                          photos.length < 2
+                                                      ? null
+                                                      : () => _openGalleryEditor(
+                                                          ProfilePhotoReorderScreen(
+                                                            photos: photos,
+                                                          ),
+                                                        ),
+                                                ),
+                                                _PhotoMenuAction(
+                                                  icon: Icons.delete_outline,
+                                                  label: l10n.deletePhotoButton,
+                                                  onPressed:
+                                                      !photosLoaded ||
+                                                          photos.isEmpty
+                                                      ? null
+                                                      : () => _openGalleryEditor(
+                                                          ProfilePhotoDeleteScreen(
+                                                            photos: photos,
+                                                          ),
+                                                        ),
+                                                ),
+
+                                                const SizedBox(height: 16),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                       );
-                      final actions = <Widget>[
-                        _PhotoActionButton(
-                          icon: Icons.add_photo_alternate_outlined,
-                          label: l10n.addPhotoButton,
-                          loading: _isAddingPhotos,
-                          onPressed:
-                              !photosLoaded ||
-                                  _isAddingPhotos ||
-                                  photos.length >= _maxProfilePhotos
-                              ? null
-                              : () => _addPhotos(userId!, photos),
+                      final name = TextField(
+                        controller: _nameController,
+                        maxLines: null,
+                        textInputAction: TextInputAction.done,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.singleLineFormatter,
+                        ],
+                        // Matches the `users_name_length` CHECK added in
+                        // 20260820140000, so the cap reads as a full field rather
+                        // than as a database error on save. No counter: unlike the
+                        // composer's 5000, nobody writes a name near this limit.
+                        maxLength: 100,
+                        buildCounter:
+                            (
+                              _, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) => null,
+                        style: Theme.of(context).textTheme.headlineMedium,
+                        decoration: InputDecoration(
+                          labelText: l10n.nameLabel,
+                          filled: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          suffixIcon: const Icon(Icons.edit_outlined, size: 18),
                         ),
-                        _PhotoActionButton(
-                          icon: Icons.swap_vert,
-                          label: l10n.reorderPhotosButton,
-                          onPressed: !photosLoaded || photos.length < 2
-                              ? null
-                              : () => _openGalleryEditor(
-                                  ProfilePhotoReorderScreen(photos: photos),
-                                ),
-                        ),
-                        _PhotoActionButton(
-                          icon: Icons.delete_outline,
-                          label: l10n.deletePhotoButton,
-                          onPressed: !photosLoaded || photos.isEmpty
-                              ? null
-                              : () => _openGalleryEditor(
-                                  ProfilePhotoDeleteScreen(photos: photos),
-                                ),
-                        ),
-                      ];
-                      final stacked =
-                          constraints.maxWidth < 340 ||
-                          MediaQuery.textScalerOf(context).scale(15) > 18;
-                      return stacked
+                      );
+                      return constraints.maxWidth < 340
                           ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                avatar,
-                                const SizedBox(height: 16),
-                                Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 8,
-                                  children: actions,
-                                ),
+                                portrait,
+                                const SizedBox(height: 12),
+                                name,
                               ],
                             )
                           : Row(
                               children: [
-                                Expanded(child: Center(child: avatar)),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: actions,
-                                  ),
-                                ),
+                                portrait,
+                                const SizedBox(width: 20),
+                                Expanded(child: name),
                               ],
                             );
                     },
                   ),
-                  // A failed gallery load is otherwise indistinguishable from
-                  // having no photos: the three buttons above just sit disabled
-                  // (they key off `photosLoaded`, which is false on error too)
-                  // and the avatar falls back to the person icon. The string for
-                  // this existed in both locales from the start and was never
-                  // wired to anything — the audit found it as an unused ARB key,
-                  // which is what led back here.
+                  // Keep gallery failures visible even while photo actions are closed.
                   if (photosAsync.hasError) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -433,23 +528,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _nameController,
-                    // Matches the `users_name_length` CHECK added in
-                    // 20260820140000, so the cap reads as a full field rather
-                    // than as a database error on save. No counter: unlike the
-                    // composer's 5000, nobody writes a name near this limit.
-                    maxLength: 100,
-                    buildCounter:
-                        (
-                          _, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) => null,
-                    decoration: InputDecoration(labelText: l10n.nameLabel),
-                  ),
                   if (nameChanged) ...[
                     const SizedBox(height: 16),
                     FilledButton(
@@ -470,7 +548,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       l10n.myPostsTitle,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
                 ],
@@ -489,35 +567,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 }
 
-class _PhotoActionButton extends StatelessWidget {
-  const _PhotoActionButton({
+class _PhotoMenuAction extends StatelessWidget {
+  const _PhotoMenuAction({
     required this.icon,
     required this.label,
     required this.onPressed,
     this.loading = false,
   });
-
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
   final bool loading;
 
   @override
-  Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        textStyle: Theme.of(context).textTheme.labelLarge,
-      ),
-      icon: loading
-          ? const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon, size: 24),
-      label: Text(label),
-    );
-  }
+  Widget build(BuildContext context) => ListTile(
+    leading: Icon(icon),
+    title: Text(label),
+    enabled: onPressed != null && !loading,
+    onTap: onPressed == null || loading
+        ? null
+        : () {
+            Navigator.of(context).pop();
+            onPressed!();
+          },
+  );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -131,6 +132,10 @@ class _RoomListItem extends StatelessWidget {
     final subtitle = _subtitle(l10n);
 
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+        fontWeight: room.unreadCount > 0 ? FontWeight.w700 : FontWeight.w500,
+      ),
       // Tapping the circle opens whatever it depicts, and only the
       // two-person room depicts a person — see [RoomAvatar]. Everything else
       // is the room, so it goes to the room's details.
@@ -158,7 +163,7 @@ class _RoomListItem extends StatelessWidget {
       ),
       subtitle: subtitle == null
           ? null
-          : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
       onTap: () => Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute(builder: (_) => RoomChatScreen(roomId: room.id)),
       ),
@@ -166,20 +171,37 @@ class _RoomListItem extends StatelessWidget {
       // second tap target that does the same thing only makes the row harder
       // to hit. A muted room still shows its unread count — mute is about
       // pushes, and the badge is the one thing that says what was missed.
-      trailing: Row(
+      trailing: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (room.notificationsMuted)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Icon(
-                Icons.notifications_off_outlined,
-                size: 18,
-                semanticLabel: l10n.roomMutedLabel,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+          if (room.lastMessageAt != null) ...[
+            Text(
+              DateFormat.MMMd(l10n.localeName).format(room.lastMessageAt!),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: room.unreadCount > 0
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-          if (room.unreadCount > 0) Badge.count(count: room.unreadCount),
+            const SizedBox(height: 6),
+          ],
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (room.notificationsMuted)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.notifications_off_outlined,
+                    size: 18,
+                    semanticLabel: l10n.roomMutedLabel,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              if (room.unreadCount > 0) Badge.count(count: room.unreadCount),
+            ],
+          ),
         ],
       ),
     );

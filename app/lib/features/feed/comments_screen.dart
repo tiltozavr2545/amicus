@@ -308,19 +308,50 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                   ),
           ),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
+            top: false,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_replyTarget != null) _buildReplyBanner(l10n),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Expanded(
                         child: TextField(
                           controller: _textController,
                           maxLength: 5000,
+                          minLines: 1,
+                          maxLines: 4,
                           decoration: InputDecoration(
+                            counterText: '',
+                            filled: true,
+                            fillColor: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerLow,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
                             hintText: _replyTarget == null
                                 ? l10n.writeCommentHint
                                 : l10n.writeReplyHint,
