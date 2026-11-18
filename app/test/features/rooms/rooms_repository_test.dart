@@ -1,7 +1,88 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:amicus/features/rooms/rooms_repository.dart';
+import 'package:amicus/shared/signed_url_cache.dart';
+
+class _Realtime implements RealtimeChannel {
+  void Function(RealtimeSubscribeStatus, Object?)? statusChanged;
+  void Function(Object?)? systemEvent;
+  bool connected = false;
+  ChannelResponse nextAck = ChannelResponse.ok;
+  final List<Object> presenceWrites = [];
+
+  @override
+  bool get canPush => connected;
+
+  @override
+  RealtimeChannel onPresenceSync(
+    void Function(RealtimePresenceSyncPayload) callback,
+  ) => this;
+
+  @override
+  RealtimeChannel onPostgresChanges({
+    required PostgresChangeEvent event,
+    String? schema,
+    String? table,
+    PostgresChangeFilter? filter,
+    required void Function(PostgresChangePayload) callback,
+  }) => this;
+
+  @override
+  RealtimeChannel onSystemEvents(void Function(Object?) callback) {
+    systemEvent = callback;
+    return this;
+  }
+
+  @override
+  RealtimeChannel subscribe([
+    void Function(RealtimeSubscribeStatus, Object?)? callback,
+    Duration? timeout,
+  ]) {
+    statusChanged = callback;
+    return this;
+  }
+
+  @override
+  Future<ChannelResponse> track(
+    Map<String, dynamic> payload, [
+    Map<String, dynamic> opts = const {},
+  ]) async {
+    presenceWrites.add(payload['typing'] as bool);
+    final response = nextAck;
+    nextAck = ChannelResponse.ok;
+    return response;
+  }
+
+  @override
+  Future<ChannelResponse> untrack([
+    Map<String, dynamic> opts = const {},
+  ]) async {
+    presenceWrites.add('untrack');
+    return ChannelResponse.ok;
+  }
+
+  @override
+  Future<String> unsubscribe([Duration? timeout]) async => 'ok';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RealtimeSupabase implements SupabaseClient {
+  _RealtimeSupabase(this.testChannel);
+
+  final RealtimeChannel testChannel;
+
+  @override
+  RealtimeChannel channel(
+    String name, {
+    RealtimeChannelConfig opts = const RealtimeChannelConfig(),
+  }) => testChannel;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 Room _room({
   String? name,
@@ -21,6 +102,61 @@ const _anya = RoomMember(userId: 'anya', name: 'Аня');
 const _boris = RoomMember(userId: 'boris', name: 'Борис');
 
 void main() {
+  testWidgets(
+    'presence sends current state after joining and retries a lost ack',
+    (tester) async {
+      final realtime = _Realtime();
+      final repo = RoomsRepository(
+        _RealtimeSupabase(realtime),
+        SignedUrlCache(),
+      );
+      var typing = true;
+      final handle = repo.subscribeToPresence(
+        roomId: 'room',
+        userId: 'me',
+        active: true,
+        onChange: (_, _) {},
+        onSubscribed: () => typing,
+      );
+      handle.setTyping(true);
+      expect(realtime.presenceWrites, isEmpty);
+      realtime.connected = true;
+      realtime.statusChanged!(RealtimeSubscribeStatus.subscribed, null);
+      expect(realtime.presenceWrites, [true]);
+      realtime.nextAck = ChannelResponse.timedOut;
+      typing = false;
+      handle.setTyping(false);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      expect(realtime.presenceWrites, [true, false, false]);
+      handle.setActive(false);
+      handle.setActive(true);
+      expect(realtime.presenceWrites, [true, false, false, 'untrack', false]);
+      handle.unsubscribe();
+    },
+  );
+
+  test('channel readiness follows database replication, not Phoenix join', () {
+    final realtime = _Realtime();
+    final repo = RoomsRepository(_RealtimeSupabase(realtime), SignedUrlCache());
+    var snapshots = 0;
+    final unsubscribe = repo.subscribeToMessages(
+      roomId: 'room',
+      onInsert: (_) {},
+      onUpdate: (_) {},
+      onReady: () => snapshots++,
+    );
+    realtime.statusChanged?.call(RealtimeSubscribeStatus.subscribed, null);
+    realtime.systemEvent!({'extension': 'system', 'status': 'ok'});
+    realtime.systemEvent!({'extension': 'postgres_changes', 'status': 'error'});
+    expect(snapshots, 0);
+    for (var i = 0; i < 2; i++) {
+      realtime.systemEvent!({'extension': 'postgres_changes', 'status': 'ok'});
+    }
+    expect(snapshots, 2);
+    unsubscribe();
+  });
+
   group('roomDisplayName', () {
     test('a two-person room is named after the other person', () {
       final room = _room(isDirect: true, members: const [_me, _anya]);

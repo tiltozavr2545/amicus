@@ -71,10 +71,9 @@ headers open room details, while member names above messages link to their
 profiles. These are root-navigator routes; returning retains the chat and draft.
 Profile data continues to use its existing visibility rules.
 
-Presence means the other person has this chat open. Typing takes priority over
-online and expires after four seconds without input. Rejoins announce typing
-only while that input timer is active and the composer is not editing a message;
-an idle, nonempty draft must not revive the typing indicator.
+Presence means the other person is viewing this chat in the foreground.
+Typing takes priority over online and expires after four seconds without a
+text change. The header reserves the same status line height in all states.
 
 ### Navigation and profiles
 
@@ -253,34 +252,17 @@ The server half — a private Realtime channel and two policies on
 `realtime.messages` — is described in "["Typing…" and "online"](data-model.md)"
 in data-model.md. The client half is this.
 
-The client announces itself with `track({user_id, typing})`. Sending, leaving
-the screen, leaving the foreground and a four-second input timeout clear
-typing. Backgrounding also cancels that timer; an idle draft does not revive
-typing on resume. Catch-up/read/receipt triggers wait for the foreground.
+The client announces itself with `track({user_id, typing})` while the chat is
+visible. Backgrounding or covering the chat with an opaque route withdraws
+presence and cancels typing. Sending, starting an edit and a four-second
+input timeout clear typing. Moving the caret or restoring a stashed draft
+leaves typing idle.
 
-**The announcement is repeated on every join, and its content is asked of the
-screen.** Both conditions appeared after "typing…" turned out to show up only
-every other time, and each closes its own half:
-
-- *On every join.* Presence is a consequence not of subscribing but of
-  `track()`. The socket drops when the app is backgrounded (`supabase_flutter`
-  itself does this on `paused` and reconnects on `resumed`), and a recreated
-  channel carries nothing over: until the client announces itself again, it
-  isn't in the room, however long the screen has been open.
-- *Asked, not assumed.* Previously a hardcoded `typing: false` was tracked on
-  join. An announcement made before the channel came up isn't lost but
-  **buffered** and sent on join — by a hook the channel registers in its own
-  constructor, i.e. before our callback. So "typing" raised while joining
-  arrived first and was immediately overwritten by the lie that followed it,
-  and by then the screen already considered the announcement made and didn't
-  repeat it on any later keystroke: the other person didn't see the indicator
-  for the whole draft. Only the screen knows what's actually in the input
-  field — so it's the one asked.
-
-The flip side of the same rule: when the channel stops being up (error,
-timeout, close), the screen receives two empty sets and removes the line.
-Presence is a statement about "right now", and a list left over from a channel
-that no longer exists is a lie that outlived the only thing that made it true.
+Every channel join reads the current typing state from the composer.
+Announcements wait for a joined socket, and a failed acknowledgement is
+retried while that connection and the desired state are current. The header
+uses complete Presence sync snapshots. A channel error, timeout or close
+clears the displayed state.
 
 ## Realtime doesn't replay what was missed
 
@@ -296,22 +278,24 @@ background never showed up in an open chat — until it was closed and reopened.
 Deletions were lost the same way: removing a message arrives not as an insert
 but as an update of an existing row, and nothing delivered that either.
 
-The fix is re-reading the newest page, and whether it can be stitched on is
-decided by its overlap with what's already loaded:
+The chat reloads the newest page when PostgreSQL confirms the live
+subscription, including the first connection. Returning to the foreground
+also requests a snapshot. If a snapshot is in flight when the subscription
+becomes ready, a follow-up covers the interval. The same readiness signal
+refreshes delivery and read receipts.
 
-- **there is an overlap** — nothing was lost between the page and the list,
-  new messages are appended on top, the rest are replaced in place (which is
-  what brings in the placeholders of deleted ones);
-- **there is no overlap** — a full page came back, and there may be more
-  between it and the list; stitching it on would leave a hole in the middle of
-  the conversation. The list restarts from this page: a lost scroll position
-  is an inconvenience, a conversation with a silent gap is a lie.
+An overlapping page is merged into the loaded history by message ID.
+A non-overlapping page replaces the disconnected section, preserves newer
+live inserts and restarts older pagination at the new boundary. An HTTP
+snapshot preserves newer edits or deletions already delivered by Realtime.
+Edits outside the newest page are refreshed when that history is loaded.
 
-There are two triggers, and the first is more precise: **channel
-resubscription** (the request is sent after the subscription is live again —
-the reverse order would leave a second gap between the request and the join)
-and **the app returning from the background** as a safety net in case the
-socket never comes back.
+## Confirming a room send
+
+A draft gets a `client_token` on its first send. A retry reuses it as long as
+the text, reply and attachments still match. The composer accepts confirmation
+from either the insert response or a saved row with that token and author.
+This handles a successful insert whose HTTP response is lost.
 
 ## Signed URLs outlive the widget
 

@@ -165,23 +165,28 @@ class _Rooms implements RoomsRepository {
     required String roomId,
     required void Function(RoomMessage) onInsert,
     required void Function(RoomMessage) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) => () {};
 
   @override
   void Function() subscribeToMemberReceipts({
     required String roomId,
     required void Function(RoomMemberReceipt) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) => () {};
 
   @override
   RoomPresenceHandle subscribeToPresence({
     required String roomId,
     required String userId,
+    required bool active,
     required void Function(Set<String>, Set<String>) onChange,
     required bool Function() onSubscribed,
-  }) => RoomPresenceHandle(setTyping: (_) async {}, unsubscribe: () {});
+  }) => RoomPresenceHandle(
+    setTyping: (_) {},
+    setActive: (_) {},
+    unsubscribe: () {},
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

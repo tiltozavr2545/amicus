@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, TextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -55,6 +57,11 @@ const _maxAttachments = 10;
 /// fields directly rather than converting again.
 bool _isSameLocalDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
+
+int _newestFirst(RoomMessage a, RoomMessage b) {
+  final byTime = b.createdAt.compareTo(a.createdAt);
+  return byTime == 0 ? b.id.compareTo(a.id) : byTime;
+}
 
 /// The later of two read/delivered marks. They only ever move forward
 /// server-side, so this is what "reconcile these two versions" means — see
@@ -115,6 +122,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   bool _isSending = false;
   bool _isPicking = false;
   String? _errorMessage;
+  String? _loadError;
 
   /// Files picked for the message being typed, in the order they will be
   /// sent. They are uploaded on send, not on pick: a draft abandoned before
@@ -134,6 +142,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// token there would dodge `room_messages`' own `client_token` unique index
   /// and post the same line twice.
   String? _pendingSendToken;
+  Completer<RoomMessage>? _sendConfirmation;
 
   RoomPresenceHandle? _presence;
 
@@ -200,9 +209,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// A reconciliation with the server is in flight — see [_catchUp], which
   /// has two triggers that regularly fire within a moment of each other.
   bool _isCatchingUp = false;
+  bool _catchUpRequested = false;
+  int _historyGeneration = 0;
   bool _foreground =
       WidgetsBinding.instance.lifecycleState == null ||
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool _routeVisible = true;
+  bool get _chatVisible => _foreground && _routeVisible;
 
   /// [_buildChatItems]'s answer for the current [_messages], or null when it
   /// has to be worked out again. Dropped by [_updateMessages], which is the
@@ -250,8 +263,19 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     // fresher than a minute, and every arriving message moves it again.
     _markRead();
     _subscribePresence();
-    _textController.addListener(_onTyping);
     _itemPositionsListener.itemPositions.addListener(_maybeLoadMoreOnScroll);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // An opaque route above the chat keeps its draft mounted, but the chat
+    // is no longer visible. Dialogs and sheets leave its ticker mode enabled.
+    final visible = TickerMode.of(context);
+    if (_routeVisible == visible) return;
+    _routeVisible = visible;
+    _updatePresenceActivity();
+    if (_chatVisible) _markRead();
   }
 
   /// Coming back to the app is coming back to the conversation.
@@ -267,15 +291,27 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    _foreground = state == AppLifecycleState.resumed;
-    if (!_foreground) {
-      _typingTimer?.cancel();
-      _announceTyping(false);
-      return;
+    final foreground = state == AppLifecycleState.resumed;
+    if (_foreground != foreground) {
+      _foreground = foreground;
+      _updatePresenceActivity();
     }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      setState(() {
+        _present = const {};
+        _typing = const {};
+      });
+    }
+    if (!_foreground) return;
     _catchUp();
     _loadReceipts();
     _markRead();
+  }
+
+  void _updatePresenceActivity() {
+    if (!_chatVisible) _stopTyping();
+    _presence?.setActive(_chatVisible);
   }
 
   @override
@@ -339,6 +375,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     });
   }
 
+  void _insertMessage(RoomMessage message) {
+    final index = _messages.indexWhere(
+      (known) => _newestFirst(message, known) < 0,
+    );
+    _messages.insert(index == -1 ? _messages.length : index, message);
+  }
+
   /// Pages in older history once the loaded list's oldest end comes into
   /// view — the same "near the end of the scroll" trigger the feed uses,
   /// expressed in item indices instead of pixels since [_itemScrollController]
@@ -360,11 +403,12 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           roomId: widget.roomId,
           onInsert: (message) {
             if (!mounted) return;
+            _confirmPendingSend(message);
             // The sender already inserted its own message from [_send] — the
             // echo of it arrives here too, and without this check it would
             // appear twice.
             if (_messages.any((m) => m.id == message.id)) return;
-            _updateMessages(() => _messages.insert(0, message));
+            _updateMessages(() => _insertMessage(message));
             _markRead();
           },
           onUpdate: (message) {
@@ -382,10 +426,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
               _endEdit();
             }
           },
-          // The channel came back after having been down — so there is a
-          // stretch of the conversation nobody told this screen about. See
-          // [_catchUp].
-          onResubscribed: _catchUp,
+          onReady: _catchUp,
         );
   }
 
@@ -397,8 +438,12 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
         .subscribeToPresence(
           roomId: widget.roomId,
           userId: viewerId,
+          active: _chatVisible,
           onChange: (present, typing) {
-            if (!mounted) return;
+            if (!mounted ||
+                (setEquals(_present, present) && setEquals(_typing, typing))) {
+              return;
+            }
             setState(() {
               _present = present;
               _typing = typing;
@@ -412,7 +457,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           // and leaving the flag set would make [_announceTyping] skip the
           // keystroke that should have re-raised the indicator.
           onSubscribed: () {
-            if (!mounted || !_foreground) return false;
+            if (!mounted || !_chatVisible) return false;
             final typing =
                 _editTarget == null &&
                 _textController.text.trim().isNotEmpty &&
@@ -425,29 +470,27 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
 
   /// Announces "typing" while there is something to type, and takes it back
   /// [_typingIdleTimeout] after the last keystroke.
-  void _onTyping() {
-    // The draft just changed (including being cleared after a send), so a
-    // token minted for whatever it said before no longer describes it.
+  void _onDraftChanged(String text) {
+    // Selection and composing-range changes do not change the send payload.
     _pendingSendToken = null;
-    // Rewording an old message is not "typing" to anyone watching — what
-    // they would be waiting for never arrives as a new message.
-    final typing =
-        _foreground &&
-        _editTarget == null &&
-        _textController.text.trim().isNotEmpty;
     _typingTimer?.cancel();
+    final typing =
+        _chatVisible && _editTarget == null && text.trim().isNotEmpty;
     if (typing) {
       _typingTimer = Timer(_typingIdleTimeout, () => _announceTyping(false));
     }
     _announceTyping(typing);
   }
 
+  void _stopTyping() {
+    _typingTimer?.cancel();
+    _announceTyping(false);
+  }
+
   void _announceTyping(bool typing) {
     if (typing == _announcedTyping) return;
     _announcedTyping = typing;
-    // Fire-and-forget: an announcement that doesn't land costs an indicator
-    // nobody was promised, and there is nothing to report to.
-    unawaited(_presence?.setTyping(typing).catchError((Object _) {}));
+    _presence?.setTyping(typing);
   }
 
   /// The line under the room's name: who is typing, or who is here.
@@ -457,7 +500,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// only one other person); in a group both are named, because "someone is
   /// typing" in a room of five says almost nothing.
   String? _presenceLine(AppLocalizations l10n, Room? room, String? viewerId) {
-    if (room == null) return null;
+    if (room == null || !_chatVisible) return null;
     final others = {
       for (final member in room.othersThan(viewerId)) member.userId,
     };
@@ -492,7 +535,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   }
 
   Future<void> _markRead() async {
-    if (!mounted || !_foreground) return;
+    if (!mounted || !_chatVisible) return;
     try {
       await ref.read(roomsRepositoryProvider).markRoomRead(widget.roomId);
       // The unread badge in the room list is now wrong by exactly this room —
@@ -567,7 +610,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           // [_loadReceipts] merges rather than assigns, so an event that
           // arrives while the fetch is in flight is not overwritten by the
           // older values it was already carrying.
-          onResubscribed: _loadReceipts,
+          onReady: _loadReceipts,
         );
   }
 
@@ -594,50 +637,84 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   ///    in it is a lie.
   Future<void> _catchUp() async {
     if (!mounted || !_foreground) return;
-    if (_isCatchingUp || _isLoading) return;
-    // Nothing loaded to reconcile against: this is the first load's job, and
-    // it may be the one that failed while the app was away. Awaited rather
-    // than returned: [_loadMore] answers whether it moved anything, and that
-    // answer is for callers that loop on it — there is nothing to decide here.
-    if (_messages.isEmpty) {
-      await _loadMore();
-      return;
-    }
+    _catchUpRequested = true;
+    if (_isCatchingUp) return;
     _isCatchingUp = true;
     try {
-      final page = await ref
-          .read(roomsRepositoryProvider)
-          .fetchMessages(roomId: widget.roomId);
-      if (!mounted || page.isEmpty) return;
-      final known = {for (final m in _messages) m.id};
-      _updateMessages(() {
-        if (!page.any((m) => known.contains(m.id))) {
-          _messages
-            ..clear()
-            ..addAll(page);
-          _hasMore = true;
-          return;
-        }
-        // Oldest first, each one prepended, so the list comes out newest
-        // first the way the rest of this screen expects it.
-        for (var i = page.length - 1; i >= 0; i--) {
-          final message = page[i];
-          final index = _messages.indexWhere((m) => m.id == message.id);
-          if (index == -1) {
-            _messages.insert(0, message);
-          } else {
-            _messages[index] = message;
-          }
-        }
-      });
-    } catch (_) {
-      // Offline, or the request timed out. What is on screen is still what
-      // was true when the server was last reachable, and the next resume (or
-      // the next re-subscription) tries again — which is more than the
-      // silence this replaced.
+      while (_catchUpRequested && mounted && _foreground) {
+        final paging = _pageInFlight;
+        if (paging != null) await paging;
+        if (!mounted || !_foreground) return;
+        _catchUpRequested = false;
+        await _reconcileLatestPage();
+      }
     } finally {
       _isCatchingUp = false;
     }
+  }
+
+  Future<void> _reconcileLatestPage() async {
+    final knownBeforeRequest = {for (final message in _messages) message.id};
+    try {
+      final page = await ref
+          .read(roomsRepositoryProvider)
+          .fetchMessages(roomId: widget.roomId, limit: _pageSize);
+      if (!mounted) return;
+      final replaceHistory =
+          knownBeforeRequest.isEmpty ||
+          (page.isNotEmpty &&
+              !page.any((message) => knownBeforeRequest.contains(message.id)));
+      final current = {for (final message in _messages) message.id: message};
+      final merged = <String, RoomMessage>{
+        for (final message in _messages)
+          if (!replaceHistory ||
+              (!knownBeforeRequest.contains(message.id) &&
+                  (page.isEmpty || _newestFirst(message, page.last) < 0)))
+            message.id: message,
+      };
+      for (final fetched in page) {
+        final message = current[fetched.id];
+        // HTTP can have taken its snapshot before a live edit or deletion.
+        // Keep the newer revision while filling in any missing joins.
+        merged[fetched.id] = switch (message) {
+          final live? when _isNewerRevision(live, fetched) =>
+            live.withEmbedsFrom(fetched),
+          _ => fetched,
+        };
+      }
+      _updateMessages(() {
+        _messages
+          ..clear()
+          ..addAll(merged.values.toList()..sort(_newestFirst));
+        if (replaceHistory) {
+          _historyGeneration++;
+          _hasMore = page.length == _pageSize;
+        }
+        if (_lastLoadFailure != null) {
+          _lastLoadFailure = null;
+          _loadError = null;
+        }
+      });
+      if (_pendingSendToken case final token?) {
+        for (final message in page) {
+          if (message.clientToken == token) _confirmPendingSend(message);
+        }
+      }
+      if (page.any((message) => !current.containsKey(message.id))) {
+        unawaited(_markRead());
+      }
+      if (merged[_editTarget?.id]?.isDeleted == true) _endEdit();
+    } catch (_) {
+      // A later resume or channel join tries again after a failed request.
+    }
+  }
+
+  bool _isNewerRevision(RoomMessage live, RoomMessage fetched) {
+    if (live.isDeleted != fetched.isDeleted) return live.isDeleted;
+    final liveEdit = live.editedAt;
+    final fetchedEdit = fetched.editedAt;
+    return liveEdit != null &&
+        (fetchedEdit == null || liveEdit.isAfter(fetchedEdit));
   }
 
   /// Pages in the next slice of older history.
@@ -691,9 +768,10 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// Split out so [_loadMore] can hand the future to a concurrent caller
   /// before this one's first `await`.
   Future<void> _fetchOlderPage() async {
+    final generation = _historyGeneration;
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _loadError = null;
     });
     try {
       final page = await ref
@@ -703,23 +781,24 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
             before: _messages.isEmpty ? null : _messages.last,
             limit: _pageSize,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _historyGeneration) return;
       _lastLoadFailure = null;
       _updateMessages(() {
         // A realtime insert can land while this page is in flight and would
         // then be in both — the id check keeps the list a set.
         final known = {for (final m in _messages) m.id};
         _messages.addAll(page.where((m) => !known.contains(m.id)));
+        _messages.sort(_newestFirst);
         // A short page is the end of the history. `isNotEmpty` was not: a
         // full last page is non-empty, so there was always one more request
         // after it, answered with nothing.
         _hasMore = page.length == _pageSize;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _historyGeneration) return;
       _lastLoadFailure = DateTime.now();
       setState(
-        () => _errorMessage = AppLocalizations.of(
+        () => _loadError = AppLocalizations.of(
           context,
         )!.failedToLoadMessagesError,
       );
@@ -729,6 +808,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   }
 
   Future<void> _pickAttachments() async {
+    if (_isPicking || _isSending) return;
     final l10n = AppLocalizations.of(context)!;
     final remaining = _maxAttachments - _attachments.length - _editKept.length;
     if (remaining <= 0) {
@@ -761,9 +841,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     setState(() {
       _attachments.addAll(result.items);
       _isPicking = false;
-      // Same reasoning as [_onTyping]: the draft this token described no
-      // longer matches what is about to be sent.
-      _pendingSendToken = null;
+      if (result.items.isNotEmpty) _pendingSendToken = null;
     });
     if (mediaPickProblemMessage(result.firstProblem, l10n)
         case final message?) {
@@ -777,20 +855,20 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     final l10n = AppLocalizations.of(context)!;
     final text = _textController.text.trim();
     // A photo with no caption is a message; an empty everything is not.
-    if ((text.isEmpty && _attachments.isEmpty) || _isSending) return;
+    if ((text.isEmpty && _attachments.isEmpty) || _isSending || _isPicking) {
+      return;
+    }
 
     setState(() {
       _isSending = true;
       _errorMessage = null;
     });
-    // Minted once per draft and reused across retries — see
-    // [_pendingSendToken]. Read before the request, not inside it: the field
-    // itself is cleared on success, and [_onTyping] would otherwise treat
-    // that as a new draft and null the token out from under this call.
+    _stopTyping();
     final clientToken = _pendingSendToken ??= const Uuid().v4();
+    final confirmation = _sendConfirmation = Completer<RoomMessage>();
     final replyToId = _replyTarget?.id;
     try {
-      final message = await ref
+      final request = ref
           .read(roomsRepositoryProvider)
           .sendMessage(
             roomId: widget.roomId,
@@ -800,22 +878,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
             media: List.of(_attachments),
             replyToId: replyToId,
           );
+      final message = await Future.any([request, confirmation.future]);
       if (!mounted) return;
-      // Clearing the field fires [_onTyping] anyway, which also nulls
-      // [_pendingSendToken]; the timer is cancelled here so a pending one
-      // can't re-announce after the message is gone.
-      _typingTimer?.cancel();
-      _textController.clear();
-      _updateMessages(() {
-        _attachments.clear();
-        _replyTarget = null;
-        if (!_messages.any((m) => m.id == message.id)) {
-          _messages.insert(0, message);
-        }
-      });
-      // The list's preview line and its ordering are both behind now. Same
-      // reasoning as [_markRead]: it is refreshed on the way out, not here.
-      _roomListIsStale = true;
+      _finishSend(message);
     } catch (e) {
       if (!mounted) return;
       // The draft (and [_pendingSendToken]) deliberately survive a failure:
@@ -828,8 +893,44 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
             : l10n.failedToSendMessageError,
       );
     } finally {
+      _sendConfirmation = null;
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  void _confirmPendingSend(RoomMessage message) {
+    if (_pendingSendToken == null ||
+        message.clientToken != _pendingSendToken ||
+        message.authorId != ref.read(currentUserIdProvider) ||
+        _editTarget != null) {
+      return;
+    }
+    if (_sendConfirmation case final confirmation?) {
+      if (!confirmation.isCompleted) confirmation.complete(message);
+    } else {
+      // The insert may arrive after HTTP has already reported a timeout.
+      _finishSend(message);
+    }
+  }
+
+  void _finishSend(RoomMessage message) {
+    _textController.clear();
+    _updateMessages(() {
+      _pendingSendToken = null;
+      _attachments.clear();
+      _replyTarget = null;
+      _errorMessage = null;
+      final index = _messages.indexWhere((m) => m.id == message.id);
+      if (index == -1) {
+        _insertMessage(message);
+      } else {
+        final known = _messages[index];
+        _messages[index] = _isNewerRevision(known, message)
+            ? known.withEmbedsFrom(message)
+            : message.withEmbedsFrom(known);
+      }
+    });
+    _roomListIsStale = true;
   }
 
   Future<void> _delete(RoomMessage message) async {
@@ -885,12 +986,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// field, its attachments in the strip. Whatever draft was there is set
   /// aside and comes back when the edit ends, saved or not.
   void _startEdit(RoomMessage message) {
+    if (_isSending || _isPicking) return;
+    _stopTyping();
     final stash =
         _stashedDraft ??
         _ComposerDraft(
           text: _textController.text,
           attachments: List.of(_attachments),
           replyTarget: _replyTarget,
+          sendToken: _pendingSendToken,
         );
     setState(() {
       _stashedDraft = stash;
@@ -903,8 +1007,6 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       _replyTarget = null;
       _errorMessage = null;
     });
-    // After [_editTarget] is set, so [_onTyping] already knows not to
-    // announce this as typing.
     _textController.text = message.text;
   }
 
@@ -920,7 +1022,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
         ..addAll(stash?.attachments ?? const []);
       _replyTarget = stash?.replyTarget;
       _stashedDraft = null;
-      _pendingSendToken = null;
+      _pendingSendToken = stash?.sendToken;
     });
     _textController.text = stash?.text ?? '';
   }
@@ -931,7 +1033,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// delete is for.
   Future<void> _saveEdit() async {
     final target = _editTarget;
-    if (target == null || _isSending) return;
+    if (target == null || _isSending || _isPicking) return;
     final l10n = AppLocalizations.of(context)!;
     final text = _textController.text.trim();
     if (text.isEmpty && _editKept.isEmpty && _attachments.isEmpty) return;
@@ -994,10 +1096,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// is refused a level up (see [_MessageBubble]'s `onReply`) — there is
   /// nothing left to quote.
   void _startReply(RoomMessage message) {
+    if (_isSending || _isPicking) return;
     setState(() {
       _replyTarget = message;
-      // Same reasoning as [_onTyping]: the draft this token described no
-      // longer matches what is about to be sent.
       _pendingSendToken = null;
     });
   }
@@ -1121,6 +1222,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
 
     final status = _presenceLine(l10n, room, viewerId);
     final chatItems = _chatListItems;
+    final error = _errorMessage ?? _loadError;
 
     return Scaffold(
       appBar: AppBar(
@@ -1172,12 +1274,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        // Under the name, where every messenger puts it — and only when
-                        // there is something to say: an empty second line would push the
-                        // name up for nothing.
-                        if (status != null)
-                          Text(
-                            status,
+                        Visibility(
+                          visible: status != null,
+                          maintainSize: true,
+                          maintainAnimation: true,
+                          maintainState: true,
+                          child: Text(
+                            status ?? ' ',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.labelSmall
@@ -1187,6 +1290,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                                   ).colorScheme.onSurfaceVariant,
                                 ),
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -1217,7 +1321,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
-                        _errorMessage ?? l10n.noMessagesYetMessage,
+                        error ?? l10n.noMessagesYetMessage,
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -1298,6 +1402,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                           // checks it again and has the last word.
                           onEdit:
                               !_isSending &&
+                                  !_isPicking &&
                                   message.canBeEditedBy(
                                     viewerId,
                                     DateTime.now(),
@@ -1306,7 +1411,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                               : null,
                           // Not while editing: the reply would belong to the
                           // draft set aside for the edit, not to the edit.
-                          onReply: message.isDeleted || _editTarget != null
+                          onReply:
+                              message.isDeleted ||
+                                  _editTarget != null ||
+                                  _isSending ||
+                                  _isPicking
                               ? null
                               : () => _startReply(message),
                           onTapReply: message.replyToId == null
@@ -1317,11 +1426,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                     ),
                   ),
           ),
-          if (_errorMessage != null && _messages.isNotEmpty)
+          if (error != null && _messages.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                _errorMessage!,
+                error,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
@@ -1392,6 +1501,10 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                   Expanded(
                     child: TextField(
                       controller: _textController,
+                      onChanged: _onDraftChanged,
+                      inputFormatters: _isSending
+                          ? [TextInputFormatter.withFunction((old, _) => old)]
+                          : null,
                       maxLines: 5,
                       minLines: 1,
                       maxLength: 5000,
@@ -1425,15 +1538,22 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                   IconButton.filled(
                     icon: _isSending
                         ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            height: 24,
+                            width: 24,
+                            child: Center(
+                              child: SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
                           )
                         : Icon(_editTarget == null ? Icons.send : Icons.check),
                     tooltip: _editTarget == null
                         ? l10n.sendMessageTooltip
                         : l10n.saveEditTooltip,
-                    onPressed: _isSending
+                    onPressed: _isSending || _isPicking
                         ? null
                         : (_editTarget == null ? _send : _saveEdit),
                   ),
@@ -1503,11 +1623,13 @@ class _ComposerDraft {
     required this.text,
     required this.attachments,
     required this.replyTarget,
+    required this.sendToken,
   });
 
   final String text;
   final List<PickedMedia> attachments;
   final RoomMessage? replyTarget;
+  final String? sendToken;
 }
 
 /// The banner above the composer that says what the draft is besides its
