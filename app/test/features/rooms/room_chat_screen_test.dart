@@ -354,6 +354,49 @@ Widget _wrap(
 
 void main() {
   testWidgets(
+    'backgrounding clears typing and defers chat reads until resume',
+    (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final repo = _FakeRoomsRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Draft');
+      expect(repo.typingAnnounced, [true]);
+      final reads = repo.markReadCalls;
+      final receipts = repo.receiptFetches;
+      try {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        expect(repo.typingAnnounced, [true, false]);
+        expect(repo.announceSelf!(), isFalse);
+        repo.onReceiptsResubscribed!();
+        repo.onResubscribed!();
+        await tester.pump(const Duration(seconds: 10));
+        expect(repo.markReadCalls, reads);
+        expect(repo.receiptFetches, receipts);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(repo.markReadCalls, greaterThan(reads));
+        expect(repo.receiptFetches, greaterThan(receipts));
+        expect(repo.announceSelf!(), isFalse);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      }
+    },
+  );
+  testWidgets(
     'a direct chat header opens the peer profile and returns to chat',
     (tester) async {
       final direct = Room(

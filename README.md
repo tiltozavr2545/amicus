@@ -8,6 +8,9 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
+Working version: **0.19.1+78 — unreleased**. The documentation describes this
+working tree; the version number is not evidence of a published build.
+
 Deployed on Android (Google Play, Closed testing — the `alpha` track) and on iOS
 (TestFlight). Currently — testing and fine-tuning features on both platforms (see
 [docs/future-development.md](docs/future-development.md)).
@@ -18,8 +21,11 @@ Deployed on Android (Google Play, Closed testing — the `alpha` track) and on i
 - Connections via an invite link — with access to the connection's profile and posts; open profiles from post author blocks or full Connection rows
 - Local post drafts restore text, audience and ordered attachments after leaving or restarting; successful publication clears the draft
 - Feed: text and up to 20 photos/videos per post, reactions, comments with replies (one level of nesting)
-- Post visibility: when publishing (and later, when editing) you can choose who sees it — all connections or only selected ones
-- Rooms: a separate chat for the people you invited — messages arrive via a realtime subscription, with unread counts, "Delivered"/"Read" ticks, "online"/"typing…" statuses and pushes; a message can carry up to 10 photos/videos, you can reply to a specific message with a quote, and mute the chat itself separately from everything else; the list is split by day ("Today", "Yesterday", a date)
+- Post visibility: publish to all Connections or only your favorites; editing can change that audience
+- Rooms: realtime chats with unread counts, delivery/read receipts, presence,
+  typing and push notifications; up to 10 photos/videos per message, quoted
+  replies, editing your messages within 48 hours, and per-room notification
+  muting. Returning from the background reconciles missed messages and edits.
 - A two-person room is named after the other person and appears for both; for a group of three or more, the owner sets a name and an avatar, and adds and removes people
 - Connection request — to a member of a shared room if you aren't connected yet: the only way to connect without meeting in person, and it's available only where people already share a chat
 - Mute, block and favorites — with push notifications and fine-grained per-source settings
@@ -31,7 +37,7 @@ Full feature history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
-Interface previews from 0.19.1, using fictional people and content.
+Interface previews of the upcoming 0.19.1, using fictional people and content.
 
 <table>
 <tr>
@@ -50,7 +56,15 @@ Interface previews from 0.19.1, using fictional people and content.
 - **Navigation:** go_router
 - **CI:** GitHub Actions — `dart format`, `flutter analyze`, `flutter test` and an `.aab` build on every push/PR (plus a version-bump check on PRs); a push to `main` builds a signed bundle and uploads it to Play (see [docs/operations.md](docs/operations.md))
 
-Data access is built entirely on Postgres RLS policies: you can see someone else's post or comment only if there is a confirmed connection between the users — this is enforced at the database level, not in the app code. Profiles are visible only to you and your connections (you can't enumerate all users through the API), and the same rule applies to avatar files in Storage. For reactions, only aggregated counts are exposed — there's no way to find out who reacted with what (the counts are computed by a `security definer` function that returns numbers without other people's `user_id`). Blocking a connection works on the same principle and remains the only privacy boundary between people: it is mutual, lives in a database-level policy and hides both posts and comments (including replies under their comment and replies addressed to them) regardless of the client version. Mute works differently and is not a privacy boundary — it's a personal "don't show them in the main feed" setting applied by the client itself, and the muted person's profile stays open like any connection's (more in [docs/data-model.md](docs/data-model.md)).
+Data access is enforced by database grants, RLS and server functions. Feed
+visibility includes the author, eligible Connections and the system account,
+then applies each post's audience and moderation rules. Blocking hides posts
+and comments in both directions; mute filters only the main feed on this
+client and leaves the person's profile accessible. Profile rows also have
+limited room-peer and visible-commenter audiences; a room peer can read the
+current avatar, without access to the photo gallery. Reaction counts expose
+aggregates and your own selection. See [the visibility rule](docs/data-model.md#visibility-rule)
+for the complete boundaries rather than treating a client screen as security.
 
 Room chat is locked down the same way: a message is visible to whoever is in the room, and the subscription to new messages is no exception. Postgres Changes checks the same SELECT policy for each subscriber, so other people's conversations don't arrive over the realtime channel either.
 
@@ -88,19 +102,24 @@ flutter run --dart-define-from-file=.env
 
 ## Documentation
 
+Start with the [documentation index](docs/README.md) for current references,
+release status and the distinction between current behavior and history.
+
 Current:
 
 - [Schema and visibility rule](docs/data-model.md) — tables, RLS, storage policies; the main document if you're figuring out how things work
 - [Interface design](docs/interface-design.md) — visual tokens, layout and interaction principles
 - [Client architecture](docs/client-architecture.md) — what the app is built with and what the client itself does on top of the schema
+- [Performance](docs/performance.md) — image memory, foreground work, stable media state and verification limits
 - [Operations](docs/operations.md) — scheduled jobs, secrets, release, Edge Function deployment, update-notification broadcast
 - [Console](console/README.md) — the local admin console: what it does, how to run it and why it has a server half
 - [iOS deployment](docs/ios-deployment-guide.md) — the path from simulator to TestFlight: Xcode, icons, export compliance, IPA build
 - [iOS push notifications (APNs)](docs/ios-push-apns-setup.md) — APNs key, linking to Firebase Cloud Messaging
+- [Xcode Cloud](docs/xcode-cloud-setup.md) and [API automation](docs/app-store-connect-api-automation.md) — remote stable iOS builds and authenticated build triggers
 - [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
-- [App Store listing draft](docs/review/app-store-listing-draft.md) — texts for App Store Connect, not yet submitted and awaiting proofreading
+- [App Store listing draft](docs/review/app-store-listing-draft.md) — working copy for proofreading; actual submission status lives in App Store Connect
 - [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
-- [Changelog](CHANGELOG.md) — what shipped in which version
+- [Changelog](CHANGELOG.md) — released history and the upcoming 0.19.1
 
 Historical — how the project was conceived and how it went, not how it works now:
 

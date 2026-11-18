@@ -10,17 +10,23 @@ migration names in the `pre-baseline-migrations` tag
 and numbers from `20260826000000` to `20261010100000` are in the
 `pre-baseline-migrations-2` tag; then `git log`.
 
-Tables: `users`, `connections`, `invite_links`, `posts`, `post_media`,
+The repository schema is the baseline plus `20261019100000` (private
+moderation state), `20261019110000` (sequence grants) and `20261019120000`
+(room-message editing). This is a source reference, not a fresh production
+schema inspection; inspect live privileges and function bodies before changing
+production as described in [operations.md](operations.md#migrations).
+
+Tables: `users`, `user_moderation`, `connections`, `connection_requests`, `invite_links`, `posts`, `post_media`,
 `profile_photos`, `reactions`, `comments`, `muted_users`, `blocked_users`,
 `favorite_users`, `device_tokens`, `notification_outbox`,
 `notification_preferences`, `user_activity`, `rooms`, `room_members`,
-`room_messages`.
+`room_messages`, `content_reports`, `push_registration_status`.
 
 ## App version and the update notification
 
 `device_tokens.app_version`/`.app_build` is the version of the INSTALLATION,
 not of the person: one user's phone and tablet can be on different versions.
-They are written on every token upsert, i.e. on every app launch and every
+They are written on every token registration, i.e. on every app launch and every
 language change (`registerDevice`), so they are always fresh. Decisions are
 made only on `app_build` (versionCode, monotonic); `app_version` is for human
 eyes. NULL means "older than anything known": a client that can't report its

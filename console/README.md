@@ -5,6 +5,11 @@ breakdowns and broadcasts. It runs **only on the developer's machine**: it is
 never deployed anywhere and has no login, because all access rests on the
 service_role key, which bypasses RLS entirely.
 
+The app working version is 0.19.1+78 (unreleased). Broadcasts read that
+working file, so its presence is not proof that a release exists: only send
+an update notice after the target build has actually been distributed.
+The schema and client documentation start at [docs/README.md](../docs/README.md).
+
 ## Running
 
 ```bash

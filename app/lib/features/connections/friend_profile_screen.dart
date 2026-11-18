@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/content_width.dart';
+import '../../shared/photo_viewer_route.dart';
+import '../../shared/sized_memory_image.dart';
+import '../feed/post_list_view.dart';
 import '../moderation/report_repository.dart';
 import '../moderation/report_sheet.dart';
-import '../feed/post_list_view.dart';
 import '../profile/profile_photos_screen.dart';
 import '../profile/profile_repository.dart';
-import '../../shared/sized_memory_image.dart';
 
 final _friendPhotosProvider = FutureProvider.autoDispose
     .family<List<ProfilePhoto>, String>((ref, friendId) {
@@ -39,10 +40,8 @@ class FriendProfileScreen extends ConsumerWidget {
 
   void _openViewer(BuildContext context, List<ProfilePhoto> photos) {
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) =>
-            ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
+      photoViewerRoute(
+        (_) => ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
       ),
     );
   }

@@ -2762,7 +2762,7 @@ Added out of order (before Stage 5, a deliberate deviation from the step-by-step
   account deletion removes it. Editing an existing post keeps this draft intact.
 
 
-## 0.19.1
+## 0.19.1 (unreleased)
 
 - **A quieter visual identity:** neutral white and graphite surfaces replace the
   teal tint in both themes. A restrained berry accent marks actions and active
@@ -2784,3 +2784,15 @@ Added out of order (before Stage 5, a deliberate deviation from the step-by-step
   above a message to open their profile. Reconnecting no longer announces an
   idle draft or an edited message as typing. Typing replaces the online status
   and clears after four seconds without input.
+- Retain visible post media state when posts move or new posts arrive.
+- Decode feed photos, video posters and chat thumbnails for their display
+  bounds; cap full-screen image decoding while retaining fourfold zoom.
+  Photo viewers fade in at their final size.
+- Pause videos when switching tabs, slides or backgrounding the app; prevent
+  delayed video preparation from starting playback after leaving its view.
+- Stop typing announcements and defer chat read/catch-up work in the
+  background, then reconcile on return. Restore the same active editor's
+  keyboard when appropriate.
+- Apply saved theme, language and navigation before the first frame, preserve
+  rapid preference-write ordering and restore the last successful value on
+  failure. Keep push/activity service updates from rebuilding the shell.

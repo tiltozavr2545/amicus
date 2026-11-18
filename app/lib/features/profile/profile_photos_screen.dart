@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../../shared/bottom_navigation_inset.dart';
 import 'profile_repository.dart';
 import '../../shared/sized_memory_image.dart';
+import '../../shared/bounded_image.dart';
 
 const _thumbSize = 140.0;
 
@@ -78,7 +79,17 @@ class _ViewerPage extends ConsumerWidget {
         data: (bytes) => InteractiveViewer(
           minScale: 1,
           maxScale: 4,
-          child: Image.memory(bytes),
+          child: SizedBox.expand(
+            child: Image(
+              image: boundedImage(
+                MemoryImage(bytes),
+                MediaQuery.sizeOf(context),
+                MediaQuery.devicePixelRatioOf(context),
+                scale: 4,
+              ),
+              fit: BoxFit.contain,
+            ),
+          ),
         ),
         loading: () => const CircularProgressIndicator(),
         error: (_, _) =>

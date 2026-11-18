@@ -42,14 +42,18 @@ else) should be recorded here too, so they don't silently drift from reality.
   development started — see [project-brief.md](project-brief.md))
 - **Repository:** [github.com/tiltozavr2545/amicus](https://github.com/tiltozavr2545/amicus)
   (public)
-- **Flutter version:** pinned to 3.32.8 (SDK in `~/development/flutter`) —
-  nothing newer while the dev machine is on macOS 12; the full list of
-  environment constraints is in [../AGENTS.md](../AGENTS.md)
+- **Flutter version:** Android/local verification is pinned to 3.32.8
+  (`~/development/flutter`) on the Intel macOS 12 machine. Xcode Cloud uses
+  its independent 3.47.5 pin for the committed UIScene-based iOS runner; see
+  [xcode-cloud-setup.md](xcode-cloud-setup.md). Do not upgrade the Intel SDK.
 - **Supabase API keys:** the new format is used (Publishable/Secret instead of
   legacy anon/service_role) — `SUPABASE_ANON_KEY` holds the Publishable key
   (`sb_publishable_…`); the Secret key is not used anywhere in client code
 
 ## Interface and local preferences
+
+Current rendering, media-memory and foreground-work rules, their Framebook
+origin and validation limits are recorded in [performance.md](performance.md).
 
 `lib/theme/amicus_theme.dart` defines both themes, bundled Sofia Sans typography
 and shared controls. The palette and layout rationale live in
@@ -108,6 +112,11 @@ System default / Light / Dark theme, and floating/classic navigation. The theme
 selector lives only in Settings, preserves previous light/dark preferences and
 can restore following device brightness. Its six-change system-account shortcut
 is retained.
+
+Startup supplies saved presentation preferences before the first frame.
+Writes serialize per preference and failed changes return to the last
+successfully saved value. The language key remains `app_locale`; no migration
+of existing preferences is required.
 
 Notification preferences remain server-backed. A per-account local snapshot
 appears while the server refresh runs, without a loading indicator. The first
@@ -244,11 +253,10 @@ The server half — a private Realtime channel and two policies on
 `realtime.messages` — is described in "["Typing…" and "online"](data-model.md)"
 in data-model.md. The client half is this.
 
-The client announces itself with `track({user_id, typing})` and clears the
-flag in three ways: by sending, by leaving the screen, and by a 4-second timer
-after the last keystroke. The last one exists exactly for the case when the
-first two didn't happen — a draft abandoned mid-word shouldn't leave a lie on
-someone else's screen.
+The client announces itself with `track({user_id, typing})`. Sending, leaving
+the screen, leaving the foreground and a four-second input timeout clear
+typing. Backgrounding also cancels that timer; an idle draft does not revive
+typing on resume. Catch-up/read/receipt triggers wait for the foreground.
 
 **The announcement is repeated on every join, and its content is asked of the
 screen.** Both conditions appeared after "typing…" turned out to show up only

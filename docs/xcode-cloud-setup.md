@@ -56,21 +56,24 @@ picks it up automatically because it sits next to `Runner.xcworkspace`. It:
    **independent** of `AGENTS.md`'s shared Android-constrained Flutter
    version (3.32.8) — iOS 27 requires UIScene lifecycle support that only
    landed in newer Flutter, while the Android colleague's machine cannot
-   run past 3.32.8 (see AGENTS.md's "Environment constraints"). Bump this pin for
-   iOS/Xcode Cloud needs only; it no longer has to match `pubspec.yaml`'s
-   `sdk:` constraint or AGENTS.md's shared pin.
+   run past 3.32.8 (see AGENTS.md's "Environment constraints"). Change this pin for
+   iOS/Xcode Cloud needs only. It need not equal the Android SDK version, but
+   must satisfy `pubspec.yaml`'s Dart SDK constraint and all dependencies.
 2. Reconstitutes `GoogleService-Info.plist` and `.env` from Environment
    Variables (see step 4) — both are gitignored, so Xcode Cloud's clone
    never has them.
 3. Runs `flutter build ios --release --no-codesign --dart-define-from-file=.env`
-   — the same command `make build-ios` runs locally, minus real signing.
+   to prepare a release build without signing. Local `make build-ios` uses placeholder Supabase values as a
+   compile check; Cloud must use the real workflow configuration.
    This bakes `DART_DEFINES` into `ios/Flutter/Generated.xcconfig` and builds
    `Flutter.framework`/`App.framework`, which Xcode Cloud's own archive step
    then picks up automatically through the project's existing xcconfig
    include chain.
 
-Nothing here needs editing to get a first build working — only bump the
-Flutter version pin if `AGENTS.md`'s SDK pin ever changes.
+The script is already committed. Keep its independent iOS pin documented here
+and in AGENTS.md; an Android SDK change does not automatically change it.
+The script reuses `$HOME/flutter` if present, so inspect the build log to
+confirm that a reused VM checkout actually matches the configured pin.
 
 ## 3. Create the workflow
 
@@ -136,7 +139,7 @@ builds — no workarounds needed in `ci_post_clone.sh`.
 ## 6. Submit it
 
 From here, follow [ios-deployment-guide.md](ios-deployment-guide.md#9-get-it-into-testflight)
-steps 8–9 as usual (attach to a test group, or select the build on the App
+sections 8–9 as usual (attach to a test group, or select the build on the App
 Store version page and resubmit for review) — Xcode Cloud only replaces how
 the binary gets built, not anything downstream of that.
 

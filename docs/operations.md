@@ -107,6 +107,11 @@ truth is Play Console and Firebase, not git.
 
 ## Release
 
+The checked-out version is **0.19.1+78**, currently unreleased. Its changelog
+section collects the interface and resource-use changes. Verification does not
+publish, tag or bump it. Confirm the target build and intended distribution
+before triggering a release.
+
 A push to `main` triggers `deploy-closed-testing.yml`: it runs `make verify`
 and the version bump check itself (without relying on CI having been green),
 builds a signed `.aab` and uploads it to **Google Play → Closed testing,
@@ -128,6 +133,20 @@ Everything below is now done from the local console (`console/`, the
 audience by name before sending, a breakdown by version, and the report queue.
 SQL remains the fallback: it works when the console isn't running, and when
 you need to do something the console can't.
+
+### GitHub APK and iOS channels
+
+`github-release-apk.yml` is a separate manual workflow: it builds a signed
+universal APK for a requested ref and attaches it to an existing release/tag.
+It does not create release notes or a release, and refuses to replace an
+existing APK. APK signing and application secrets are shared with the Android
+workflow; `PLAY_SERVICE_ACCOUNT_JSON` is only needed for Play delivery.
+
+For iOS use [Xcode Cloud](xcode-cloud-setup.md), the
+[local signing guide](ios-deployment-guide.md), and optionally the
+[build-trigger API](app-store-connect-api-automation.md). Those are independent
+of Android delivery. Neither a successful archive nor a GitHub release proves
+App Store approval.
 
 What's still manual after a rollout:
 
@@ -217,9 +236,10 @@ could be verified mechanically rather than by reading:
 5. Only after that is a single service history table edited on the live
    project — `supabase migration repair`; schema and data are not touched.
 
-To check that the repository and the database haven't drifted apart — file
-names against table rows (the counts no longer match: the database has one row
-for the baseline):
+Compare repository migration version identifiers with the recorded history.
+After history repair, the baseline has one history marker, followed by the
+three later migrations; this does not mean rerunning the baseline on live data.
+Matching identifiers verify recorded history, not schema equality:
 
 ```bash
 ls supabase/migrations/*.sql | sed 's#.*/##; s/_.*//'
@@ -236,3 +256,27 @@ alone does not override Flutter's preference for Android Studio's bundled JBR.
 The runner's JBR can change independently; JDK 25 produces an unhelpful bare
 version-number failure with the pinned Gradle/Kotlin toolchain. Keep this choice
 consistent across all three Android workflows.
+
+## Local verification and physical devices
+
+Run `make verify` before handing off app changes. It enforces the lockfile,
+formats Dart, analyzes and runs tests. Console-only changes use the separate
+checks in [console/README.md](../console/README.md). Localization changes also
+require `cd app && flutter gen-l10n`, with generated files tracked.
+
+If Android Studio's bundled JBR breaks Gradle, select an installed JDK 21 on
+that machine with `flutter config --jdk-dir="$(/usr/libexec/java_home -v 21)"`.
+Keep machine-specific JDK paths out of `gradle.properties`.
+
+Use the connected physical Android phone; do not start an emulator on the
+Intel Mac. Use `flutter run --profile --dart-define-from-file=.env` for perceived
+performance and compare the same workload before/after. Preserve installed
+app data and signing identity. Regression tests and the image-decode fixture
+in [performance.md](performance.md) do not measure battery life.
+
+## GitHub Pages sources
+
+`sync-gh-pages.yml` runs for `docs/gh-pages/**` changes pushed to `main`.
+It copies privacy/terms/reset pages by name and `email-confirmed.html` as
+`index.html` to `gh-pages`. Local source edits await that deployment; do not
+claim that the public policy has changed until the workflow succeeds.

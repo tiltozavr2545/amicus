@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -11,19 +10,21 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../shared/write_ban.dart';
-import '../moderation/report_repository.dart';
-import '../moderation/report_sheet.dart';
+import '../../shared/bounded_image.dart';
 import '../../shared/media_gallery.dart';
 import '../../shared/media_pick_message.dart';
 import '../../shared/media_picking.dart';
+import '../../shared/photo_viewer_route.dart';
 import '../../shared/refresh_after_await.dart';
 import '../../shared/signed_url_cache.dart';
 import '../../shared/sized_memory_image.dart';
+import '../../shared/write_ban.dart';
 import '../auth/auth_providers.dart';
 import '../connections/friend_profile_screen.dart';
-import 'room_details_screen.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import 'room_avatar.dart';
+import 'room_details_screen.dart';
 import 'rooms_repository.dart';
 
 /// How long after the last keystroke this viewer stops being "typing".
@@ -199,6 +200,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// A reconciliation with the server is in flight — see [_catchUp], which
   /// has two triggers that regularly fire within a moment of each other.
   bool _isCatchingUp = false;
+  bool _foreground =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
   /// [_buildChatItems]'s answer for the current [_messages], or null when it
   /// has to be worked out again. Dropped by [_updateMessages], which is the
@@ -263,7 +267,12 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed) return;
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) {
+      _typingTimer?.cancel();
+      _announceTyping(false);
+      return;
+    }
     _catchUp();
     _loadReceipts();
     _markRead();
@@ -403,7 +412,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           // and leaving the flag set would make [_announceTyping] skip the
           // keystroke that should have re-raised the indicator.
           onSubscribed: () {
-            if (!mounted) return false;
+            if (!mounted || !_foreground) return false;
             final typing =
                 _editTarget == null &&
                 _textController.text.trim().isNotEmpty &&
@@ -423,7 +432,9 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     // Rewording an old message is not "typing" to anyone watching — what
     // they would be waiting for never arrives as a new message.
     final typing =
-        _editTarget == null && _textController.text.trim().isNotEmpty;
+        _foreground &&
+        _editTarget == null &&
+        _textController.text.trim().isNotEmpty;
     _typingTimer?.cancel();
     if (typing) {
       _typingTimer = Timer(_typingIdleTimeout, () => _announceTyping(false));
@@ -481,6 +492,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   }
 
   Future<void> _markRead() async {
+    if (!mounted || !_foreground) return;
     try {
       await ref.read(roomsRepositoryProvider).markRoomRead(widget.roomId);
       // The unread badge in the room list is now wrong by exactly this room —
@@ -504,6 +516,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   }
 
   Future<void> _loadReceipts() async {
+    if (!mounted || !_foreground) return;
     try {
       final receipts = await ref
           .read(roomsRepositoryProvider)
@@ -580,6 +593,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   ///    the scroll position is a nuisance, a conversation with a silent gap
   ///    in it is a lie.
   Future<void> _catchUp() async {
+    if (!mounted || !_foreground) return;
     if (_isCatchingUp || _isLoading) return;
     // Nothing loaded to reconcile against: this is the first load's job, and
     // it may be the one that failed while the app was away. Awaited rather
@@ -2296,7 +2310,7 @@ class _KeptAttachmentThumbnail extends ConsumerWidget {
         child: ColoredBox(color: Colors.black12),
       );
     }
-    return CachedNetworkImage(
+    return CachedMediaImage(
       imageUrl: url,
       // Keyed on the path, as in the bubble: the signature's query string
       // changes on every signing.
@@ -2429,9 +2443,8 @@ class _MessageMediaState extends ConsumerState<_MessageMedia> {
 
   void _openFullscreen(int index) {
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => FullscreenMediaViewer(
+      photoViewerRoute(
+        (_) => FullscreenMediaViewer(
           media: _items,
           initialIndex: index,
           resolve: ref.read(roomsRepositoryProvider).resolveMediaUrls,
@@ -2487,7 +2500,7 @@ class _Thumbnail extends StatelessWidget {
                 child: Center(child: CircularProgressIndicator()),
               )
             else
-              CachedNetworkImage(
+              CachedMediaImage(
                 imageUrl: url,
                 // Keyed on the path, not the signed URL: the query string
                 // changes on every signing and would cache-bust a photo that

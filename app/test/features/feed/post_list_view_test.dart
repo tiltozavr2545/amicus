@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:amicus/shared/bounded_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -477,8 +477,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      final image = tester.widget<CachedNetworkImage>(
-        find.byType(CachedNetworkImage),
+      final image = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
       );
       // Two signed URLs for the same photo, minted on two different app
       // launches, must resolve to the same on-disk cache entry — otherwise
@@ -519,8 +519,8 @@ void main() {
     // PageView's own cache region (hence `skipOffstage: false`), which is
     // what gets the bytes downloading before the swipe rather than after it.
     final urls = tester
-        .widgetList<CachedNetworkImage>(
-          find.byType(CachedNetworkImage, skipOffstage: false),
+        .widgetList<CachedMediaImage>(
+          find.byType(CachedMediaImage, skipOffstage: false),
         )
         .map((w) => w.imageUrl);
     expect(
@@ -628,11 +628,10 @@ void main() {
     await tester.pump();
 
     expect(
-      tester
-          .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
-          .imageUrl,
+      tester.widget<CachedMediaImage>(find.byType(CachedMediaImage)).imageUrl,
       'https://example.invalid/signed?p=old',
     );
+    final previousElement = tester.element(find.byType(CachedMediaImage));
 
     // A new post arrives at the top, so index 0's State is reused for it.
     repo.pageToReturn = [
@@ -645,11 +644,22 @@ void main() {
     await tester.pump();
 
     final urls = tester
-        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .widgetList<CachedMediaImage>(find.byType(CachedMediaImage))
         .map((w) => w.imageUrl)
         .toList();
     expect(urls.first, 'https://example.invalid/signed?p=new');
     expect(urls, hasLength(2));
+    expect(
+      tester.element(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is CachedMediaImage &&
+              widget.imageUrl == 'https://example.invalid/signed?p=old',
+        ),
+      ),
+      same(previousElement),
+      reason: 'Moving a visible post retains its media subtree',
+    );
   });
 
   // The feed and the profile are two live PostListViews in the shell's

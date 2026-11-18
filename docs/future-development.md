@@ -42,28 +42,31 @@ work with), and then show the route on a map in a post.
 - First iteration: only uploading a ready file, or live GPS recording during
   the activity right away?
 
-## iOS — what's left after the TestFlight launch
+## iOS release validation
 
-The simulator and the first TestFlight build are done — see
-[ios-deployment-guide.md](ios-deployment-guide.md) and
-[ios-push-apns-setup.md](ios-push-apns-setup.md). Left before publishing
-to the App Store:
+TestFlight delivery and APNs setup have already been implemented; they are
+not a new platform project. Before distributing the upcoming 0.19.1, verify
+its interface, keyboard, media playback and push behavior on a physical iOS
+device using the current [iOS build guide](ios-deployment-guide.md). Use the
+[Xcode Cloud pin](xcode-cloud-setup.md) for the UIScene runner.
 
-1. Design a proper launch image (right now it just shows the app
-   icon).
-2. Fill in the App Store Connect listing (description, keywords,
-   screenshots) — draft in
-   [review/app-store-listing-draft.md](review/app-store-listing-draft.md).
-3. Run a real `flutter build ios`/archive on a device, not only through
-   Transporter — check for platform bugs that didn't show up on Android.
-4. Once real encryption appears — remove/change
-   `ITSAppUsesNonExemptEncryption` in `Info.plist` to the correct value.
+Store listing copy and iPhone/iPad screenshots still need review against the
+build being submitted; see [the listing draft](review/app-store-listing-draft.md).
+Check the actual submission status in App Store Connect. Repository files
+cannot establish whether a build has been approved or published.
+
+A separate custom launch composition remains an optional design task. Revisit
+export compliance if the app's encryption behavior changes; the existing
+`ITSAppUsesNonExemptEncryption=false` describes the current implementation.
 
 ## Interface verification and documentation
 
 - Verify the updated notification silhouette on a Samsung One UI device. The
   notification resource builds successfully, but Samsung rendering has not yet
   been checked on hardware.
+- Measure scrolling, image memory, video suspension and battery use on a
+  physical device in profile mode. Automated regressions establish avoided
+  work, not a measured battery-life improvement; see [performance.md](performance.md).
 
 The current design and client behavior are recorded in
 [interface-design.md](interface-design.md) and
@@ -79,14 +82,15 @@ particular user's locale.
 
 ## Deep link for email confirmation
 
-Right now the link in the email leads to a static confirmation page on GitHub
-Pages (`site_url` in `supabase/config.toml` →
-`https://tiltozavr2545.github.io/amicus/`, source — the `gh-pages` branch, a
-single `index.html`), because the confirmation itself is counted on the
-Supabase side before the redirect. That fixes the confusing landing page (it
-used to lead straight to the GitHub repository), but opening an app screen
-directly would be nicer — it needs a custom URL scheme / Android App Links set
-up and handling in `supabase_flutter`; a separate task.
+Confirmation currently opens the GitHub Pages landing page configured by
+`auth.site_url` in `supabase/config.toml`. Its source is
+`docs/gh-pages/email-confirmed.html`; `sync-gh-pages.yml` deploys it as
+`index.html` on the `gh-pages` branch. Password recovery uses the separate
+`reset-password.html` redirect. Edit the source pages, never the deployment
+branch directly.
+
+Returning to a native app screen after confirmation remains deferred. It needs
+an agreed URL scheme/App Links/Universal Links flow and client handling.
 
 ## Web version of the app
 
@@ -98,8 +102,10 @@ As an alternative to the invite link/QR — a very distant idea, not a priority.
 
 ## Full privacy policy audit and consent integration in the UI
 
-Right now the privacy policy is static on GitHub Pages; consent is only the
-email confirmation, with no options in the UI.
+The privacy policy and terms are static GitHub Pages documents. Sign-up has
+no dedicated consent control or persisted consent record; email verification
+is a separate authentication step. Any future consent flow needs its own
+product requirements rather than being inferred from email confirmation.
 
 ## Moving from Supabase to our own server (ASP.NET Core + PostgreSQL)
 

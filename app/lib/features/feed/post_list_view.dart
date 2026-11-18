@@ -7,15 +7,16 @@ import 'package:intl/intl.dart';
 import '../../l10n/app_localizations.dart';
 import '../../shared/bottom_navigation_inset.dart';
 import '../../shared/connection_name.dart';
+import '../../shared/media_gallery.dart';
+import '../../shared/photo_viewer_route.dart';
 import '../../shared/refresh_after_await.dart';
 import '../../shared/sized_memory_image.dart';
 import '../../shared/write_ban.dart';
-import '../moderation/report_repository.dart';
-import '../moderation/report_sheet.dart';
-import '../../shared/media_gallery.dart';
 import '../auth/auth_providers.dart';
 import '../connections/connections_repository.dart';
 import '../connections/friend_profile_screen.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import '../profile/profile_repository.dart';
 import 'carousel_position_cache.dart';
 import 'comments_screen.dart';
@@ -510,6 +511,14 @@ class _PostListViewState extends ConsumerState<PostListView> {
             )
           : ListView.separated(
               controller: _scrollController,
+              findChildIndexCallback: (key) {
+                if (key is! ValueKey<String>) return null;
+                final index = _posts.indexWhere((post) => post.id == key.value);
+                // ListView.separated exposes sliver slots, including separators.
+                return index < 0
+                    ? null
+                    : (index + (header != null ? 1 : 0)) * 2;
+              },
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -547,6 +556,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
                 // no author, which is the right answer for "is this mine".
                 final currentUserId = ref.read(currentUserIdProvider);
                 return _PostEntry(
+                  key: ValueKey(post.id),
                   post: post,
                   isOwnPost:
                       currentUserId != null && post.authorId == currentUserId,
@@ -577,6 +587,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
 
 class _PostEntry extends ConsumerWidget {
   const _PostEntry({
+    super.key,
     required this.post,
     required this.isOwnPost,
     required this.onReact,
@@ -920,9 +931,8 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
 
   void _openFullscreen(int index) {
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => FullscreenMediaViewer(
+      photoViewerRoute(
+        (_) => FullscreenMediaViewer(
           media: _items,
           initialIndex: index,
           resolve: ref.read(feedRepositoryProvider).resolveMediaUrls,

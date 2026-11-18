@@ -9,7 +9,8 @@ set -eu
 # Pinned to the exact version needed for iOS 27's mandatory UIScene
 # lifecycle (IMM-251: 3.41+ required; also see AGENTS.md constraint about
 # the Android developer's machine, which never builds through this script).
-# Bump this only after bumping the pin in AGENTS.md/pubspec.yaml too.
+# Keep this independent iOS pin documented in AGENTS.md and the Cloud guide.
+# The selected SDK must still satisfy pubspec.yaml and plugin constraints.
 FLUTTER_VERSION="3.47.5"
 FLUTTER_HOME="$HOME/flutter"
 

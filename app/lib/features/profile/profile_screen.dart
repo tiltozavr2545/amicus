@@ -6,17 +6,18 @@ import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/content_width.dart';
-import '../../shared/write_ban.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/media_extensions.dart';
+import '../../shared/photo_viewer_route.dart';
 import '../../shared/picker_limit.dart';
 import '../../shared/refresh_after_await.dart';
+import '../../shared/sized_memory_image.dart';
+import '../../shared/write_ban.dart';
 import '../auth/auth_providers.dart';
 import '../feed/post_list_view.dart';
 import '../settings/settings_button.dart';
 import 'profile_photos_screen.dart';
 import 'profile_repository.dart';
-import '../../shared/sized_memory_image.dart';
 
 const _maxProfilePhotos = 80;
 
@@ -276,10 +277,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   void _openViewer(List<ProfilePhoto> photos) {
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) =>
-            ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
+      photoViewerRoute(
+        (_) => ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
       ),
     );
   }

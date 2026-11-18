@@ -85,7 +85,15 @@ curl -s -X POST "https://api.appstoreconnect.apple.com/v1/ciBuildRuns" \
 
 A successful response returns `201` with the new build run's `id` and `number`. Poll `GET /v1/ciBuildRuns/{id}` (or the workflow's build list) to watch it progress through `PENDING` → `RUNNING` → `COMPLETE`.
 
-**Not yet independently verified against this project**: whether `ciBuildRuns` requires an explicit `sourceBranchOrTag`/git-reference relationship in the request body to pick a non-default branch, or whether it always builds whatever the workflow's own start condition currently points at. Confirm against Apple's OpenAPI spec (or a client library, see below) before the first real trigger, and update this doc with the confirmed behavior once verified.
+Apple documents this minimal workflow-only request in
+[Start a build](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-cibuildruns).
+For an explicitly selected branch or tag, the API also provides the
+[`sourceBranchOrTag` Git Reference relationship](https://developer.apple.com/documentation/appstoreconnectapi/cibuildruncreaterequest/data-data.dictionary/relationships-data.dictionary/sourcebranchortag-data.dictionary).
+Resolve the intended repository reference and include that relationship when
+the exact source matters; inspect the returned build's `sourceCommit.commitSha`
+before accepting it as the release build. This documentation refresh made no
+authenticated request and does not establish which branch the deployed
+workflow currently selects by default.
 
 ## 5. Existing tooling (don't hand-roll if this covers the need)
 
