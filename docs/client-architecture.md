@@ -120,8 +120,10 @@ of existing preferences is required.
 Notification preferences remain server-backed. A per-account local snapshot
 appears while the server refresh runs, without a loading indicator. The first
 visit without a snapshot shows the standard defaults. A later server response
-updates the switches in place unless the user has already edited them. Changes
-save optimistically, with per-field rollback and a visible error on failure.
+updates untouched switches in place. Each write sends a single flag, so opening
+Settings on a slow connection or changing another flag on a different device
+preserves the other values. A switch stays disabled while its write is pending.
+Failed writes revert that switch and show an error.
 Loading failures leave the switches and other settings available, with a retry
 action. Account actions still require confirmation.
 
@@ -248,9 +250,8 @@ knows how to do more. See "Release" in [operations.md](operations.md).
 
 ## Presence and "typing…"
 
-The server half — a private Realtime channel and two policies on
-`realtime.messages` — is described in "["Typing…" and "online"](data-model.md)"
-in data-model.md. The client half is this.
+The server uses a private Realtime channel and two policies on
+`realtime.messages`. See [the presence data model](data-model.md#typing-and-online).
 
 The client announces itself with `track({user_id, typing})` while the chat is
 visible. Backgrounding or covering the chat with an opaque route withdraws
@@ -284,11 +285,13 @@ also requests a snapshot. If a snapshot is in flight when the subscription
 becomes ready, a follow-up covers the interval. The same readiness signal
 refreshes delivery and read receipts.
 
-An overlapping page is merged into the loaded history by message ID.
-A non-overlapping page replaces the disconnected section, preserves newer
-live inserts and restarts older pagination at the new boundary. An HTTP
-snapshot preserves newer edits or deletions already delivered by Realtime.
-Edits outside the newest page are refreshed when that history is loaded.
+Only overlap with an earlier HTTP page establishes continuity. A live insert
+on the far side of a gap leaves the latest page disconnected and older
+pagination restarts at its boundary. The latest snapshot removes rows no
+longer visible in its range, and retained older messages are rechecked by ID
+through the same RLS policy. The client keeps newer Realtime revisions while
+refreshing embedded quotes from HTTP. A tap on a reply jumps directly to the
+original message when animations are disabled.
 
 ## Confirming a room send
 

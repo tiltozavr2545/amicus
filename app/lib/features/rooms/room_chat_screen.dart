@@ -115,6 +115,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// same "near the end of the scroll" gesture the feed already uses.
   final _messages = <RoomMessage>[];
 
+  // Only HTTP pages establish which part of history is contiguous. Live
+  // inserts can arrive on the far side of a gap before a reconnect snapshot.
+  final _fetchedMessageIds = <String>{};
+  RoomMessage? _historyCursor;
+
   void Function()? _unsubscribe;
   void Function()? _unsubscribeReceipts;
   bool _isLoading = false;
@@ -624,8 +629,8 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// ever have shown up: `_loadMore` only ever pages *older*, so the chat
   /// stayed wrong until it was closed and reopened.
   ///
-  /// Re-reading the newest page covers both, and the overlap with what is
-  /// already loaded is what says whether it is safe to stitch:
+  /// Re-reading the newest page covers both. It can be stitched to older
+  /// history if it overlaps a page previously fetched from the server:
   ///
   ///  * **it overlaps** — nothing happened between that page and this list,
   ///    so the new messages are prepended and the rest are replaced in place,
@@ -655,40 +660,44 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
 
   Future<void> _reconcileLatestPage() async {
     final knownBeforeRequest = {for (final message in _messages) message.id};
+    final fetchedBeforeRequest = Set.of(_fetchedMessageIds);
     try {
       final page = await ref
           .read(roomsRepositoryProvider)
           .fetchMessages(roomId: widget.roomId, limit: _pageSize);
       if (!mounted) return;
-      final replaceHistory =
-          knownBeforeRequest.isEmpty ||
-          (page.isNotEmpty &&
-              !page.any((message) => knownBeforeRequest.contains(message.id)));
+      final hasOlderPage = page.length == _pageSize;
+      final keepOlderHistory =
+          hasOlderPage &&
+          page.any((message) => fetchedBeforeRequest.contains(message.id));
+      final oldest = page.lastOrNull;
       final current = {for (final message in _messages) message.id: message};
       final merged = <String, RoomMessage>{
         for (final message in _messages)
-          if (!replaceHistory ||
+          if ((keepOlderHistory && _newestFirst(message, oldest!) > 0) ||
               (!knownBeforeRequest.contains(message.id) &&
-                  (page.isEmpty || _newestFirst(message, page.last) < 0)))
+                  (oldest == null || _newestFirst(message, oldest) < 0)))
             message.id: message,
       };
       for (final fetched in page) {
         final message = current[fetched.id];
-        // HTTP can have taken its snapshot before a live edit or deletion.
-        // Keep the newer revision while filling in any missing joins.
-        merged[fetched.id] = switch (message) {
-          final live? when _isNewerRevision(live, fetched) =>
-            live.withEmbedsFrom(fetched),
-          _ => fetched,
-        };
+        merged[fetched.id] = _mergeFetched(message, fetched);
       }
       _updateMessages(() {
         _messages
           ..clear()
           ..addAll(merged.values.toList()..sort(_newestFirst));
-        if (replaceHistory) {
+        _fetchedMessageIds.retainAll(merged.keys.toSet());
+        _fetchedMessageIds.addAll(page.map((message) => message.id));
+        if (!keepOlderHistory) {
           _historyGeneration++;
-          _hasMore = page.length == _pageSize;
+          _historyCursor = oldest;
+          _hasMore = hasOlderPage;
+        } else {
+          final cursor = _historyCursor;
+          if (cursor == null || _newestFirst(oldest!, cursor) > 0) {
+            _historyCursor = oldest;
+          }
         }
         if (_lastLoadFailure != null) {
           _lastLoadFailure = null;
@@ -703,10 +712,82 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       if (page.any((message) => !current.containsKey(message.id))) {
         unawaited(_markRead());
       }
-      if (merged[_editTarget?.id]?.isDeleted == true) _endEdit();
+      // A short page covers the entire room. A full page can only confirm
+      // omissions at or above its oldest row.
+      _reconcileComposer(merged, (target) {
+        return !merged.containsKey(target.id) &&
+            (!hasOlderPage || _newestFirst(target, oldest!) <= 0);
+      });
+      if (hasOlderPage) await _refreshOlderMessages(oldest!);
     } catch (_) {
       // A later resume or channel join tries again after a failed request.
     }
+  }
+
+  Future<void> _refreshOlderMessages(RoomMessage oldestOnLatestPage) async {
+    final ids = {
+      for (final message in [
+        ..._messages,
+        _editTarget,
+        _replyTarget,
+        _stashedDraft?.replyTarget,
+      ])
+        if (message != null && _newestFirst(message, oldestOnLatestPage) > 0)
+          message.id,
+    };
+    if (ids.isEmpty) return;
+    final rows = await ref
+        .read(roomsRepositoryProvider)
+        .fetchMessagesByIds(roomId: widget.roomId, ids: ids.toList());
+    if (!mounted) return;
+    final fetched = {for (final message in rows) message.id: message};
+    final merged = <String, RoomMessage>{
+      for (final message in _messages)
+        if (!ids.contains(message.id))
+          message.id: message
+        else if (fetched[message.id] case final row?)
+          message.id: _mergeFetched(message, row),
+    };
+    _updateMessages(() {
+      _messages
+        ..clear()
+        ..addAll(merged.values);
+      _fetchedMessageIds.retainAll(merged.keys.toSet());
+    });
+    _reconcileComposer(
+      fetched,
+      (target) => ids.contains(target.id) && !fetched.containsKey(target.id),
+    );
+  }
+
+  void _reconcileComposer(
+    Map<String, RoomMessage> visible,
+    bool Function(RoomMessage) wasRemoved,
+  ) {
+    if (_stashedDraft case final stash?) {
+      if (stash.replyTarget case final target? when wasRemoved(target)) {
+        _stashedDraft = _ComposerDraft(
+          text: stash.text,
+          attachments: stash.attachments,
+          replyTarget: null,
+          sendToken: null,
+        );
+      }
+    }
+    if (_editTarget case final target?) {
+      if (wasRemoved(target) || visible[target.id]?.isDeleted == true) {
+        _endEdit();
+      }
+    }
+    if (_replyTarget case final target? when wasRemoved(target)) _cancelReply();
+  }
+
+  RoomMessage _mergeFetched(RoomMessage? current, RoomMessage fetched) {
+    // Realtime can have a newer body while HTTP carries the current joins.
+    // A missing quote in the server response clears an earlier preview.
+    return current != null && _isNewerRevision(current, fetched)
+        ? current.withEmbedsFrom(fetched, replace: true)
+        : fetched;
   }
 
   bool _isNewerRevision(RoomMessage live, RoomMessage fetched) {
@@ -778,7 +859,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           .read(roomsRepositoryProvider)
           .fetchMessages(
             roomId: widget.roomId,
-            before: _messages.isEmpty ? null : _messages.last,
+            before: _historyCursor,
             limit: _pageSize,
           );
       if (!mounted || generation != _historyGeneration) return;
@@ -789,6 +870,8 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
         final known = {for (final m in _messages) m.id};
         _messages.addAll(page.where((m) => !known.contains(m.id)));
         _messages.sort(_newestFirst);
+        _fetchedMessageIds.addAll(page.map((message) => message.id));
+        if (page.isNotEmpty) _historyCursor = page.last;
         // A short page is the end of the history. `isNotEmpty` was not: a
         // full last page is non-empty, so there was always one more request
         // after it, answered with nothing.
@@ -1073,7 +1156,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
           () => _messages[index] = edited.withEmbedsFrom(_messages[index]),
         );
       }
-      _endEdit();
+      if (_editTarget?.id == target.id) _endEdit();
       // The room's last-message preview may be the line just reworded.
       _roomListIsStale = true;
     } catch (e) {
@@ -1149,6 +1232,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     var index = _chatListItems.indexWhere(
       (item) => item.message?.id == messageId,
     );
+    final needsPaging = index == -1;
     while (index == -1 && _hasMore) {
       // Stopping on `false` is what makes this a loop rather than a spin: see
       // [_loadMore]. It reports that it did nothing AND can do nothing right
@@ -1164,6 +1248,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       if (!moved) break;
     }
     if (!mounted) return;
+    if (needsPaging && index != -1) {
+      // The scroll controller clamps to the previous layout's item count
+      // until the newly fetched page has been built.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      index = _chatListItems.indexWhere(
+        (item) => item.message?.id == messageId,
+      );
+    }
     if (index == -1) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1174,14 +1267,17 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       );
       return;
     }
-    await _itemScrollController.scrollTo(
-      index: index,
-      alignment: 0.5,
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-    );
+    if (!_itemScrollController.isAttached) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _itemScrollController.jumpTo(index: index, alignment: 0.5);
+    } else {
+      await _itemScrollController.scrollTo(
+        index: index,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    }
     if (!mounted) return;
     setState(() => _highlightedMessageId = messageId);
     _highlightTimer?.cancel();

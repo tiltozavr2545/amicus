@@ -18,7 +18,8 @@ runbook rather than as design notes. Keep current credentials outside it.
 
 Amicus already has iOS push notifications wired on the app side:
 - `Runner.entitlements` has `aps-environment` set.
-- `GoogleService-Info.plist` is present and registered in the Xcode project.
+- The Xcode project registers `GoogleService-Info.plist` as a resource.
+  Restore the gitignored file from the Firebase configuration before building.
 - Bundle ID: `com.github.tiltozavr2545.amicus`
 - Firebase project ID: `amicus-a60c1`
 
@@ -72,26 +73,24 @@ select status_code, content::text, created
  limit 3;
 ```
 
-- `{"processed":1,"sent":1}` — FCM accepted the send. If the only device
-  registered on that account is the iPhone and the notification arrived, APNs
-  is wired up.
-- `{"processed":1,"sent":0}` — FCM refused every delivery. With an iOS-only
-  account, inspect the FCM error: a missing/wrong APNs key is one possible
-  cause (`THIRD_PARTY_AUTH_ERROR`), alongside token, permission and other
-  delivery failures. Zero sends alone does not diagnose the key.
+- `sent` counts requests accepted by FCM during the run. Confirm the specific
+  notification arrived on the iPhone.
+- With the updated sender, HTTP 502 and `errors` indicate delivery errors.
+  A `pending` row can be retried and a terminal failure records
+  `failed_at` with `last_delivery_error` in `notification_outbox`. Check
+  Firebase and the APNs key configuration when diagnosing an iOS-only error.
+- A completed row can also represent a recipient with no active registration.
+  Match the queue result to the iPhone's registration and actual delivery.
 
 Two caveats. `sent` counts all of that user's devices, so run this on an
 account whose only registered device is the iPhone — otherwise an Android
 phone in the same account makes `sent` non-zero regardless. And
 `net._http_response` is pruned after a few hours, so read it soon after.
 
-**What does NOT prove anything.** A row in `device_tokens` for the iPhone only
-means the app registered for push — registration succeeds with no APNs key at
-all, which is exactly what makes this failure quiet. Neither does `sent_at` on
-the outbox row: `send-push` stamps every row it claimed, whether or not FCM
-accepted it (see the comment on `doneIds` in `index.ts`). Use the physical iOS/TestFlight check for this project. Supported simulators
-can receive APNs Sandbox notifications; that does not test the recorded
-Production-scoped key. See [the iOS guide](ios-deployment-guide.md#3-device-and-simulator-verification).
+A `device_tokens` row verifies registration. A successful physical-device
+or TestFlight smoke test verifies the Production APNs path. Supported
+simulators use APNs Sandbox. See
+[the iOS guide](ios-deployment-guide.md#3-device-and-simulator-verification).
 
 ## Doing the upload again
 

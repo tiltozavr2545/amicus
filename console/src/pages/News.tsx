@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   NewsDraft,
   NewsMedia,
@@ -138,6 +138,7 @@ export function News() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<NewsDraft[]>([]);
+  const publishToken = useRef<string | null>(null);
 
   useEffect(() => {
     if (data) setDrafts(data.drafts);
@@ -165,6 +166,7 @@ export function News() {
   }
 
   function clear() {
+    publishToken.current = null;
     setText('');
     setMedia([]);
     setEditing(null);
@@ -230,7 +232,11 @@ export function News() {
       if (editing) {
         await send(`/news/${editing}`, 'PATCH', payload());
       } else {
-        await send('/news', 'POST', payload());
+        publishToken.current ??= crypto.randomUUID();
+        await send('/news', 'POST', {
+          ...payload(),
+          clientToken: publishToken.current,
+        });
       }
       clear();
       reload();
@@ -400,6 +406,7 @@ export function News() {
                         type="button"
                         disabled={!!busy}
                         onClick={() => {
+                          publishToken.current = null;
                           setText(d.text);
                           setMedia(d.media);
                           setEditing(null);
@@ -449,6 +456,7 @@ export function News() {
                     type="button"
                     disabled={!!busy}
                     onClick={() => {
+                      publishToken.current = null;
                       setEditing(p.id);
                       setText(p.text ?? '');
                       setMedia(p.media);

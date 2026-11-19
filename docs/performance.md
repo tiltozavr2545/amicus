@@ -1,6 +1,6 @@
 # Interface stability and resource use
 
-Implemented for **0.19.1+78 (unreleased)**.
+Implemented for **0.19.1+78**.
 
 Framebook techniques evaluated for Amicus on 2026-11-18. The source checkout
 was Framebook `fd4d943`; relevant changes include `7cdbae9` (resource use),
@@ -52,18 +52,19 @@ It does not promise to anchor the same pixel when new posts are inserted.
 Regressions cover overlapping/failed preference writes, first-read settings,
 disposal and language hydration; actual image decoding and aspect ratio;
 playback/preparation across background/tab/slide transitions; keyboard restore
-with surviving/removed editors; background chat reads/typing; and retained
-feed image elements when a new post is inserted.
+with surviving/removed editors; background chat reads and typing; recovery of
+disconnected chat history; removal of moderated messages after a refresh;
+reply navigation with reduced motion; and retained feed image elements when
+a new post is inserted.
 
 The decode fixture is a 1000 x 2000 image. A 100 x 100 viewport at fourfold
 zoom decodes it as 200 x 400: 320,000 RGBA bytes instead of 8,000,000,
 excluding codec/cache overhead. This fixture is not a whole-app memory result.
 
-No physical phone was connected during implementation. Frame times, native
-video/audio behavior, Android keyboard behavior and battery consumption still
-require device measurement. No percentage battery saving or whole-app speedup
-is claimed. Use a physical phone and profile build; do not start an emulator
-on the Intel development Mac.
+Frame times, native video and audio behavior, the Android keyboard, and
+battery use still require measurement with a profile build on physical
+hardware. The checks guard individual rendering and lifecycle behaviors.
 
-Automated validation on 2026-11-18: `make verify` passed formatting, static
-analysis and **427 tests**. No Android/iOS distribution build was uploaded.
+Local validation for 0.19.1 passed formatting, static analysis and **441 Flutter
+tests**. Android delivery is tracked separately in the
+[release workflow](operations.md#release).

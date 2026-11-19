@@ -37,16 +37,20 @@ class _FakeNotificationPreferencesRepository
   }
 
   @override
-  Future<void> save(String userId, NotificationPreferences prefs) async {
+  Future<void> save(
+    String userId,
+    NotificationPreference preference,
+    bool enabled,
+  ) async {
     saveCalls++;
-    lastSaved = prefs;
     if (gateSaves) {
       final gate = Completer<void>();
       gates.add(gate);
       await gate.future;
     }
     if (saveThrows) throw Exception('network error');
-    stored = prefs;
+    stored = preference.applyTo(stored, enabled);
+    lastSaved = stored;
   }
 }
 
@@ -277,6 +281,31 @@ void main() {
     expect(tile.value, false);
   });
 
+  testWidgets('A toggle before settings load preserves the other flags', (
+    tester,
+  ) async {
+    final gate = Completer<NotificationPreferences>();
+    const serverPrefs = NotificationPreferences(digest: false);
+    final repo = _FakeNotificationPreferencesRepository()
+      ..stored = serverPrefs
+      ..fetchGate = gate;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Comments on your posts and replies to you'));
+    await tester.pumpAndSettle();
+    gate.complete(serverPrefs);
+    await tester.pumpAndSettle();
+
+    expect(repo.stored.comments, false);
+    expect(repo.stored.digest, false);
+    final switches = tester
+        .widgetList<SwitchListTile>(find.byType(SwitchListTile))
+        .toList();
+    expect(switches[2].value, false);
+    expect(switches[3].value, false);
+  });
+
   testWidgets('A failed save rolls the toggle back and shows a snackbar', (
     tester,
   ) async {
@@ -407,12 +436,8 @@ void main() {
   });
 
   testWidgets(
-    'A failed toggle rolls back only its own field, not a concurrent one',
+    'A failed toggle rolls back independently of a concurrent write',
     (tester) async {
-      // Regression: the rollback used to restore the whole snapshot taken
-      // before the request, so a failing toggle silently undid a different
-      // toggle that had already succeeded — and because save() upserts all
-      // five booleans, the next write persisted that stale picture.
       final repo = _FakeNotificationPreferencesRepository()..gateSaves = true;
       await tester.pumpWidget(_wrap(repo));
       await tester.pump();
@@ -444,6 +469,8 @@ void main() {
       expect(tileFor(commentsLabel).value, true);
       // The one that succeeded stays off.
       expect(tileFor(digestLabel).value, false);
+      expect(repo.stored.comments, true);
+      expect(repo.stored.digest, false);
     },
   );
 }

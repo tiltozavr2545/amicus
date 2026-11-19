@@ -89,11 +89,9 @@ Apple documents this minimal workflow-only request in
 [Start a build](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-cibuildruns).
 For an explicitly selected branch or tag, the API also provides the
 [`sourceBranchOrTag` Git Reference relationship](https://developer.apple.com/documentation/appstoreconnectapi/cibuildruncreaterequest/data-data.dictionary/relationships-data.dictionary/sourcebranchortag-data.dictionary).
-Resolve the intended repository reference and include that relationship when
-the exact source matters; inspect the returned build's `sourceCommit.commitSha`
-before accepting it as the release build. This documentation refresh made no
-authenticated request and does not establish which branch the deployed
-workflow currently selects by default.
+For a release, resolve the merged `main` revision and select its branch or tag
+explicitly. Confirm the returned run's `sourceCommit.commitSha` and the
+processed build's version and build number before adding it to TestFlight.
 
 ## 5. Existing tooling (don't hand-roll if this covers the need)
 

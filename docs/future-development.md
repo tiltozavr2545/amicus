@@ -44,10 +44,9 @@ work with), and then show the route on a map in a post.
 
 ## iOS release validation
 
-TestFlight delivery and APNs setup have already been implemented; they are
-not a new platform project. Before distributing the upcoming 0.19.1, verify
-its interface, keyboard, media playback and push behavior on a physical iOS
-device using the current [iOS build guide](ios-deployment-guide.md). Use the
+Before distributing 0.19.1 through TestFlight, verify its interface, keyboard,
+media playback, chat reconnect and push behavior on a physical iOS device
+using the [iOS build guide](ios-deployment-guide.md). Use the
 [Xcode Cloud pin](xcode-cloud-setup.md) for the UIScene runner.
 
 Store listing copy and iPhone/iPad screenshots still need review against the

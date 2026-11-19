@@ -42,6 +42,7 @@ class _FakeRoomsRepository implements RoomsRepository {
   _FakeRoomsRepository({this.messages = const []});
 
   List<RoomMessage> messages;
+  List<RoomMessage> olderMessages = const [];
 
   int markReadCalls = 0;
   final List<String> sentTexts = [];
@@ -63,6 +64,7 @@ class _FakeRoomsRepository implements RoomsRepository {
   /// How many times a page of OLDER history was asked for. Zero is the right
   /// answer once a short page has said there is no more of it.
   int olderPageFetches = 0;
+  RoomMessage? olderPageCursor;
 
   bool fetchThrows = false;
   Completer<List<RoomMessage>>? pendingFirstPage;
@@ -75,8 +77,12 @@ class _FakeRoomsRepository implements RoomsRepository {
   }) async {
     if (before != null) {
       olderPageFetches++;
+      olderPageCursor = before;
       if (fetchThrows) throw Exception('offline');
-      return const [];
+      return olderMessages
+          .where((row) => row.createdAt.isBefore(before.createdAt))
+          .take(limit)
+          .toList();
     }
     firstPageFetches++;
     if (fetchThrows) throw Exception('offline');
@@ -85,6 +91,15 @@ class _FakeRoomsRepository implements RoomsRepository {
     if (pending != null) return pending.future;
     return messages;
   }
+
+  @override
+  Future<List<RoomMessage>> fetchMessagesByIds({
+    required String roomId,
+    required List<String> ids,
+  }) async => [
+    for (final row in [...messages, ...olderMessages])
+      if (ids.contains(row.id)) row,
+  ];
 
   /// Attachments each send carried — the attach button is only meaningful if
   /// what it collects reaches the repository.
@@ -348,6 +363,7 @@ Widget _wrap(
   _FakeRoomsRepository repo, {
   List<Room> rooms = const [],
   bool showChat = true,
+  bool disableAnimations = false,
 }) {
   return ProviderScope(
     overrides: [
@@ -358,6 +374,12 @@ Widget _wrap(
       myRoomsProvider.overrideWith((ref) => rooms.isEmpty ? [_room] : rooms),
     ],
     child: MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(disableAnimations: disableAnimations),
+        child: child!,
+      ),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: showChat
@@ -1690,6 +1712,147 @@ void main() {
     expect(_messageText('первое новое'), findsOneWidget);
     expect(_messageText('второе новое'), findsOneWidget);
     expect(_messageText('старое'), findsNothing);
+  });
+
+  testWidgets('a live insert does not bridge disconnected history', (
+    tester,
+  ) async {
+    final at = DateTime.utc(2026, 8, 26, 18);
+    final old = _message(
+      id: 'old',
+      authorId: 'anya',
+      text: 'Old history',
+      createdAt: at,
+    );
+    final missing = _message(
+      id: 'missing',
+      authorId: 'anya',
+      text: 'Recovered from the gap',
+      createdAt: at.add(const Duration(minutes: 3)),
+    );
+    final reply = _message(
+      id: 'reply',
+      authorId: 'anya',
+      text: 'Latest reply',
+      createdAt: at.add(const Duration(minutes: 53)),
+      replyToId: missing.id,
+      replyToPreview: replyPreviewFor([missing], missing.id),
+    );
+    final repo = _FakeRoomsRepository(messages: [old]);
+    await tester.pumpWidget(_wrap(repo, disableAnimations: true));
+    await tester.pumpAndSettle();
+
+    repo.onInsert!(reply);
+    repo.messages = [
+      reply,
+      for (var minute = 52; minute >= 4; minute--)
+        _message(
+          id: 'new-$minute',
+          authorId: 'anya',
+          text: 'New message $minute',
+          createdAt: at.add(Duration(minutes: minute)),
+        ),
+    ];
+    repo.olderMessages = [missing, old];
+    repo.onReady!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(missing.text));
+    await tester.pumpAndSettle();
+
+    expect(repo.olderPageCursor?.id, 'new-4');
+    expect(_messageText(missing.text), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a successful empty snapshot removes the last hidden message', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'Only message')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    expect(_messageText('Only message'), findsOneWidget);
+
+    repo.messages = [];
+    repo.onReady!();
+    await tester.pumpAndSettle();
+
+    expect(_messageText('Only message'), findsNothing);
+  });
+
+  testWidgets('reconnect rechecks previously loaded older messages', (
+    tester,
+  ) async {
+    final at = DateTime.utc(2026, 8, 26, 18);
+    final older = _message(
+      id: 'older',
+      authorId: 'anya',
+      text: 'Older hidden body',
+      createdAt: at,
+    );
+    final reply = _message(
+      id: 'reply',
+      authorId: 'anya',
+      text: 'Recent reply',
+      createdAt: at.add(const Duration(minutes: 50)),
+      replyToId: older.id,
+      replyToPreview: replyPreviewFor([older], older.id),
+    );
+    final recent = [
+      for (var minute = 49; minute > 0; minute--)
+        _message(
+          id: 'new-$minute',
+          authorId: 'anya',
+          text: 'New message $minute',
+          createdAt: at.add(Duration(minutes: minute)),
+        ),
+    ];
+    final repo = _FakeRoomsRepository(messages: [reply, ...recent])
+      ..olderMessages = [older];
+    await tester.pumpWidget(_wrap(repo, disableAnimations: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(older.text));
+    await tester.pumpAndSettle();
+    expect(_messageText(older.text), findsOneWidget);
+
+    repo.olderMessages = [];
+    repo.messages = [
+      _message(
+        id: reply.id,
+        authorId: reply.authorId,
+        text: reply.text,
+        createdAt: reply.createdAt,
+        replyToId: older.id,
+      ),
+      ...recent,
+    ];
+    repo.onReady!();
+    await tester.pumpAndSettle();
+
+    expect(_messageText(older.text), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a quote jumps immediately when animations are disabled', (
+    tester,
+  ) async {
+    final original = _message(id: 'original', authorId: 'anya', text: 'Note');
+    final reply = _message(
+      id: 'reply',
+      authorId: 'anya',
+      text: 'New reply',
+      replyToId: original.id,
+      createdAt: original.createdAt.add(const Duration(minutes: 1)),
+    );
+    final repo = _FakeRoomsRepository(messages: [reply, original]);
+    await tester.pumpWidget(_wrap(repo, disableAnimations: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(original.text));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 2));
   });
 
   testWidgets('hunting for a reply target gives up instead of spinning', (

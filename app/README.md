@@ -2,9 +2,14 @@
 
 The Amicus Flutter app. Only the client code lives here — the full project description, setup, documentation and plans are in the repository root: [../README.md](../README.md).
 
-Working version: **0.19.1+78 (unreleased)**. Android development and verification
-use Flutter 3.32.8 on the Intel Mac; the iOS UIScene runner uses the independent
-SDK pin described in the [iOS guide](../docs/ios-deployment-guide.md).
+The release version in `pubspec.yaml` is **0.19.1+78**. Android development
+and verification use Flutter 3.32.8 and JDK 21. The iOS UIScene runner uses
+the independent SDK pin in the [iOS guide](../docs/ios-deployment-guide.md).
+
+Prepare `.env` from [`.env.example`](.env.example) and restore the Firebase
+configuration for the target platform. Android reads
+`android/app/google-services.json` and iOS reads
+`ios/Runner/GoogleService-Info.plist`.
 
 Running from this folder:
 

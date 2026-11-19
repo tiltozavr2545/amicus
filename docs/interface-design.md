@@ -4,7 +4,7 @@ Amicus is a personal album and a conversation with people the reader knows.
 Photographs, names and messages carry the identity. Color marks an action or a
 state rather than covering the entire interface.
 
-This is the upcoming 0.19.1 design. Resource and lifecycle behavior is
+This is the 0.19.1 interface. Resource and lifecycle behavior is
 documented in [performance.md](performance.md).
 
 ## Tokens
@@ -112,14 +112,16 @@ share consistent controls, with visible focus and accessible tap targets.
 
 Floating and classic navigation remain available in Settings. The floating
 bar keeps synchronized page gestures and its restrained glass selection.
-Reduced motion skips settling animations. Full-screen photos fade at their final
+Reduced motion skips settling animations and jumps directly to quoted messages
+in chat. Full-screen photos fade at their final
 viewport size, with bounded decoding and fourfold zoom. Videos pause when their
 slide/tab is hidden or the app leaves the foreground; return does not autoplay.
 Secondary screens cover the shell;
 scroll tails clear floating navigation and the device safe area.
 
-The author area of a post and the full Connection row are profile links, while
-menus, reactions and relationship controls remain independent targets. Settings
+Profile links include the author area of a post, the full Connection row, the
+direct-chat header and the name above a room message. Menus, reactions and
+relationship controls remain independent targets. Settings
 show cached notification preferences and refresh them in place. Saved theme,
 language and navigation are applied before the first frame; failed changes
 restore the last saved choice. New posts restore

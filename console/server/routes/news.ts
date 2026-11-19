@@ -25,7 +25,7 @@ import {
   writeStaged,
 } from '../news.ts';
 import { admin } from '../supabase.ts';
-import { uuidParam } from '../uuid.ts';
+import { isUuid, uuidParam } from '../uuid.ts';
 
 export const newsRouter = Router();
 newsRouter.param('id', uuidParam);
@@ -74,12 +74,8 @@ async function materialise(name: string, author: string): Promise<string> {
   throw new Error(`storage: ${error.message}`);
 }
 
-// Repeats the checks of `create_post_with_media()`, because the function itself
-// can't be used here: it takes the author from `auth.uid()`, while the console
-// runs as service_role without a JWT — auth.uid() is null there, and the
-// function refuses right away. So the insert goes in directly, and everything
-// the RPC checked has to be checked right here: otherwise the database would
-// get something the client couldn't have put there.
+// Validate before uploading staged media. save_system_news_post() also
+// checks the write before changing the database.
 //
 // This is also where staged files turn into bucket objects — publishing is
 // exactly the moment the bytes belong there (see STAGING in news.ts). Before
@@ -192,26 +188,22 @@ async function signed(paths: string[]): Promise<Map<string, string>> {
   return out;
 }
 
-async function replaceMedia(postId: string, media: Required<NewsMedia>[]) {
-  // The set is rewritten whole, not appended to — as in
-  // `create_post_with_media()`: `position` is assigned in array order, and
-  // leftover old rows would take other items' places.
-  const { error: wipeError } = await admin
-    .from('post_media')
-    .delete()
-    .eq('post_id', postId);
-  if (wipeError) throw new Error(`post_media: ${wipeError.message}`);
-  if (media.length === 0) return;
-  const { error } = await admin.from('post_media').insert(
-    media.map((m, index) => ({
-      post_id: postId,
-      position: index,
+async function saveNewsPost(
+  postId: string | null,
+  clientToken: string | null,
+  { text, media }: Awaited<ReturnType<typeof prepareMedia>>,
+) {
+  return admin.rpc('save_system_news_post', {
+    p_author_id: await systemId(),
+    p_post_id: postId,
+    p_client_token: clientToken,
+    p_text: text,
+    p_items: media.map((m) => ({
       media_type: m.mediaType,
       storage_path: m.storagePath,
       poster_path: m.posterPath,
     })),
-  );
-  if (error) throw new Error(`post_media: ${error.message}`);
+  });
 }
 
 newsRouter.get('/news', async (_req, res, next) => {
@@ -397,23 +389,15 @@ newsRouter.get('/news/media/:name', async (req, res, next) => {
 
 newsRouter.post('/news', async (req, res, next) => {
   try {
-    const { text, media } = await prepareMedia(req.body?.text, req.body?.media);
-    const author = await systemId();
-
-    const inserted = await admin
-      .from('posts')
-      .insert({
-        author_id: author,
-        text,
-        client_token: randomUUID(),
-        visibility: 'connections',
-      })
-      .select('id')
-      .single();
-    if (inserted.error) throw new Error(`posts: ${inserted.error.message}`);
-
-    await replaceMedia(inserted.data.id as string, media);
-    res.json({ ok: true, id: inserted.data.id });
+    const token = req.body?.clientToken ?? randomUUID();
+    if (!isUuid(token)) {
+      res.status(400).json({ error: 'clientToken должен быть uuid' });
+      return;
+    }
+    const prepared = await prepareMedia(req.body?.text, req.body?.media);
+    const { data: id, error } = await saveNewsPost(null, token, prepared);
+    if (error) throw new Error(`posts: ${error.message}`);
+    res.json({ ok: true, id });
   } catch (error) {
     next(error);
   }
@@ -451,14 +435,13 @@ newsRouter.patch('/news/:id', async (req, res, next) => {
       return;
     }
 
-    const { text, media } = await prepareMedia(req.body?.text, req.body?.media);
-
-    const { error } = await admin
-      .from('posts')
-      .update({ text })
-      .eq('id', req.params.id);
+    const prepared = await prepareMedia(req.body?.text, req.body?.media);
+    const { error } = await saveNewsPost(req.params.id, null, prepared);
+    if (error?.code === 'PT404') {
+      res.status(404).json({ error: 'Пост не найден' });
+      return;
+    }
     if (error) throw new Error(`posts: ${error.message}`);
-    await replaceMedia(req.params.id, media);
     res.json({ ok: true });
   } catch (error) {
     next(error);

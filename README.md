@@ -8,12 +8,10 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
-Working version: **0.19.1+78 — unreleased**. The documentation describes this
-working tree; the version number is not evidence of a published build.
-
-Deployed on Android (Google Play, Closed testing — the `alpha` track) and on iOS
-(TestFlight). Currently — testing and fine-tuning features on both platforms (see
-[docs/future-development.md](docs/future-development.md)).
+Current release version is **0.19.1 (build 78)**. Android builds go to Google
+Play closed testing (`alpha`), and iOS builds go through TestFlight separately.
+Check delivery and availability for each channel in the
+[release runbook](docs/operations.md#release).
 
 ## Features
 
@@ -25,7 +23,8 @@ Deployed on Android (Google Play, Closed testing — the `alpha` track) and on i
 - Rooms: realtime chats with unread counts, delivery/read receipts, presence,
   typing and push notifications; up to 10 photos/videos per message, quoted
   replies, editing your messages within 48 hours, and per-room notification
-  muting. Returning from the background reconciles missed messages and edits.
+  muting. Reconnecting recovers missed messages and refreshes edits and
+  moderation changes. Open a member's profile from a message or a direct-chat header.
 - A two-person room is named after the other person and appears for both; for a group of three or more, the owner sets a name and an avatar, and adds and removes people
 - Connection request — to a member of a shared room if you aren't connected yet: the only way to connect without meeting in person, and it's available only where people already share a chat
 - Mute, block and favorites — with push notifications and fine-grained per-source settings
@@ -37,7 +36,7 @@ Full feature history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
-Interface previews of the upcoming 0.19.1, using fictional people and content.
+Interface previews for 0.19.1, using fictional people and content.
 
 <table>
 <tr>
@@ -98,7 +97,9 @@ flutter pub get
 flutter run --dart-define-from-file=.env
 ```
 
-`.env` is not stored in the repository — you need your own Supabase project (`SUPABASE_URL`, `SUPABASE_ANON_KEY`), see `app/.env.example`.
+Use [`app/.env.example`](app/.env.example) to configure a Supabase project.
+Restore the Firebase configuration for the target platform before building.
+See the [client setup](app/README.md).
 
 ## Documentation
 
@@ -119,7 +120,7 @@ Current:
 - [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
 - [App Store listing draft](docs/review/app-store-listing-draft.md) — working copy for proofreading; actual submission status lives in App Store Connect
 - [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
-- [Changelog](CHANGELOG.md) — released history and the upcoming 0.19.1
+- [Changelog](CHANGELOG.md) — version history, including 0.19.1
 
 Historical — how the project was conceived and how it went, not how it works now:
 

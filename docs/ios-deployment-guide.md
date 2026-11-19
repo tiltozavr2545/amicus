@@ -1,8 +1,8 @@
 # iOS deployment: build, signing and TestFlight
 
-This is the current runbook for the upcoming 0.19.1, alongside the existing
-TestFlight workflow. It does not record live App Store approval or submission
-status. Use [Xcode Cloud](xcode-cloud-setup.md) for stable remote archives and
+Use this runbook to build and validate 0.19.1 for TestFlight. Check processing,
+submission and approval status in App Store Connect. Use
+[Xcode Cloud](xcode-cloud-setup.md) for stable remote archives and
 [API automation](app-store-connect-api-automation.md) for a programmatic trigger.
 
 ## Prerequisites
@@ -96,8 +96,8 @@ an optional design task, not a blocker introduced by this documentation.
 
 ## 6. Export compliance
 
-`Info.plist` currently sets `ITSAppUsesNonExemptEncryption` to `false`.
-The app uses its existing HTTPS/TLS services; this task adds no encryption.
+`Info.plist` sets `ITSAppUsesNonExemptEncryption` to `false`.
+The app uses HTTPS/TLS for its services.
 Reassess the declaration against the actual implementation and Apple's
 questions if encryption behavior changes.
 
@@ -117,8 +117,8 @@ Alternatively let Xcode Cloud archive on its stable image.
 `pubspec.yaml` is the app-version/build source. Runner keeps
 `VERSIONING_SYSTEM` disabled and `CURRENT_PROJECT_VERSION` tied to
 `$(FLUTTER_BUILD_NUMBER)`; do not enable Cloud's independent build counter.
-0.19.1 is not released yet: do not invent a new version merely to follow this
-runbook. Confirm actual store build-number availability before an upload.
+The 0.19.1 release uses build 78. Confirm that this build number is available
+in App Store Connect before uploading.
 
 ## 8. Upload to App Store Connect
 

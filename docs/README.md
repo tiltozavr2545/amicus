@@ -1,9 +1,9 @@
 # Amicus documentation
 
-The working version is **0.19.1+78**, not yet released. These documents
-describe the checked-out implementation; deployed services and store review
-status must be checked separately. Version history and pending 0.19.1 changes
-live in [CHANGELOG.md](../CHANGELOG.md).
+The current release version is **0.19.1+78**. See the
+[changelog](../CHANGELOG.md#0191) for the changes and
+[operations](operations.md#release) for the separate Play, GitHub APK,
+TestFlight, and backend delivery steps.
 
 ## Current references
 

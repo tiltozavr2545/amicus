@@ -1,8 +1,18 @@
 # App Store Listing Draft — Amicus (English, U.S.)
 
-Working copy for the upcoming 0.19.1, checked against repository behavior on
-2026-11-18. Review before replacing store text. Actual metadata, submissions
-and approval status live in App Store Connect and are not recorded here.
+Store copy for **0.19.1 (build 78)**, checked against repository behavior on
+2026-11-19. Review it against the submitted build and use App Store Connect
+to check the current metadata and approval status.
+
+## What's New
+
+```
+Amicus has a refreshed look, with quieter colors, a clearer feed and easier access to profile photos and gallery tools.
+
+Open profiles directly from a chat, and catch up on messages when you come back online. Reply links respect your motion settings.
+
+Notification settings save each switch independently. Reordering your profile photos keeps their references intact.
+```
 
 ## Promotional Text (170 char max)
 
@@ -29,7 +39,7 @@ WHAT YOU CAN DO
 • Share text posts with up to 20 photos or videos
 • Choose who sees each post: all your Connections, or just your favorites
 • React and comment, with one level of threaded replies
-• Rooms: private group or 1:1 chats with the people you're connected to — real-time messages with photos and videos, read receipts, typing indicators, and push notifications you can silence per room
+• Start a private group or one-to-one chat with your Connections, and share photos and videos. Rooms have read receipts, typing indicators, and per-room notification controls
 • Edit your chat messages within 48 hours and reply with a quote
 • Keep an unfinished post as a local draft, including its attachments
 • Mute, block, or favorite people — with fine-grained control per person
@@ -42,7 +52,7 @@ Visibility rules are enforced at the database level. Posts follow their audience
 
 Amicus is about staying close to the people you actually know — without the noise.
 ```
-(2059 chars)
+(2035 chars)
 
 ## Keywords (100 char max, comma-separated, no spaces after commas)
 

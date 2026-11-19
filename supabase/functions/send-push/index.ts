@@ -12,6 +12,12 @@
 // this Deno-based edge function doesn't have.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  type ClaimedNotification,
+  type DeliveryOutcome,
+  DeliveryProgress,
+  retryAfterTimestamp,
+} from './delivery.ts';
 
 const FCM_PROJECT_ID = Deno.env.get('FCM_PROJECT_ID')!;
 const SERVICE_ACCOUNT = JSON.parse(Deno.env.get('FCM_SERVICE_ACCOUNT_JSON')!);
@@ -302,6 +308,7 @@ async function getAccessToken(): Promise<string> {
 
   const resp = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
+    signal: AbortSignal.timeout(10_000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -323,9 +330,7 @@ async function getAccessToken(): Promise<string> {
 // (--dart-define=SUPABASE_ANON_KEY) and is therefore public by construction.
 // Without a check of its own, anyone who unpacked the app could drain the
 // outbox on demand: every call burns a Google token exchange plus one FCM
-// request per recipient device, and stamps `sent_at` on every row it touched
-// whether or not delivery worked, so the notifications it fails to deliver are
-// simply lost (this is best-effort push, there is no retry queue).
+// request per recipient device.
 //
 // The proof of identity is a dedicated shared secret in its own header, *not*
 // the bearer token. Two reasons, one of which was learned the hard way:
@@ -431,12 +436,13 @@ async function sendToToken(
   token: string,
   body: string,
   data: Record<string, string>,
-): Promise<'ok' | 'stale' | 'error'> {
+): Promise<DeliveryOutcome> {
   try {
     const resp = await fetch(
       `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
       {
         method: 'POST',
+        signal: AbortSignal.timeout(10_000),
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
@@ -446,11 +452,20 @@ async function sendToToken(
         }),
       },
     );
-    if (resp.ok) return 'ok';
+    if (resp.ok) return { status: 'sent' };
     const errorBody = await resp.json().catch(() => null);
-    return isDeadTokenError(resp.status, errorBody) ? 'stale' : 'error';
+    if (isDeadTokenError(resp.status, errorBody)) return { status: 'stale' };
+    const reason = `FCM HTTP ${resp.status}`;
+    if (resp.status === 408 || resp.status === 429 || resp.status >= 500) {
+      return {
+        status: 'retry',
+        reason,
+        retryAfter: retryAfterTimestamp(resp.headers.get('Retry-After'), Date.now()),
+      };
+    }
+    return { status: 'failed', reason };
   } catch (_) {
-    return 'error';
+    return { status: 'retry', reason: 'FCM request failed', retryAfter: 0 };
   }
 }
 
@@ -483,138 +498,134 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  // Claims the rows instead of merely reading them: see migration
-  // 20260821150000. `for update skip locked` inside that function means a run
-  // that overlaps another (the cron fires every minute and does not wait for
-  // the previous call) picks up different rows rather than re-sending the same
-  // ones.
-  const { data: rows, error } = await supabase.rpc('claim_notification_outbox', {
+  const deadline = Date.now() + 45_000;
+  const { data, error } = await supabase.rpc('claim_notification_deliveries', {
     p_limit: BATCH_LIMIT,
   });
+  if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-  }
-  if (!rows || rows.length === 0) {
-    return new Response(JSON.stringify({ processed: 0, sent: 0 }), { status: 200 });
-  }
+  const rows = (data ?? []) as ClaimedNotification[];
+  if (rows.length === 0) return Response.json({ processed: 0, sent: 0 });
 
-  // Releases this run's claim so the rows are picked up again immediately
-  // rather than waiting out the five-minute reclaim window.
   const releaseClaim = async () => {
-    await supabase
+    const { error } = await supabase
       .from('notification_outbox')
       .update({ claimed_at: null })
-      .in('id', rows.map((r: { id: string }) => r.id));
+      .eq('claimed_at', rows[0].claimed_at)
+      .in('id', rows.map((row) => row.id));
+    if (error) console.error('Could not release push batch:', error.message);
   };
 
-  const userIds = [...new Set(rows.map((r: { user_id: string }) => r.user_id))];
-  const { data: tokenRows, error: tokenError } = await supabase
-    .from('device_tokens')
-    .select('user_id, fcm_token, locale')
-    .in('user_id', userIds);
-  if (tokenError) {
-    await releaseClaim();
-    return new Response(JSON.stringify({ error: tokenError.message }), { status: 500 });
+  type Device = { token: string; locale: string; hash: string };
+  const tokensByUser = new Map<string, Device[]>();
+  const userIds = [...new Set(rows.map((row) => row.user_id))];
+  // PostgREST caps responses at 1,000 rows. A user can have 20 tokens.
+  const usersPerRequest = 40;
+  for (let start = 0; start < userIds.length; start += usersPerRequest) {
+    const { data: tokens, error } = await supabase
+      .from('device_tokens')
+      .select('user_id, fcm_token, locale')
+      .in('user_id', userIds.slice(start, start + usersPerRequest));
+    if (error) {
+      await releaseClaim();
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+    await Promise.all((tokens ?? []).map(async (token) => {
+      const hash = base64url(await sha256(token.fcm_token));
+      const devices = tokensByUser.get(token.user_id) ?? [];
+      devices.push({ token: token.fcm_token, locale: token.locale, hash });
+      tokensByUser.set(token.user_id, devices);
+    }));
   }
 
-  const tokensByUser = new Map<string, { token: string; locale: string }[]>();
-  for (const t of tokenRows ?? []) {
-    const list = tokensByUser.get(t.user_id) ?? [];
-    list.push({ token: t.fcm_token, locale: t.locale });
-    tokensByUser.set(t.user_id, list);
-  }
-
-  // Once per run, before anything is consumed. A failure here is a project-wide
-  // problem (revoked key, Google unreachable), not a per-message one, so the
-  // claim goes back and the batch is left untouched for the next tick.
-  let accessToken: string;
-  try {
-    accessToken = await getAccessToken();
-  } catch (e) {
-    await releaseClaim();
-    return new Response(
-      JSON.stringify({ error: `token exchange failed: ${e instanceof Error ? e.message : e}` }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
-    );
-  }
-
-  // Flattened to (row, device) pairs so the concurrency limiter sees every
-  // independent send at once instead of one recipient at a time.
-  type Delivery = {
-    userId: string;
-    token: string;
-    body: string;
-    data: Record<string, string>;
-  };
-  const deliveries: Delivery[] = [];
+  const progress = rows.map((row) => new DeliveryProgress(row));
   const skippedKinds = new Set<string>();
-  const doneIds: string[] = [];
-
-  for (const row of rows as {
-    id: string;
-    user_id: string;
-    kind: string;
-    payload: Record<string, unknown> | null;
-  }[]) {
-    // Every claimed row is consumed, including one with no devices and one
-    // whose kind has no copy — leaving either unstamped would make the drain
-    // re-pick it forever.
-    doneIds.push(row.id);
-    for (const { token, locale } of tokensByUser.get(row.user_id) ?? []) {
-      const body = pickText(locale, row.kind, row.payload ?? {});
+  const deliveries = rows.flatMap((row, index) => {
+    const state = progress[index];
+    return (tokensByUser.get(row.user_id) ?? []).flatMap((device) => {
+      if (state.hasSettled(device.hash)) return [];
+      const body = pickText(device.locale, row.kind, row.payload ?? {});
       if (body === null) {
         skippedKinds.add(row.kind);
-        continue;
+        return [];
       }
-      deliveries.push({
-        userId: row.user_id,
-        token,
-        body,
-        data: deepLinkData(row.kind, row.payload ?? {}),
-      });
-    }
-  }
-
-  let sentCount = 0;
-  // Keyed by user as well as token: two accounts signed in on one device hold
-  // two rows carrying the same token string, and a prune matching the token
-  // alone would take the other account's registration down with it.
-  const staleTokens = new Set<string>();
-
-  await forEachLimited(deliveries, MAX_IN_FLIGHT, async (d) => {
-    const result = await sendToToken(accessToken, d.token, d.body, d.data);
-    if (result === 'ok') sentCount++;
-    if (result === 'stale') staleTokens.add(`${d.userId} ${d.token}`);
+      return [{ row, state, device, body }];
+    });
   });
 
-  // Stamping is what actually consumes the batch, so its failure is reported
-  // rather than swallowed: the rows keep their claim, the five-minute window
-  // hands them back, and the 500 says why. Silently returning 200 here is how
-  // a broken stamp turned into the whole batch being sent a second time.
-  const { error: stampError } = await supabase
-    .from('notification_outbox')
-    .update({ sent_at: new Date().toISOString() })
-    .in('id', doneIds);
+  let sentCount = 0;
+  const staleTokens = new Map<string, { userId: string; token: string }>();
+  if (deliveries.length > 0) {
+    let accessToken: string;
+    try {
+      accessToken = await getAccessToken();
+    } catch (e) {
+      await releaseClaim();
+      return Response.json(
+        { error: `token exchange failed: ${e instanceof Error ? e.message : e}` },
+        { status: 502 },
+      );
+    }
+
+    await forEachLimited(deliveries, MAX_IN_FLIGHT, async ({ row, state, device, body }) => {
+      if (Date.now() >= deadline) {
+        state.deferred = true;
+        return;
+      }
+      const result = await sendToToken(
+        accessToken,
+        device.token,
+        body,
+        deepLinkData(row.kind, row.payload ?? {}),
+      );
+      state.record(device.hash, result);
+      if (result.status === 'sent') sentCount++;
+      if (result.status === 'stale') {
+        staleTokens.set(`${row.user_id}:${device.hash}`, {
+          userId: row.user_id,
+          token: device.token,
+        });
+      }
+    });
+  }
+
+  // Commit outcomes together before releasing the claims for future runs.
+  const now = Date.now();
+  const results = progress.map((state) => state.finish(now, Math.floor(Math.random() * 15_000)));
+  const { data: finished, error: stampError } = await supabase.rpc(
+    'finish_notification_deliveries', { p_results: results },
+  );
   if (stampError) {
-    return new Response(
-      JSON.stringify({ error: `failed to mark rows sent: ${stampError.message}`, sent: sentCount }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    return Response.json(
+      { error: `failed to record delivery outcomes: ${stampError.message}`, sent: sentCount },
+      { status: 500 },
     );
   }
 
-  for (const pair of staleTokens) {
-    const [userId, token] = pair.split(' ');
-    await supabase.from('device_tokens').delete().eq('user_id', userId).eq('fcm_token', token);
-  }
-
-  return new Response(
-    JSON.stringify({
-      processed: rows.length,
-      sent: sentCount,
-      pruned: staleTokens.size,
-      ...(skippedKinds.size > 0 ? { skipped_kinds: [...skippedKinds] } : {}),
-    }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  let pruned = 0;
+  await forEachLimited(
+    [...staleTokens.values()],
+    MAX_IN_FLIGHT,
+    async ({ userId, token }) => {
+      const { error } = await supabase.from('device_tokens').delete()
+        .eq('user_id', userId).eq('fcm_token', token);
+      if (!error) pruned++;
+    },
   );
+
+  const failed = results.filter((result) => result.failed).length;
+  const pending = results.filter((result) => result.next_attempt_at !== null).length;
+  const errors = [...new Set(results.flatMap((result) => result.last_error ?? []))].sort();
+  if (errors.length > 0) console.error('FCM delivery errors:', errors.join(', '));
+
+  return Response.json({
+    processed: rows.length,
+    recorded: finished,
+    sent: sentCount,
+    failed,
+    pending,
+    pruned,
+    ...(errors.length > 0 ? { errors } : {}),
+    ...(skippedKinds.size > 0 ? { skipped_kinds: [...skippedKinds] } : {}),
+  }, { status: errors.length > 0 ? 502 : 200 });
 });

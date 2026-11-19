@@ -36,12 +36,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  // Seeded once from the fetched row (see build()), then owned locally so a
-  // toggle can apply optimistically without waiting on a refetch — same
-  // seed-once-from-async-data shape as ProfileScreen's `_nameController`.
   NotificationPreferences? _prefs;
-
-  bool _edited = false;
+  final _pending = <NotificationPreference, bool>{};
+  final _saved = <NotificationPreference, bool>{};
   bool _serverLoaded = false;
   Future<void> _cacheWrite = Future.value();
 
@@ -56,17 +53,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final store = await SharedPreferences.getInstance();
       final raw = store.getString('notification_preferences_$userId');
-      if (raw == null || !mounted || _edited || _serverLoaded) return;
+      if (raw == null || !mounted || _serverLoaded) return;
       final value = NotificationPreferences.fromRow(
         jsonDecode(raw) as Map<String, dynamic>,
       );
       setState(() => _prefs = value);
+      if (_saved.isNotEmpty) _remember();
     } catch (_) {}
   }
 
-  void _remember(NotificationPreferences value) {
+  NotificationPreferences _withChanges(
+    NotificationPreferences prefs,
+    Map<NotificationPreference, bool> changes,
+  ) {
+    for (final MapEntry(key: preference, value: enabled) in changes.entries) {
+      prefs = preference.applyTo(prefs, enabled);
+    }
+    return prefs;
+  }
+
+  void _remember() {
+    final base = _prefs;
+    if (base == null) return;
     final userId = ref.read(currentUserIdProvider);
     if (userId == null) return;
+    final value = _withChanges(base, _saved);
     _cacheWrite = _cacheWrite
         .then((_) async {
           final store = await SharedPreferences.getInstance();
@@ -174,40 +185,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// Flips one switch optimistically and persists the result.
-  ///
-  /// [set] writes a single field, so a failure can be undone by writing that
-  /// same field back on top of *current* state. Restoring a whole snapshot
-  /// taken before the request — which is what this did — silently undid any
-  /// other switch that had succeeded in the meantime: turn Comments off, then
-  /// Digest off before the first request returns, let the first one time out,
-  /// and both switches jumped back to on while the server had both off. Since
-  /// [NotificationPreferencesRepository.save] upserts all five booleans at
-  /// once, the next unrelated toggle then wrote that stale picture back and
-  /// quietly re-enabled pushes the user had turned off.
-  Future<void> _toggle(
-    NotificationPreferences Function(NotificationPreferences, bool) set,
-    bool value,
-  ) async {
-    _edited = true;
-    final current = _prefs ?? const NotificationPreferences();
+  Future<void> _toggle(NotificationPreference preference, bool value) async {
     final userId = ref.read(currentUserIdProvider);
-    if (userId == null) return;
-    final next = set(current, value);
-    setState(() => _prefs = next);
-    _remember(next);
+    if (userId == null || _pending.containsKey(preference)) return;
+    setState(() => _pending[preference] = value);
     try {
       await ref
           .read(notificationPreferencesRepositoryProvider)
-          .save(userId, next);
+          .save(userId, preference, value);
+      if (!mounted) return;
+      _saved[preference] = value;
+      _remember();
     } catch (_) {
       if (!mounted) return;
-      final latest = _prefs;
-      if (latest != null) {
-        final restored = set(latest, !value);
-        setState(() => _prefs = restored);
-        _remember(restored);
-      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -215,8 +205,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       );
+    } finally {
+      if (mounted) setState(() => _pending.remove(preference));
     }
   }
+
+  ValueChanged<bool>? _onToggle(NotificationPreference preference) =>
+      _pending.containsKey(preference)
+      ? null
+      : (value) => _toggle(preference, value);
 
   Future<void> _savePreference(Future<void> Function() save) async {
     try {
@@ -264,10 +261,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final loaded = next.asData?.value;
       if (loaded == null) return;
       _serverLoaded = true;
-      if (!_edited) {
-        _prefs = loaded;
-        _remember(loaded);
-      }
+      _prefs = loaded;
+      _remember();
     });
     final packageInfoAsync = ref.watch(_packageInfoProvider);
     final busy = _isSigningOut || _isDeletingAccount;
@@ -283,53 +278,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _group([
               Builder(
                 builder: (context) {
-                  final prefs =
+                  final base =
                       _prefs ??
                       prefsAsync.asData?.value ??
                       const NotificationPreferences();
+                  final prefs = _withChanges(
+                    _withChanges(base, _saved),
+                    _pending,
+                  );
                   return Column(
                     children: [
                       SwitchListTile(
                         secondary: const Icon(Icons.campaign_outlined),
                         title: Text(l10n.notifyAppUpdatesLabel),
                         value: prefs.systemAccount,
-                        onChanged: (v) =>
-                            _toggle((p, v) => p.copyWith(systemAccount: v), v),
+                        onChanged: _onToggle(
+                          NotificationPreference.systemAccount,
+                        ),
                       ),
                       SwitchListTile(
                         secondary: const Icon(Icons.star_outline),
                         title: Text(l10n.notifyFavoritesLabel),
                         value: prefs.favorites,
-                        onChanged: (v) =>
-                            _toggle((p, v) => p.copyWith(favorites: v), v),
+                        onChanged: _onToggle(NotificationPreference.favorites),
                       ),
                       SwitchListTile(
                         secondary: const Icon(Icons.chat_bubble_outline),
                         title: Text(l10n.notifyCommentsLabel),
                         value: prefs.comments,
-                        onChanged: (v) =>
-                            _toggle((p, v) => p.copyWith(comments: v), v),
+                        onChanged: _onToggle(NotificationPreference.comments),
                       ),
                       SwitchListTile(
                         secondary: const Icon(Icons.view_agenda_outlined),
                         title: Text(l10n.notifyDigestLabel),
                         value: prefs.digest,
-                        onChanged: (v) =>
-                            _toggle((p, v) => p.copyWith(digest: v), v),
+                        onChanged: _onToggle(NotificationPreference.digest),
                       ),
                       SwitchListTile(
                         secondary: const Icon(Icons.schedule_outlined),
                         title: Text(l10n.notifyInactiveLabel),
                         value: prefs.inactiveWeek,
-                        onChanged: (v) =>
-                            _toggle((p, v) => p.copyWith(inactiveWeek: v), v),
+                        onChanged: _onToggle(
+                          NotificationPreference.inactiveWeek,
+                        ),
                       ),
                       SwitchListTile(
                         secondary: const Icon(Icons.forum_outlined),
                         title: Text(l10n.notifyRoomMessagesLabel),
                         value: prefs.roomMessages,
-                        onChanged: (v) =>
-                            _toggle((p, v) => p.copyWith(roomMessages: v), v),
+                        onChanged: _onToggle(
+                          NotificationPreference.roomMessages,
+                        ),
                       ),
                     ],
                   );

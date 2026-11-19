@@ -391,25 +391,26 @@ class RoomMessage {
   ///
   /// Postgres Changes hands over the bare row, so an UPDATE — an edit or a
   /// tombstone — arrives without [authorName] and without [replyToPreview].
-  /// Neither changes with an edit (the author is the author, and
-  /// `reply_to_id` is not something an edit touches), so dropping them would
-  /// only make the bubble forget what it already knew.
-  RoomMessage withEmbedsFrom(RoomMessage previous) => RoomMessage(
-    id: id,
-    roomId: roomId,
-    authorId: authorId,
-    text: text,
-    createdAt: createdAt,
-    clientToken: clientToken ?? previous.clientToken,
-    media: media,
-    authorName: authorName ?? previous.authorName,
-    deletedAt: deletedAt,
-    editedAt: editedAt,
-    replyToId: replyToId,
-    replyToPreview:
-        replyToPreview ??
-        (previous.replyToId == replyToId ? previous.replyToPreview : null),
-  );
+  /// Keep these joins on a bare update. When [replace] is set, fresh HTTP
+  /// joins take precedence, including a null quote for a hidden original.
+  RoomMessage withEmbedsFrom(RoomMessage other, {bool replace = false}) =>
+      RoomMessage(
+        id: id,
+        roomId: roomId,
+        authorId: authorId,
+        text: text,
+        createdAt: createdAt,
+        clientToken: clientToken ?? other.clientToken,
+        media: media,
+        authorName: replace ? other.authorName : authorName ?? other.authorName,
+        deletedAt: deletedAt,
+        editedAt: editedAt,
+        replyToId: replyToId,
+        replyToPreview: replace
+            ? other.replyToPreview
+            : replyToPreview ??
+                  (other.replyToId == replyToId ? other.replyToPreview : null),
+      );
 
   factory RoomMessage.fromRow(Map<String, dynamic> row) => RoomMessage(
     id: row['id'] as String,
@@ -777,6 +778,30 @@ class RoomsRepository {
         .limit(limit)
         .timeout(networkTimeout);
     return [for (final row in rows) RoomMessage.fromRow(row)];
+  }
+
+  /// Rechecks loaded history through the same RLS and joins as the latest
+  /// page. The ID filter keeps the response proportional to loaded history.
+  Future<List<RoomMessage>> fetchMessagesByIds({
+    required String roomId,
+    required List<String> ids,
+  }) async {
+    const batchSize = 50;
+    final messages = <RoomMessage>[];
+    for (var start = 0; start < ids.length; start += batchSize) {
+      final end = start + batchSize;
+      final rows = await _client
+          .from('room_messages')
+          .select('*, author:users(name), $_replyToColumns')
+          .eq('room_id', roomId)
+          .inFilter(
+            'id',
+            ids.sublist(start, end < ids.length ? end : ids.length),
+          )
+          .timeout(networkTimeout);
+      messages.addAll(rows.map(RoomMessage.fromRow));
+    }
+    return messages;
   }
 
   /// Sends a message. [clientToken] makes the send idempotent — a retry after

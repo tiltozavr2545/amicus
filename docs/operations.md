@@ -16,7 +16,7 @@ All six live in the database, are created by migrations and can be seen with
 
 | Job | When | What it does | Migration |
 |---|---|---|---|
-| `drain-notification-outbox` | every minute | calls the `send-push` Edge Function, which drains `notification_outbox` | 20260818200000, header added in 20260820160000 |
+| `drain-notification-outbox` | every minute | calls `send-push` with a 70-second HTTP timeout | 20260818200000, updated in 20261118020000 |
 | `inactive-week-nudge` | daily 12:00 UTC | enqueues the "week without posts" notice | 20260818190000 |
 | `purge-abandoned-signups` | daily 03:40 UTC | deletes unconfirmed signups older than 30 days with zero activity | 20260822100000 |
 | `purge-empty-posts` | hourly at :20 | deletes posts with no text and no `post_media` row at all, older than an hour | 20260822200000 |
@@ -107,10 +107,12 @@ truth is Play Console and Firebase, not git.
 
 ## Release
 
-The checked-out version is **0.19.1+78**, currently unreleased. Its changelog
-section collects the interface and resource-use changes. Verification does not
-publish, tag or bump it. Confirm the target build and intended distribution
-before triggering a release.
+The 0.19.1 release uses build **78** in `app/pubspec.yaml`. See
+[the changelog](../CHANGELOG.md#0191) for the user-facing changes.
+
+For Android, send `develop` to `main` through a pull request and merge after
+the checks pass. Synchronize `develop` from the merged `main` and push the
+result. Follow the deployment run for the merge commit to confirm delivery.
 
 A push to `main` triggers `deploy-closed-testing.yml`: it runs `make verify`
 and the version bump check itself (without relying on CI having been green),
@@ -127,6 +129,25 @@ without deploying it a tap still just opens the app. A new notification kind
 always takes TWO edits: the `kind` in the `notification_outbox` CHECK
 constraint (migration) and the texts in `TEXTS` (function). Without the second
 one the queue row is simply skipped, and the push silently never arrives.
+
+The production database recorded these migrations on 2026-11-19 after a
+rollback rehearsal and verification of the resulting schema.
+
+| Migration | Production change |
+| --- | --- |
+| `20261118000000` | Keep profile photo IDs stable across reorder. |
+| `20261118010000` | Save system news posts and attachments atomically. |
+| `20261118020000` | Store push delivery progress and retry state, and extend the sender's cron request timeout. |
+
+Deploy the updated `send-push` separately to activate retries in production.
+The migration preserves the previous sender's claim RPC during the rollout.
+The new sender records accepted and expired registrations on partial
+delivery, using token hashes. Transient FCM failures retry with backoff and
+jitter, observing `Retry-After` when present. After six failed attempts, or a
+permanent FCM error, the queue records `failed_at` and `last_delivery_error`;
+the function reports the delivery failures with HTTP 502. The database
+excludes these terminal rows from the pending queue. A worker interruption
+between FCM acceptance and database persistence can still repeat a push.
 
 Everything below is now done from the local console (`console/`, the
 "Рассылки" (Broadcasts) and "Новости" (News) sections) — it also shows the
@@ -237,9 +258,9 @@ could be verified mechanically rather than by reading:
    project — `supabase migration repair`; schema and data are not touched.
 
 Compare repository migration version identifiers with the recorded history.
-After history repair, the baseline has one history marker, followed by the
-three later migrations; this does not mean rerunning the baseline on live data.
-Matching identifiers verify recorded history, not schema equality:
+The history contains one marker for the consolidated baseline and one row per
+subsequent migration. Compare schema definitions separately when validating
+equivalence. The baseline marker represents changes already applied.
 
 ```bash
 ls supabase/migrations/*.sql | sed 's#.*/##; s/_.*//'
