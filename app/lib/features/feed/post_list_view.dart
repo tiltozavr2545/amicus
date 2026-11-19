@@ -6,15 +6,17 @@ import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/bottom_navigation_inset.dart';
+import '../../shared/connection_name.dart';
+import '../../shared/media_gallery.dart';
+import '../../shared/photo_viewer_route.dart';
 import '../../shared/refresh_after_await.dart';
 import '../../shared/sized_memory_image.dart';
 import '../../shared/write_ban.dart';
-import '../moderation/report_repository.dart';
-import '../moderation/report_sheet.dart';
-import '../../shared/media_gallery.dart';
 import '../auth/auth_providers.dart';
 import '../connections/connections_repository.dart';
 import '../connections/friend_profile_screen.dart';
+import '../moderation/report_repository.dart';
+import '../moderation/report_sheet.dart';
 import '../profile/profile_repository.dart';
 import 'carousel_position_cache.dart';
 import 'comments_screen.dart';
@@ -509,6 +511,14 @@ class _PostListViewState extends ConsumerState<PostListView> {
             )
           : ListView.separated(
               controller: _scrollController,
+              findChildIndexCallback: (key) {
+                if (key is! ValueKey<String>) return null;
+                final index = _posts.indexWhere((post) => post.id == key.value);
+                // ListView.separated exposes sliver slots, including separators.
+                return index < 0
+                    ? null
+                    : (index + (header != null ? 1 : 0)) * 2;
+              },
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -517,7 +527,12 @@ class _PostListViewState extends ConsumerState<PostListView> {
                 16 + BottomNavigationInset.of(context),
               ),
               itemCount: _posts.length + 1 + (header != null ? 1 : 0),
-              separatorBuilder: (context, index) => const SizedBox(height: 16),
+              separatorBuilder: (context, index) => index == 0 && header != null
+                  ? const SizedBox(height: 24)
+                  : const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Divider(),
+                    ),
               itemBuilder: (context, index) {
                 if (header != null) {
                   if (index == 0) return header;
@@ -540,7 +555,8 @@ class _PostListViewState extends ConsumerState<PostListView> {
                 // screen instead of a clean bounce to sign-in. No id matches
                 // no author, which is the right answer for "is this mine".
                 final currentUserId = ref.read(currentUserIdProvider);
-                return _PostCard(
+                return _PostEntry(
+                  key: ValueKey(post.id),
                   post: post,
                   isOwnPost:
                       currentUserId != null && post.authorId == currentUserId,
@@ -569,8 +585,9 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 }
 
-class _PostCard extends ConsumerWidget {
-  const _PostCard({
+class _PostEntry extends ConsumerWidget {
+  const _PostEntry({
+    super.key,
     required this.post,
     required this.isOwnPost,
     required this.onReact,
@@ -591,13 +608,19 @@ class _PostCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    final connection = ref.watch(
+      connectionsByIdProvider.select(
+        (connections) => connections[post.authorId],
+      ),
+    );
     final avatarPath = post.authorAvatarPath;
     final avatarBytes = avatarPath == null
         ? null
         : ref.watch(avatarBytesProvider(avatarPath)).value;
-    return Card(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -629,10 +652,10 @@ class _PostCard extends ConsumerWidget {
                                 ),
                           backgroundColor: Theme.of(
                             context,
-                          ).colorScheme.primaryContainer,
+                          ).colorScheme.surfaceContainerHigh,
                           foregroundColor: Theme.of(
                             context,
-                          ).colorScheme.onPrimaryContainer,
+                          ).colorScheme.onSurfaceVariant,
                           child: avatarBytes == null
                               ? Text(
                                   post.authorName.trim().isEmpty
@@ -650,8 +673,9 @@ class _PostCard extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                post.authorName,
+                              ConnectionName(
+                                name: post.authorName,
+                                connection: connection,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                               const SizedBox(height: 2),
@@ -726,9 +750,7 @@ class _PostCard extends ConsumerWidget {
                 child: _MediaCarousel(postId: post.id, media: post.media),
               ),
             ],
-            const SizedBox(height: 14),
-            const Divider(),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             Row(
               children: [
                 _ReactionButton(
@@ -909,9 +931,8 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
 
   void _openFullscreen(int index) {
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => FullscreenMediaViewer(
+      photoViewerRoute(
+        (_) => FullscreenMediaViewer(
           media: _items,
           initialIndex: index,
           resolve: ref.read(feedRepositoryProvider).resolveMediaUrls,
@@ -936,7 +957,7 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
     }
 
     // With several items of possibly different aspect ratios, the carousel
-    // needs one fixed frame so the card's height doesn't jump as the user
+    // needs one fixed frame so the post's height doesn't jump as the user
     // swipes — otherwise every slide change would reflow the whole feed list
     // under it. 4:5 mirrors the box Instagram settled on for the same
     // problem. `cover` inside that fixed frame does crop the preview, but a

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/locale_provider.dart';
 import 'router.dart';
+import 'shared/keyboard_restore.dart';
 import 'theme/theme_mode_provider.dart';
 import 'theme/amicus_theme.dart';
 
@@ -35,7 +36,7 @@ class KrugApp extends ConsumerWidget {
       builder: (context, child) => MediaQuery.withClampedTextScaling(
         minScaleFactor: 1.0,
         maxScaleFactor: 1.3,
-        child: child!,
+        child: KeyboardRestore(child: child!),
       ),
       routerConfig: router,
     );

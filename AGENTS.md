@@ -22,6 +22,10 @@ conventions and pitfalls. Everything else lives where it should be read:
 | App Store listing draft (in English, for the same reason) | [docs/review/app-store-listing-draft.md](docs/review/app-store-listing-draft.md) |
 | historical: the original idea, how the MVP went, the old deferred list | [docs/project-brief.md](docs/project-brief.md), [docs/implementation-plan.md](docs/implementation-plan.md), [docs/future-development.archive.md](docs/future-development.archive.md) |
 
+The [documentation index](docs/README.md) distinguishes current references
+from historical plans; [performance](docs/performance.md) records rendering,
+media-memory and foreground-work contracts.
+
 ## Project
 
 A pilot/portfolio project: the author is new to mobile development but has
@@ -34,7 +38,9 @@ ahead — this is a deliberate decision, not the absence of a plan.
   (with Touch Bar), macOS 12.7.6. Flutter newer than 3.32.8 doesn't run on it
   (needs macOS 14+), so the SDK is pinned to 3.32.8. Don't suggest upgrading —
   the machine physically can't run a newer macOS, it's a dead end. iOS is on an
-  M4 MacBook Pro (Apple Silicon), which has no such constraint.
+  M4 MacBook Pro (Apple Silicon), which has no such constraint. Xcode Cloud
+  independently pins Flutter 3.47.5 in `app/ios/ci_scripts/ci_post_clone.sh`
+  for the committed UIScene runner; see `docs/xcode-cloud-setup.md`.
 - **iOS.** Built and deployed to TestFlight; the current process and
   constraints are in `docs/ios-deployment-guide.md`. If the iOS build machine
   runs a beta macOS, a local `flutter build ipa`/`make release-ios` still

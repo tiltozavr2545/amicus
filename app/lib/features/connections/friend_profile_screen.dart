@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/content_width.dart';
+import '../../shared/photo_viewer_route.dart';
+import '../../shared/sized_memory_image.dart';
+import '../feed/post_list_view.dart';
 import '../moderation/report_repository.dart';
 import '../moderation/report_sheet.dart';
-import '../feed/post_list_view.dart';
 import '../profile/profile_photos_screen.dart';
 import '../profile/profile_repository.dart';
-import '../../shared/sized_memory_image.dart';
 
 final _friendPhotosProvider = FutureProvider.autoDispose
     .family<List<ProfilePhoto>, String>((ref, friendId) {
@@ -39,10 +40,8 @@ class FriendProfileScreen extends ConsumerWidget {
 
   void _openViewer(BuildContext context, List<ProfilePhoto> photos) {
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) =>
-            ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
+      photoViewerRoute(
+        (_) => ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
       ),
     );
   }
@@ -56,31 +55,41 @@ class FriendProfileScreen extends ConsumerWidget {
     final photosAsync = ref.watch(_friendPhotosProvider(friendId));
     final photos = photosAsync.value ?? const <ProfilePhoto>[];
 
-    final header = Container(
-      margin: const EdgeInsets.only(bottom: 8),
+    final header = Padding(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).colorScheme.primaryContainer.withValues(alpha: .45),
-        borderRadius: BorderRadius.circular(24),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(
-            child: GestureDetector(
-              onTap: photos.isEmpty ? null : () => _openViewer(context, photos),
-              child: CircleAvatar(
-                radius: 56,
-                backgroundImage: avatarBytes != null
-                    ? sizedMemoryImage(context, avatarBytes, logicalWidth: 112)
-                    : null,
-                child: avatarBytes == null
-                    ? const Icon(Icons.person, size: 46)
-                    : null,
+          Row(
+            children: [
+              GestureDetector(
+                onTap: photos.isEmpty
+                    ? null
+                    : () => _openViewer(context, photos),
+                child: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHigh,
+                  foregroundColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  radius: 40,
+                  backgroundImage: avatarBytes != null
+                      ? sizedMemoryImage(context, avatarBytes, logicalWidth: 80)
+                      : null,
+                  child: avatarBytes == null
+                      ? const Icon(Icons.person, size: 46)
+                      : null,
+                ),
               ),
-            ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  friendName,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+              ),
+            ],
           ),
           // Same reasoning as ProfileScreen: without this, a failed load looks
           // exactly like a friend who has posted no photos — the avatar simply

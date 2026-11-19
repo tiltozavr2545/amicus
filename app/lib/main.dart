@@ -1,13 +1,15 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'l10n/app_localizations.dart';
+import 'shared/local_preferences.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -29,8 +31,8 @@ Future<void> main() async {
   }
   // No explicit FirebaseOptions: on Android, absent an override, firebase_core
   // reads the native app config the Gradle plugin generated from
-  // android/app/google-services.json at build time. Android-only app (see
-  // CLAUDE.md), so there's no other platform config to provide.
+  // android/app/google-services.json at build time. On iOS the bundled
+  // GoogleService-Info.plist supplies the corresponding configuration.
   await Firebase.initializeApp();
   await Supabase.initialize(
     url: _supabaseUrl,
@@ -50,5 +52,16 @@ Future<void> main() async {
       'Sofia Sans',
     ], await rootBundle.loadString('assets/fonts/OFL.txt'));
   });
-  runApp(const ProviderScope(child: KrugApp()));
+  SharedPreferences? preferences;
+  try {
+    preferences = await SharedPreferences.getInstance();
+  } catch (_) {
+    // The application remains usable when local preferences are unavailable.
+  }
+  runApp(
+    ProviderScope(
+      overrides: [localPreferencesProvider.overrideWithValue(preferences)],
+      child: const KrugApp(),
+    ),
+  );
 }

@@ -199,6 +199,8 @@ void main() {
 
     final before = repo.fetchPhotosCalls;
 
+    await tester.tap(find.byTooltip('Profile photos'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Delete photo'));
     await tester.pumpAndSettle();
     // Leave without a single mutation — the route returns `null`.

@@ -44,7 +44,14 @@ class RoomAvatar extends ConsumerWidget {
     if (path == null) {
       final person = personBehind(room, viewerId);
       return person == null
-          ? CircleAvatar(radius: radius ?? 24, child: const Icon(Icons.group))
+          ? CircleAvatar(
+              radius: radius ?? 24,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHigh,
+              foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              child: const Icon(Icons.group),
+            )
           : FriendAvatar(avatarPath: person.avatarPath);
     }
 
@@ -54,6 +61,8 @@ class RoomAvatar extends ConsumerWidget {
     final bytes = ref.watch(avatarBytesProvider(path)).value;
     final size = radius ?? 24;
     return CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
       radius: size,
       backgroundImage: bytes == null
           ? null

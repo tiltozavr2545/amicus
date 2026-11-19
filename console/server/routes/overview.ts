@@ -49,7 +49,9 @@ overviewRouter.get('/overview', async (_req, res, next) => {
       countOf('connections'),
       countOf('rooms'),
       countOf('room_messages'),
-      countOf('notification_outbox', (q) => q.is('sent_at', null)),
+      countOf('notification_outbox', (q) =>
+        q.is('sent_at', null).is('failed_at', null),
+      ),
       repoVersion(),
     ]);
 

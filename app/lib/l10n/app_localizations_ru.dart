@@ -947,4 +947,12 @@ class AppLocalizationsRu extends AppLocalizations {
 
     return 'Публиковать пока нельзя — ограничение действует до $dateString.';
   }
+
+  @override
+  String connectionActionsTooltip(String name) {
+    return 'Действия: $name';
+  }
+
+  @override
+  String get managePhotosTitle => 'Фотографии профиля';
 }

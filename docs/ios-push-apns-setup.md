@@ -1,7 +1,8 @@
 # iOS Push Notifications — APNs Key Setup (Firebase Cloud Messaging)
 
-**This is done.** The APNs Authentication Key is uploaded into Firebase and
-iOS push delivery works; the document is kept for two things — checking that
+**Previously configured and tested.** The APNs key and successful delivery
+were recorded during the iOS rollout; this is not a fresh check of Firebase
+or a guarantee of current delivery. The document is kept for checking that
 the key is still in place, and repeating the upload if it ever has to be done
 again (the key is revoked, someone deletes it from Firebase, or a new Firebase
 project appears).
@@ -11,13 +12,14 @@ Apple. Everything else — the entitlement, the Firebase registration, the
 outbox and the Edge Function — is described elsewhere: see
 [operations.md](operations.md) for the sending side and
 [ios-deployment-guide.md](ios-deployment-guide.md) for the build. Written as a
-runbook rather than as design notes, so it names people and credentials.
+runbook rather than as design notes. Keep current credentials outside it.
 
 ## Context
 
 Amicus already has iOS push notifications wired on the app side:
 - `Runner.entitlements` has `aps-environment` set.
-- `GoogleService-Info.plist` is present and registered in the Xcode project.
+- The Xcode project registers `GoogleService-Info.plist` as a resource.
+  Restore the gitignored file from the Firebase configuration before building.
 - Bundle ID: `com.github.tiltozavr2545.amicus`
 - Firebase project ID: `amicus-a60c1`
 
@@ -43,8 +45,7 @@ gear icon → **Project settings** → **Cloud Messaging** tab → **Apple app
 configuration**. Under the iOS app `com.github.tiltozavr2545.amicus`:
 
 - a key is in place if the **APNs Authentication Key** row lists a Key ID
-  (`UUXUV8VJX6`, if it is the one below) with a delete/replace control next
-  to it;
+  with a delete/replace control next to it;
 - it is missing if that row shows an **Upload** button and nothing else.
 
 **The functional check, from the database.** Useful when you cannot get into
@@ -72,42 +73,41 @@ select status_code, content::text, created
  limit 3;
 ```
 
-- `{"processed":1,"sent":1}` — FCM accepted the send. If the only device
-  registered on that account is the iPhone and the notification arrived, APNs
-  is wired up.
-- `{"processed":1,"sent":0}` — FCM refused every delivery. With an iOS-only
-  account that is the signature of a missing or wrong APNs key
-  (`THIRD_PARTY_AUTH_ERROR` on Google's side).
+- `sent` counts requests accepted by FCM during the run. Confirm the specific
+  notification arrived on the iPhone.
+- With the updated sender, HTTP 502 and `errors` indicate delivery errors.
+  A `pending` row can be retried and a terminal failure records
+  `failed_at` with `last_delivery_error` in `notification_outbox`. Check
+  Firebase and the APNs key configuration when diagnosing an iOS-only error.
+- A completed row can also represent a recipient with no active registration.
+  Match the queue result to the iPhone's registration and actual delivery.
 
 Two caveats. `sent` counts all of that user's devices, so run this on an
 account whose only registered device is the iPhone — otherwise an Android
 phone in the same account makes `sent` non-zero regardless. And
 `net._http_response` is pruned after a few hours, so read it soon after.
 
-**What does NOT prove anything.** A row in `device_tokens` for the iPhone only
-means the app registered for push — registration succeeds with no APNs key at
-all, which is exactly what makes this failure quiet. Neither does `sent_at` on
-the outbox row: `send-push` stamps every row it claimed, whether or not FCM
-accepted it (see the comment on `doneIds` in `index.ts`). And the iOS Simulator
-cannot receive real pushes under any configuration, so a silent simulator says
-nothing either.
+A `device_tokens` row verifies registration. A successful physical-device
+or TestFlight smoke test verifies the Production APNs path. Supported
+simulators use APNs Sandbox. See
+[the iOS guide](ios-deployment-guide.md#3-device-and-simulator-verification).
 
 ## Doing the upload again
 
 The steps as they were performed the first time. Needed only if the key is
 gone or replaced — nothing here has to be repeated for an ordinary release.
 
-### 1. Get the APNs key details from Madrus
+### 1. Get the existing APNs key details from the team administrator
 
-The APNs Auth Key has already been generated (Apple only allows downloading
-the `.p8` file once, so Madrus did this himself). Ask him for the `.p8` file
+The APNs Auth Key was generated during setup. Obtain its existing `.p8` file
+from the team administrator
 directly (AirDrop, secure file share, etc. — never over chat/email in plain
 text), plus the details below — Firebase asks for the Key ID and the Team ID,
 the rest is context:
 
 - **Key Name**: `Amicus APNs Key`
-- **Key ID**: `UUXUV8VJX6`
-- **Team ID**: `8APG7DF2J3`
+- **Key ID**: obtain from the private key record
+- **Team ID**: use the current Apple Developer team
 - **Environment**: Production (this key is scoped to Production only — it
   cannot be used for Sandbox/debug builds, and this scope can't be changed
   after the fact)
@@ -125,7 +125,7 @@ the rest is context:
    has added the iOS app to the Firebase project via `GoogleService-Info.plist`
    — this is already done).
 5. Under **APNs Authentication Key**, click **Upload**.
-6. Select the `.p8` file, enter the **Key ID** and **Team ID** Madrus gave
+6. Select the `.p8` file, enter the **Key ID** and **Team ID** the administrator gave
    you.
 7. Save.
 
@@ -135,8 +135,8 @@ Both checks from "Checking that the key is in place" above, in that order: the
 Cloud Messaging tab should stop offering an **Upload** button and start
 listing the Key ID, and the queued-notification check should come back
 `"sent":1` with the push actually arriving on a **physical iOS device** or
-through TestFlight. The Simulator cannot receive real pushes under any
-configuration, so it is not a valid test here.
+through TestFlight. A simulator Sandbox test does not verify this Production
+configuration.
 
 ## Notes
 
@@ -146,5 +146,5 @@ configuration, so it is not a valid test here.
 - Don't need to touch anything on the Android side — this is purely
   additive for iOS.
 - If you don't already have **Editor** (or higher) access on the
-  `amicus-a60c1` Firebase project, ask Madrus to grant it, or have him do
-  the upload himself with your `.p8` file details.
+  `amicus-a60c1` Firebase project, ask its administrator to grant it, or have them do
+  the upload with the existing private key details.

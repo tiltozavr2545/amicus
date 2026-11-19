@@ -1,7 +1,18 @@
 # App Store Listing Draft — Amicus (English, U.S.)
 
-Draft for review before entering into App Store Connect. Nothing has been
-submitted; "Add for Review" has not been touched.
+Store copy for **0.19.1 (build 78)**, checked against repository behavior on
+2026-11-19. Review it against the submitted build and use App Store Connect
+to check the current metadata and approval status.
+
+## What's New
+
+```
+Amicus has a refreshed look, with quieter colors, a clearer feed and easier access to profile photos and gallery tools.
+
+Open profiles directly from a chat, and catch up on messages when you come back online. Reply links respect your motion settings.
+
+Notification settings save each switch independently. Reordering your profile photos keeps their references intact.
+```
 
 ## Promotional Text (170 char max)
 
@@ -15,7 +26,7 @@ A feed of only the people you actually know. No algorithm, no endless scroll —
 ```
 Amicus is a social feed for the people you've actually met — not the ones an algorithm thinks you should follow.
 
-Your feed shows posts only from Connections: people you've added through a personal invite link you hand over in person. No public discovery, no strangers, no random recommendations.
+Your feed shows posts from your Connections and Amicus announcements. Connect through personal invite links or ask to connect with someone in a shared room. No public discovery or random recommendations.
 
 WHY AMICUS
 
@@ -28,18 +39,20 @@ WHAT YOU CAN DO
 • Share text posts with up to 20 photos or videos
 • Choose who sees each post: all your Connections, or just your favorites
 • React and comment, with one level of threaded replies
-• Rooms: private group or 1:1 chats with the people you're connected to — real-time messages with photos and videos, read receipts, typing indicators, and push notifications you can silence per room
+• Start a private group or one-to-one chat with your Connections, and share photos and videos. Rooms have read receipts, typing indicators, and per-room notification controls
+• Edit your chat messages within 48 hours and reply with a quote
+• Keep an unfinished post as a local draft, including its attachments
 • Mute, block, or favorite people — with fine-grained control per person
-• Light and dark themes
+• System, light and dark themes, with floating or classic navigation
 • Available in English and Russian
 
 YOUR PRIVACY, BUILT IN
 
-Visibility rules are enforced at the database level, not just in the app — so there's no client-side shortcut that leaks a post, comment, or profile to someone outside your Connections. Reactions show aggregate counts only; who reacted with what stays private. Blocking someone hides their posts and comments everywhere, immediately, regardless of app version. Muting is a quieter, personal setting: it takes someone out of your feed and stops their notifications, without hiding them from you or telling them anything.
+Visibility rules are enforced at the database level. Posts follow their audience; chat messages are visible to room members. A room peer can see your name and current avatar without seeing your photo gallery. Reactions show aggregate counts only; other people's selections stay private. Blocking hides posts and comments in both directions. Muting removes someone from the main feed and silences their post notifications while leaving their profile accessible.
 
 Amicus is about staying close to the people you actually know — without the noise.
 ```
-(1,917 chars)
+(2035 chars)
 
 ## Keywords (100 char max, comma-separated, no spaces after commas)
 
@@ -70,16 +83,16 @@ ever changes)*
 
 ## Notes
 
-- All copy above is a **draft** — please read and edit before it goes into
-  App Store Connect. Nothing has been entered yet.
+- All copy above is a **draft**; compare it with the existing App Store Connect
+  metadata before applying it.
 - Sign-in/App Review info: Amicus requires an account to test. You'll need
   to provide App Review with a working test account (email + password) in
   the "Sign-In Information" section so reviewers can actually get past the
   login screen.
-- Screenshots (iPhone 6.5", up to 10) are still needed — not yet captured.
-- Copy was last checked against the app on 2026-09-05. Two claims had drifted
-  and were corrected: QR-code connecting (never shipped — `qr_code` exists in
-  `connections.method` only as a placeholder, see `docs/data-model.md`) and
-  "muting hides their posts everywhere regardless of app version" (since
-  migration 20260829130000 mute is a feed filter applied by the client, not a
-  database rule; blocking still is one). Re-check both before submitting.
+- Reuse and verify existing review fixtures; keep their credentials outside
+  this repository. Do not delete them as test pollution.
+- Capture/review the required iPhone/iPad screenshots against the submitted
+  build and the current App Store Connect upload fields. Repository previews
+  are fictional Android/layout fixtures, not proof of store screenshot readiness.
+- QR scanning remains deferred. Mute is a client feed filter; block and content
+  audiences are server rules. Keep these claims aligned with the data model.

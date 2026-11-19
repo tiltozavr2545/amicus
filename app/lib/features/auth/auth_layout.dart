@@ -19,10 +19,19 @@ class AuthLayout extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Align(alignment: Alignment.centerLeft, child: AmicusMark()),
-            const SizedBox(height: 20),
-            Text('Amicus', style: Theme.of(context).textTheme.displayMedium),
-            const SizedBox(height: 8),
+            Row(
+              children: [
+                const AmicusMark(size: 52),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Amicus',
+                    style: Theme.of(context).textTheme.displayMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
             Text(
               AppLocalizations.of(context)!.authWelcomeMessage,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -30,7 +39,17 @@ class AuthLayout extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-            ...children,
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+            ),
           ],
         ),
       ),

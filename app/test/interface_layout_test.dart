@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:amicus/features/auth/auth_providers.dart';
 import 'package:amicus/features/auth/sign_in_screen.dart';
+import 'package:amicus/features/auth/sign_up_screen.dart';
+import 'package:amicus/features/auth/forgot_password_screen.dart';
 import 'package:amicus/features/connections/connections_repository.dart';
 import 'package:amicus/features/connections/connections_screen.dart';
 import 'package:amicus/features/connections/friend_profile_screen.dart';
@@ -45,8 +47,27 @@ class _Drafts extends PostDraftStore {
 
 class _Feed implements FeedRepository {
   @override
-  Future<CommentPage> fetchComments(String postId) async =>
-      CommentPage(comments: [], isTruncated: false);
+  Future<CommentPage> fetchComments(String postId) async => CommentPage(
+    comments: [
+      Comment(
+        id: 'comment-one',
+        authorId: 'anna',
+        authorName: 'Анна Лебедева',
+        text: 'Давайте встретимся у станции в десять.',
+        createdAt: DateTime(2026, 11, 14, 13),
+      ),
+      Comment(
+        id: 'comment-two',
+        authorId: 'me',
+        authorName: 'Алексей',
+        text: 'Договорились, буду вовремя!',
+        parentCommentId: 'comment-one',
+        replyToId: 'comment-one',
+        createdAt: DateTime(2026, 11, 14, 13, 5),
+      ),
+    ],
+    isTruncated: false,
+  );
   @override
   Future<List<Post>> fetchPage({
     Post? cursor,
@@ -73,7 +94,15 @@ class _Feed implements FeedRepository {
             text:
                 'Нашёл фотографии с прошлой встречи. Как же хорошо было собраться вместе.',
           ),
-        ];
+          Post(
+            id: 'own-post',
+            authorId: 'me',
+            authorName: 'Алексей',
+            createdAt: DateTime(2026, 11, 13, 19),
+            text:
+                'Выбрался на прогулку после работы. Иногда для хорошего вечера достаточно часа без спешки.',
+          ),
+        ].where((post) => authorId == null || post.authorId == authorId).toList();
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -105,7 +134,24 @@ class _Rooms implements RoomsRepository {
     required String roomId,
     RoomMessage? before,
     int limit = 50,
-  }) async => [];
+  }) async => before != null
+      ? []
+      : [
+          RoomMessage(
+            id: 'message-one',
+            roomId: roomId,
+            authorId: 'anna',
+            text: 'Встречаемся в десять? Я захвачу термос и что-нибудь к чаю.',
+            createdAt: DateTime(2026, 11, 14, 18, 30),
+          ),
+          RoomMessage(
+            id: 'message-two',
+            roomId: roomId,
+            authorId: 'me',
+            text: 'Отлично, тогда до завтра!',
+            createdAt: DateTime(2026, 11, 14, 18, 32),
+          ),
+        ].reversed.toList();
 
   @override
   Future<void> markRoomRead(String roomId) async {}
@@ -119,23 +165,28 @@ class _Rooms implements RoomsRepository {
     required String roomId,
     required void Function(RoomMessage) onInsert,
     required void Function(RoomMessage) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) => () {};
 
   @override
   void Function() subscribeToMemberReceipts({
     required String roomId,
     required void Function(RoomMemberReceipt) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) => () {};
 
   @override
   RoomPresenceHandle subscribeToPresence({
     required String roomId,
     required String userId,
+    required bool active,
     required void Function(Set<String>, Set<String>) onChange,
     required bool Function() onSubscribed,
-  }) => RoomPresenceHandle(setTyping: (_) async {}, unsubscribe: () {});
+  }) => RoomPresenceHandle(
+    setTyping: (_) {},
+    setActive: (_) {},
+    unsubscribe: () {},
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -157,6 +208,7 @@ final _rooms = [
     name: 'На выходных',
     ownerId: 'me',
     createdAt: DateTime(2026),
+    lastMessageAt: DateTime(2026, 11, 14, 18, 30),
     lastMessageText: 'Встречаемся в десять?',
     lastMessageAuthorId: 'anna',
     unreadCount: 3,
@@ -171,7 +223,10 @@ const _previewKey = ValueKey('interface-preview');
 
 /// Optional local design artifacts; never contacts or content from a real account.
 Future<void> _preview(WidgetTester tester, String name) async {
-  const directory = String.fromEnvironment('AMICUS_PREVIEW_DIR');
+  const definedDirectory = String.fromEnvironment('AMICUS_PREVIEW_DIR');
+  final directory = definedDirectory.isNotEmpty
+      ? definedDirectory
+      : Platform.environment['AMICUS_PREVIEW_DIR'] ?? '';
   if (directory.isEmpty) return;
   await tester.runAsync(() async {
     final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -185,6 +240,18 @@ Future<void> _preview(WidgetTester tester, String name) async {
     ).writeAsBytes(bytes!.buffer.asUint8List());
     image.dispose();
   });
+}
+
+void _expectSendContrast(WidgetTester tester) {
+  final context = tester.element(find.byIcon(Icons.send));
+  final foreground = IconTheme.of(context).color!;
+  final background = Theme.of(context).colorScheme.primary;
+  final first = foreground.computeLuminance();
+  final second = background.computeLuminance();
+  final ratio =
+      ((first > second ? first : second) + 0.05) /
+      ((first < second ? first : second) + 0.05);
+  expect(ratio, greaterThanOrEqualTo(4.5));
 }
 
 void main() {
@@ -255,6 +322,7 @@ void main() {
                   Friend(
                     userId: 'anna',
                     name: 'Анна Лебедева',
+                    isFavorite: true,
                     connectedAt: DateTime(2026, 2, 1),
                   ),
                 ],
@@ -300,6 +368,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(FriendProfileScreen), findsOneWidget);
         expect(find.byKey(const ValueKey('amicus-navigation')), findsNothing);
+        await _preview(tester, 'friend-$suffix');
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         await _preview(tester, 'feed-$suffix');
@@ -321,6 +390,8 @@ void main() {
         await tester.tap(find.byTooltip('Комментарии').last);
         await tester.pumpAndSettle();
         expect(find.byType(CommentsScreen), findsOneWidget);
+        _expectSendContrast(tester);
+        await _preview(tester, 'comments-$suffix');
         expect(bar, findsNothing);
         expect(
           tester.getRect(find.byType(TextField)).bottom,
@@ -344,6 +415,7 @@ void main() {
         await tester.tap(find.text('На выходных'));
         await tester.pumpAndSettle();
         expect(find.byType(RoomChatScreen), findsOneWidget);
+        _expectSendContrast(tester);
         expect(bar, findsNothing);
         await _preview(tester, 'chat-$suffix');
         await tester.tap(find.byType(BackButton));
@@ -384,10 +456,27 @@ void main() {
         await tester.tap(find.byTooltip('Профиль'));
         await tester.pumpAndSettle();
         await _preview(tester, 'profile-$suffix');
+        await tester.tap(find.byTooltip('Фотографии профиля'));
+        await tester.pumpAndSettle();
+        await _preview(tester, 'photo-actions-$suffix');
+        Navigator.of(tester.element(find.text('Фотографии профиля'))).pop();
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Знакомства'));
         await tester.pumpAndSettle();
         await _preview(tester, 'connections-$suffix');
-        await checkTail(find.text('Анна Лебедева'));
+        await tester.tap(find.byType(PopupMenuButton<VoidCallback>).first);
+        await tester.pumpAndSettle();
+        await _preview(tester, 'connection-actions-$suffix');
+        Navigator.of(
+          tester.element(find.byType(PopupMenuItem<VoidCallback>).first),
+        ).pop();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(ExpansionTile));
+        await tester.pumpAndSettle();
+        await checkTail(find.widgetWithText(FilledButton, 'Активировать'));
+        await _preview(tester, 'connections-invite-$suffix');
+        await tester.ensureVisible(find.text('Анна Лебедева'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Анна Лебедева'));
         await tester.pumpAndSettle();
         expect(find.byType(FriendProfileScreen), findsOneWidget);
@@ -408,6 +497,48 @@ void main() {
         await tester.pumpAndSettle();
       });
     }
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('Authentication fits a narrow screen, dark=$dark', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      for (final (name, screen) in <(String, Widget)>[
+        ('sign-in', const SignInScreen()),
+        ('sign-up', const SignUpScreen()),
+        ('reset-password', const ForgotPasswordScreen()),
+      ]) {
+        await tester.pumpWidget(
+          ProviderScope(
+            child: RepaintBoundary(
+              key: _previewKey,
+              child: MaterialApp(
+                debugShowCheckedModeBanner: false,
+                theme: dark ? AmicusTheme.dark : AmicusTheme.light,
+                locale: const Locale('ru'),
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                  child: child!,
+                ),
+                home: screen,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await _preview(tester, '$name-320-${dark ? 'dark' : 'light'}');
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    });
   }
 
   testWidgets('Sign in scrolls above the keyboard in landscape', (

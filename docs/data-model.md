@@ -10,17 +10,23 @@ migration names in the `pre-baseline-migrations` tag
 and numbers from `20260826000000` to `20261010100000` are in the
 `pre-baseline-migrations-2` tag; then `git log`.
 
-Tables: `users`, `connections`, `invite_links`, `posts`, `post_media`,
+The repository schema is the baseline plus migrations for private moderation
+state, restricted sequence grants, room-message editing, stable profile photo
+IDs, atomic system news writes, and push delivery retries. See
+[operations.md](operations.md#migrations) for inspecting the live schema and
+applying migrations.
+
+Tables: `users`, `user_moderation`, `connections`, `connection_requests`, `invite_links`, `posts`, `post_media`,
 `profile_photos`, `reactions`, `comments`, `muted_users`, `blocked_users`,
 `favorite_users`, `device_tokens`, `notification_outbox`,
 `notification_preferences`, `user_activity`, `rooms`, `room_members`,
-`room_messages`.
+`room_messages`, `content_reports`, `push_registration_status`.
 
 ## App version and the update notification
 
 `device_tokens.app_version`/`.app_build` is the version of the INSTALLATION,
 not of the person: one user's phone and tablet can be on different versions.
-They are written on every token upsert, i.e. on every app launch and every
+They are written on every token registration, i.e. on every app launch and every
 language change (`registerDevice`), so they are always fresh. Decisions are
 made only on `app_build` (versionCode, monotonic); `app_version` is for human
 eyes. NULL means "older than anything known": a client that can't report its
@@ -67,6 +73,17 @@ The "please update" broadcast (kind `app_update`, setting
 `notify_system_account`) is triggered by a human after a release — for how,
 plus the list of pg_cron jobs and where the secrets live, see
 [operations.md](operations.md).
+
+### Push delivery state
+
+`notification_outbox` records delivery progress for the updated
+`send-push` worker (migration `20261118020000`). The worker claims due rows
+with `FOR UPDATE SKIP LOCKED` and writes outcomes against the claim timestamp.
+On partial delivery, `settled_deliveries` keeps hashes of processed device
+tokens so the next attempt can skip them. `delivery_attempts` and
+`next_attempt_at` track retry timing. A terminal failure has `failed_at` and
+`last_delivery_error` and leaves `sent_at` empty. The daily cleanup removes
+outbox history after 90 days.
 
 ## Reports and moderation
 
@@ -636,9 +653,8 @@ Three safeguards without which a chat turns into noise:
 - **the person is in this chat right now** — the screen marks every incoming
   message as read, so a fresh `last_read_at` (less than a minute old) means
   "reading right now", and no push is queued;
-- **the queue collapses** — until the previous notification from this room
-  has gone out, a second one isn't created; otherwise a chat that comes alive
-  turns into a queue of forty identical pushes arriving all at once.
+- **the queue coalesces pending room pushes** into one per recipient and room.
+  A terminal delivery failure frees that slot for the next new message.
 
 The room name is deliberately absent from the push text: it's different for
 each person (for a room without a name — a list of the other members), the
@@ -978,20 +994,13 @@ client when the file is picked.
 ## Profile photos
 
 Up to 80 photos per user — `profile_photos(user_id, position, storage_path)`,
-one row per photo, the same non-dense `position` and delete+insert reorder as
-`post_media`, and likewise in one transaction — via
-`reorder_profile_photos(photo_ids)`, which must be given the **whole** gallery
-(positions are rewritten to a dense 0..N-1; a partial permutation would
-collide with untouched rows; a mismatch is `PT422`). The check compares
-lengths, and until 20260826120000 that fell short in exactly one case: an
-array with duplicates. For a gallery `{a, b}` the set `[a, a]` yields two rows
-on the join, the lengths match, `PT422` doesn't fire, `delete` removes both
-photos — and then the INSERT fails with a raw 23505 on
-`profile_photos_user_storage_path_key`. The data was rolled back, but instead
-of a clear "the set doesn't match your gallery" the person got a generic
-error. Duplicates are now cut off by a separate `count(distinct)` check before
-the table is read: they can't be counted via `array_length`, since the length
-is exactly what matches. Appending goes through
+one row per photo. `reorder_profile_photos(photo_ids)` locks and validates the
+whole gallery, rejects a mismatched set with `PT422`, and updates positions to
+a dense 0..N-1 in one statement. The position constraint checks uniqueness at
+the end of that statement. The row IDs, paths, and creation timestamps survive
+the reorder. The client deletes by storage path, then removes only the objects
+whose rows were returned by the delete. This also handles stale IDs from older
+gallery snapshots. Appending goes through
 `append_profile_photos(items)` (20260824130000) — and `position` there is
 handed out by the server, from the same transaction the rows land in.
 Computing it on the client was impossible for the same reason reordering with

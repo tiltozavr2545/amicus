@@ -16,7 +16,7 @@ All six live in the database, are created by migrations and can be seen with
 
 | Job | When | What it does | Migration |
 |---|---|---|---|
-| `drain-notification-outbox` | every minute | calls the `send-push` Edge Function, which drains `notification_outbox` | 20260818200000, header added in 20260820160000 |
+| `drain-notification-outbox` | every minute | calls `send-push` with a 70-second HTTP timeout | 20260818200000, updated in 20261118020000 |
 | `inactive-week-nudge` | daily 12:00 UTC | enqueues the "week without posts" notice | 20260818190000 |
 | `purge-abandoned-signups` | daily 03:40 UTC | deletes unconfirmed signups older than 30 days with zero activity | 20260822100000 |
 | `purge-empty-posts` | hourly at :20 | deletes posts with no text and no `post_media` row at all, older than an hour | 20260822200000 |
@@ -107,6 +107,13 @@ truth is Play Console and Firebase, not git.
 
 ## Release
 
+The 0.19.1 release uses build **78** in `app/pubspec.yaml`. See
+[the changelog](../CHANGELOG.md#0191) for the user-facing changes.
+
+For Android, send `develop` to `main` through a pull request and merge after
+the checks pass. Synchronize `develop` from the merged `main` and push the
+result. Follow the deployment run for the merge commit to confirm delivery.
+
 A push to `main` triggers `deploy-closed-testing.yml`: it runs `make verify`
 and the version bump check itself (without relying on CI having been green),
 builds a signed `.aab` and uploads it to **Google Play → Closed testing,
@@ -123,11 +130,44 @@ always takes TWO edits: the `kind` in the `notification_outbox` CHECK
 constraint (migration) and the texts in `TEXTS` (function). Without the second
 one the queue row is simply skipped, and the push silently never arrives.
 
+The production database recorded these migrations on 2026-11-19 after a
+rollback rehearsal and verification of the resulting schema.
+
+| Migration | Production change |
+| --- | --- |
+| `20261118000000` | Keep profile photo IDs stable across reorder. |
+| `20261118010000` | Save system news posts and attachments atomically. |
+| `20261118020000` | Store push delivery progress and retry state, and extend the sender's cron request timeout. |
+
+Deploy the updated `send-push` separately to activate retries in production.
+The migration preserves the previous sender's claim RPC during the rollout.
+The new sender records accepted and expired registrations on partial
+delivery, using token hashes. Transient FCM failures retry with backoff and
+jitter, observing `Retry-After` when present. After six failed attempts, or a
+permanent FCM error, the queue records `failed_at` and `last_delivery_error`;
+the function reports the delivery failures with HTTP 502. The database
+excludes these terminal rows from the pending queue. A worker interruption
+between FCM acceptance and database persistence can still repeat a push.
+
 Everything below is now done from the local console (`console/`, the
 "Рассылки" (Broadcasts) and "Новости" (News) sections) — it also shows the
 audience by name before sending, a breakdown by version, and the report queue.
 SQL remains the fallback: it works when the console isn't running, and when
 you need to do something the console can't.
+
+### GitHub APK and iOS channels
+
+`github-release-apk.yml` is a separate manual workflow: it builds a signed
+universal APK for a requested ref and attaches it to an existing release/tag.
+It does not create release notes or a release, and refuses to replace an
+existing APK. APK signing and application secrets are shared with the Android
+workflow; `PLAY_SERVICE_ACCOUNT_JSON` is only needed for Play delivery.
+
+For iOS use [Xcode Cloud](xcode-cloud-setup.md), the
+[local signing guide](ios-deployment-guide.md), and optionally the
+[build-trigger API](app-store-connect-api-automation.md). Those are independent
+of Android delivery. Neither a successful archive nor a GitHub release proves
+App Store approval.
 
 What's still manual after a rollout:
 
@@ -217,9 +257,10 @@ could be verified mechanically rather than by reading:
 5. Only after that is a single service history table edited on the live
    project — `supabase migration repair`; schema and data are not touched.
 
-To check that the repository and the database haven't drifted apart — file
-names against table rows (the counts no longer match: the database has one row
-for the baseline):
+Compare repository migration version identifiers with the recorded history.
+The history contains one marker for the consolidated baseline and one row per
+subsequent migration. Compare schema definitions separately when validating
+equivalence. The baseline marker represents changes already applied.
 
 ```bash
 ls supabase/migrations/*.sql | sed 's#.*/##; s/_.*//'
@@ -236,3 +277,27 @@ alone does not override Flutter's preference for Android Studio's bundled JBR.
 The runner's JBR can change independently; JDK 25 produces an unhelpful bare
 version-number failure with the pinned Gradle/Kotlin toolchain. Keep this choice
 consistent across all three Android workflows.
+
+## Local verification and physical devices
+
+Run `make verify` before handing off app changes. It enforces the lockfile,
+formats Dart, analyzes and runs tests. Console-only changes use the separate
+checks in [console/README.md](../console/README.md). Localization changes also
+require `cd app && flutter gen-l10n`, with generated files tracked.
+
+If Android Studio's bundled JBR breaks Gradle, select an installed JDK 21 on
+that machine with `flutter config --jdk-dir="$(/usr/libexec/java_home -v 21)"`.
+Keep machine-specific JDK paths out of `gradle.properties`.
+
+Use the connected physical Android phone; do not start an emulator on the
+Intel Mac. Use `flutter run --profile --dart-define-from-file=.env` for perceived
+performance and compare the same workload before/after. Preserve installed
+app data and signing identity. Regression tests and the image-decode fixture
+in [performance.md](performance.md) do not measure battery life.
+
+## GitHub Pages sources
+
+`sync-gh-pages.yml` runs for `docs/gh-pages/**` changes pushed to `main`.
+It copies privacy/terms/reset pages by name and `email-confirmed.html` as
+`index.html` to `gh-pages`. Local source edits await that deployment; do not
+claim that the public policy has changed until the workflow succeeds.

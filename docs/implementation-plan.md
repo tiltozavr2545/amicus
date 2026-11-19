@@ -1,6 +1,6 @@
 # Implementation plan: Amicus (formerly "Круг", "Circle") (MVP)
 
-A step-by-step plan for implementing the MVP from [project-brief.md](project-brief.md), with CI and deployment built into the stages rather than postponed to the end. The project is mobile-first (Android; iOS via Flutter is deferred — see [future-development.md](future-development.md)), web is out of scope.
+A step-by-step plan for implementing the MVP from [project-brief.md](project-brief.md), with CI and deployment built into the stages rather than postponed to the end. The original plan targeted Android first and deferred iOS; web was outside the MVP scope. iOS has since reached TestFlight — see the [current documentation index](README.md).
 
 **This document is historical.** The MVP is done, all five stages are complete; below is how it went, not how everything works now. The current state of the schema is in [data-model.md](data-model.md), operations are in [operations.md](operations.md), what shipped in which version is in [../CHANGELOG.md](../CHANGELOG.md). Notes like "later narrowed/replaced" are placed where reality has since moved on.
 

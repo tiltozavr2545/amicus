@@ -42,14 +42,18 @@ else) should be recorded here too, so they don't silently drift from reality.
   development started — see [project-brief.md](project-brief.md))
 - **Repository:** [github.com/tiltozavr2545/amicus](https://github.com/tiltozavr2545/amicus)
   (public)
-- **Flutter version:** pinned to 3.32.8 (SDK in `~/development/flutter`) —
-  nothing newer while the dev machine is on macOS 12; the full list of
-  environment constraints is in [../AGENTS.md](../AGENTS.md)
+- **Flutter version:** Android/local verification is pinned to 3.32.8
+  (`~/development/flutter`) on the Intel macOS 12 machine. Xcode Cloud uses
+  its independent 3.47.5 pin for the committed UIScene-based iOS runner; see
+  [xcode-cloud-setup.md](xcode-cloud-setup.md). Do not upgrade the Intel SDK.
 - **Supabase API keys:** the new format is used (Publishable/Secret instead of
   legacy anon/service_role) — `SUPABASE_ANON_KEY` holds the Publishable key
   (`sb_publishable_…`); the Secret key is not used anywhere in client code
 
 ## Interface and local preferences
+
+Current rendering, media-memory and foreground-work rules, their Framebook
+origin and validation limits are recorded in [performance.md](performance.md).
 
 `lib/theme/amicus_theme.dart` defines both themes, bundled Sofia Sans typography
 and shared controls. The palette and layout rationale live in
@@ -58,9 +62,18 @@ form widths on tablets; authentication forms scroll above the keyboard.
 
 The header and welcome screen use the launcher's foreground without its colored
 background or adaptive-icon padding. The artwork is white in the dark theme and
-tinted with the primary teal in the light theme. Android notifications use a
+tinted with the primary berry in the light theme. Android notifications use a
 separate 24 dp vector with stronger lines and nodes for small display sizes.
 Its appearance on Samsung One UI still needs device verification.
+
+In a direct chat, tapping the header opens the other person's profile. Group
+headers open room details, while member names above messages link to their
+profiles. These are root-navigator routes; returning retains the chat and draft.
+Profile data continues to use its existing visibility rules.
+
+Presence means the other person is viewing this chat in the foreground.
+Typing takes priority over online and expires after four seconds without a
+text change. The header reserves the same status line height in all states.
 
 ### Navigation and profiles
 
@@ -76,9 +89,13 @@ open that person's profile. Post menus and trailing relationship controls keep
 their separate actions. Feed queries join the author's `avatar_path`; post copies
 and the per-viewer feed cache preserve it. Cards share `avatarBytesProvider` with
 profiles and Connections, so posts by one author reuse a download. Initials are
-the fallback while a photograph is unavailable.
+the fallback while a photograph is unavailable. `ConnectionName` shares private
+favorite/mute/block indicators between author headers and Connections. The
+`connectionsByIdProvider` lookup reuses `friendsProvider`, so relationship changes
+update visible badges without fetching posts again; a missing relationship
+snapshot leaves the name visible without badges.
 
-Floating navigation synchronizes its glass selection and pages through one
+Floating navigation synchronizes its neutral glass selection and pages through one
 animation controller. Dragging the bar or swiping a primary page changes tabs;
 cancelling returns to the starting tab. Reduced motion skips settling animations.
 `BottomNavigationInset` clears the full floating bar, its gaps and the system
@@ -95,11 +112,18 @@ selector lives only in Settings, preserves previous light/dark preferences and
 can restore following device brightness. Its six-change system-account shortcut
 is retained.
 
+Startup supplies saved presentation preferences before the first frame.
+Writes serialize per preference and failed changes return to the last
+successfully saved value. The language key remains `app_locale`; no migration
+of existing preferences is required.
+
 Notification preferences remain server-backed. A per-account local snapshot
 appears while the server refresh runs, without a loading indicator. The first
 visit without a snapshot shows the standard defaults. A later server response
-updates the switches in place unless the user has already edited them. Changes
-save optimistically, with per-field rollback and a visible error on failure.
+updates untouched switches in place. Each write sends a single flag, so opening
+Settings on a slow connection or changing another flag on a different device
+preserves the other values. A switch stays disabled while its write is pending.
+Failed writes revert that switch and show an error.
 Loading failures leave the switches and other settings available, with a retry
 action. Account actions still require confirmation.
 
@@ -226,39 +250,20 @@ knows how to do more. See "Release" in [operations.md](operations.md).
 
 ## Presence and "typing…"
 
-The server half — a private Realtime channel and two policies on
-`realtime.messages` — is described in "["Typing…" and "online"](data-model.md)"
-in data-model.md. The client half is this.
+The server uses a private Realtime channel and two policies on
+`realtime.messages`. See [the presence data model](data-model.md#typing-and-online).
 
-The client announces itself with `track({user_id, typing})` and clears the
-flag in three ways: by sending, by leaving the screen, and by a 4-second timer
-after the last keystroke. The last one exists exactly for the case when the
-first two didn't happen — a draft abandoned mid-word shouldn't leave a lie on
-someone else's screen.
+The client announces itself with `track({user_id, typing})` while the chat is
+visible. Backgrounding or covering the chat with an opaque route withdraws
+presence and cancels typing. Sending, starting an edit and a four-second
+input timeout clear typing. Moving the caret or restoring a stashed draft
+leaves typing idle.
 
-**The announcement is repeated on every join, and its content is asked of the
-screen.** Both conditions appeared after "typing…" turned out to show up only
-every other time, and each closes its own half:
-
-- *On every join.* Presence is a consequence not of subscribing but of
-  `track()`. The socket drops when the app is backgrounded (`supabase_flutter`
-  itself does this on `paused` and reconnects on `resumed`), and a recreated
-  channel carries nothing over: until the client announces itself again, it
-  isn't in the room, however long the screen has been open.
-- *Asked, not assumed.* Previously a hardcoded `typing: false` was tracked on
-  join. An announcement made before the channel came up isn't lost but
-  **buffered** and sent on join — by a hook the channel registers in its own
-  constructor, i.e. before our callback. So "typing" raised while joining
-  arrived first and was immediately overwritten by the lie that followed it,
-  and by then the screen already considered the announcement made and didn't
-  repeat it on any later keystroke: the other person didn't see the indicator
-  for the whole draft. Only the screen knows what's actually in the input
-  field — so it's the one asked.
-
-The flip side of the same rule: when the channel stops being up (error,
-timeout, close), the screen receives two empty sets and removes the line.
-Presence is a statement about "right now", and a list left over from a channel
-that no longer exists is a lie that outlived the only thing that made it true.
+Every channel join reads the current typing state from the composer.
+Announcements wait for a joined socket, and a failed acknowledgement is
+retried while that connection and the desired state are current. The header
+uses complete Presence sync snapshots. A channel error, timeout or close
+clears the displayed state.
 
 ## Realtime doesn't replay what was missed
 
@@ -274,22 +279,26 @@ background never showed up in an open chat — until it was closed and reopened.
 Deletions were lost the same way: removing a message arrives not as an insert
 but as an update of an existing row, and nothing delivered that either.
 
-The fix is re-reading the newest page, and whether it can be stitched on is
-decided by its overlap with what's already loaded:
+The chat reloads the newest page when PostgreSQL confirms the live
+subscription, including the first connection. Returning to the foreground
+also requests a snapshot. If a snapshot is in flight when the subscription
+becomes ready, a follow-up covers the interval. The same readiness signal
+refreshes delivery and read receipts.
 
-- **there is an overlap** — nothing was lost between the page and the list,
-  new messages are appended on top, the rest are replaced in place (which is
-  what brings in the placeholders of deleted ones);
-- **there is no overlap** — a full page came back, and there may be more
-  between it and the list; stitching it on would leave a hole in the middle of
-  the conversation. The list restarts from this page: a lost scroll position
-  is an inconvenience, a conversation with a silent gap is a lie.
+Only overlap with an earlier HTTP page establishes continuity. A live insert
+on the far side of a gap leaves the latest page disconnected and older
+pagination restarts at its boundary. The latest snapshot removes rows no
+longer visible in its range, and retained older messages are rechecked by ID
+through the same RLS policy. The client keeps newer Realtime revisions while
+refreshing embedded quotes from HTTP. A tap on a reply jumps directly to the
+original message when animations are disabled.
 
-There are two triggers, and the first is more precise: **channel
-resubscription** (the request is sent after the subscription is live again —
-the reverse order would leave a second gap between the request and the join)
-and **the app returning from the background** as a safety net in case the
-socket never comes back.
+## Confirming a room send
+
+A draft gets a `client_token` on its first send. A retry reuses it as long as
+the text, reply and attachments still match. The composer accepts confirmation
+from either the insert response or a saved row with that token and author.
+This handles a successful insert whose HTTP response is lost.
 
 ## Signed URLs outlive the widget
 

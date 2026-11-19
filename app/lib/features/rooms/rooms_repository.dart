@@ -335,6 +335,7 @@ class RoomMessage {
     this.editedAt,
     this.replyToId,
     this.replyToPreview,
+    this.clientToken,
   });
 
   final String id;
@@ -342,6 +343,7 @@ class RoomMessage {
   final String authorId;
   final String text;
   final DateTime createdAt;
+  final String? clientToken;
 
   /// When the author last edited this message, or null if never — what the
   /// bubble's "edited" mark reads. Set only by the server
@@ -389,24 +391,26 @@ class RoomMessage {
   ///
   /// Postgres Changes hands over the bare row, so an UPDATE — an edit or a
   /// tombstone — arrives without [authorName] and without [replyToPreview].
-  /// Neither changes with an edit (the author is the author, and
-  /// `reply_to_id` is not something an edit touches), so dropping them would
-  /// only make the bubble forget what it already knew.
-  RoomMessage withEmbedsFrom(RoomMessage previous) => RoomMessage(
-    id: id,
-    roomId: roomId,
-    authorId: authorId,
-    text: text,
-    createdAt: createdAt,
-    media: media,
-    authorName: authorName ?? previous.authorName,
-    deletedAt: deletedAt,
-    editedAt: editedAt,
-    replyToId: replyToId,
-    replyToPreview:
-        replyToPreview ??
-        (previous.replyToId == replyToId ? previous.replyToPreview : null),
-  );
+  /// Keep these joins on a bare update. When [replace] is set, fresh HTTP
+  /// joins take precedence, including a null quote for a hidden original.
+  RoomMessage withEmbedsFrom(RoomMessage other, {bool replace = false}) =>
+      RoomMessage(
+        id: id,
+        roomId: roomId,
+        authorId: authorId,
+        text: text,
+        createdAt: createdAt,
+        clientToken: clientToken ?? other.clientToken,
+        media: media,
+        authorName: replace ? other.authorName : authorName ?? other.authorName,
+        deletedAt: deletedAt,
+        editedAt: editedAt,
+        replyToId: replyToId,
+        replyToPreview: replace
+            ? other.replyToPreview
+            : replyToPreview ??
+                  (other.replyToId == replyToId ? other.replyToPreview : null),
+      );
 
   factory RoomMessage.fromRow(Map<String, dynamic> row) => RoomMessage(
     id: row['id'] as String,
@@ -414,6 +418,7 @@ class RoomMessage {
     authorId: row['author_id'] as String,
     text: row['text'] as String? ?? '',
     createdAt: parseTimestamp(row['created_at'] as String),
+    clientToken: row['client_token'] as String?,
     media: [
       for (final item in (row['media'] as List<dynamic>? ?? const []))
         RoomMessageMedia.fromJson(item as Map<String, dynamic>),
@@ -506,12 +511,14 @@ class RoomMemberReceipt {
 class RoomPresenceHandle {
   const RoomPresenceHandle({
     required this.setTyping,
+    required this.setActive,
     required this.unsubscribe,
   });
 
-  /// Announces (or withdraws) "typing" for this viewer. Cheap enough to call
-  /// on a keystroke's debounce — it re-tracks one small payload.
-  final Future<void> Function(bool typing) setTyping;
+  final void Function(bool typing) setTyping;
+
+  /// Withdraws presence while the chat is hidden and restores it on return.
+  final void Function(bool active) setActive;
 
   /// Must be called when the screen goes away, or the channel outlives it and
   /// the viewer stays "present" in a chat they have left.
@@ -589,6 +596,11 @@ String roomMessagePosterPath({
 /// to-one.
 const _replyToColumns =
     'reply_to:reply_to_id(id, text, deleted_at, media, author:users(name))';
+
+bool _postgresChangesReady(Object? payload) =>
+    payload is Map<Object?, Object?> &&
+    payload['extension'] == 'postgres_changes' &&
+    payload['status'] == 'ok';
 
 class RoomsRepository {
   RoomsRepository(this._client, this._signedUrls);
@@ -766,6 +778,30 @@ class RoomsRepository {
         .limit(limit)
         .timeout(networkTimeout);
     return [for (final row in rows) RoomMessage.fromRow(row)];
+  }
+
+  /// Rechecks loaded history through the same RLS and joins as the latest
+  /// page. The ID filter keeps the response proportional to loaded history.
+  Future<List<RoomMessage>> fetchMessagesByIds({
+    required String roomId,
+    required List<String> ids,
+  }) async {
+    const batchSize = 50;
+    final messages = <RoomMessage>[];
+    for (var start = 0; start < ids.length; start += batchSize) {
+      final end = start + batchSize;
+      final rows = await _client
+          .from('room_messages')
+          .select('*, author:users(name), $_replyToColumns')
+          .eq('room_id', roomId)
+          .inFilter(
+            'id',
+            ids.sublist(start, end < ids.length ? end : ids.length),
+          )
+          .timeout(networkTimeout);
+      messages.addAll(rows.map(RoomMessage.fromRow));
+    }
+    return messages;
   }
 
   /// Sends a message. [clientToken] makes the send idempotent — a retry after
@@ -1075,31 +1111,17 @@ class RoomsRepository {
   /// or delivered mark moves, so a tick can flip while the sender is still
   /// looking at the screen. Same shape as [subscribeToMessages].
   ///
-  /// [onResubscribed] fires when the channel comes back after having been up
-  /// once already — never on the first join — and it is here for exactly the
-  /// reason it is on [subscribeToMessages]: Postgres Changes is a stream, not
-  /// a log, so a mark that moved while the socket was down is never delivered
-  /// and never replayed. This channel went without one, and the gap it left
-  /// was real rather than theoretical: the chat screen only re-read the marks
-  /// on `AppLifecycleState.resumed`, so a plain connection blip with the app
-  /// still in the foreground left the sender's own messages showing
-  /// "delivered" over a message the other side had already read — until the
-  /// app was backgrounded or the chat reopened.
-  ///
-  /// Fired on re-subscription rather than on resume for the same reason as
-  /// there: the catch-up query then runs *after* the subscription is live, so
-  /// it cannot leave a second hole between the two.
+  /// [onReady] lets the caller catch up after the database subscription starts.
   void Function() subscribeToMemberReceipts({
     required String roomId,
     required void Function(RoomMemberReceipt receipt) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) {
     final filter = PostgresChangeFilter(
       type: PostgresChangeFilterType.eq,
       column: 'room_id',
       value: roomId,
     );
-    var everSubscribed = false;
     final channel = _client
         .channel('room_members_receipts:$roomId')
         .onPostgresChanges(
@@ -1110,14 +1132,10 @@ class RoomsRepository {
           callback: (payload) =>
               onUpdate(RoomMemberReceipt.fromRow(payload.newRecord)),
         )
-        .subscribe((status, error) {
-          if (status != RealtimeSubscribeStatus.subscribed) return;
-          if (!everSubscribed) {
-            everSubscribed = true;
-            return;
-          }
-          onResubscribed();
-        });
+        .onSystemEvents((payload) {
+          if (_postgresChangesReady(payload)) onReady();
+        })
+        .subscribe();
     return () => channel.unsubscribe();
   }
 
@@ -1134,32 +1152,20 @@ class RoomsRepository {
   /// applied on top of it per subscriber, so another room's traffic cannot
   /// reach this channel even if the filter were wrong.
   ///
-  /// [onResubscribed] fires when the channel comes back after having been up
-  /// once already — never on the first join. It exists because Postgres
-  /// Changes has no replay: a subscriber is sent what happens while it is
-  /// subscribed and nothing else. The socket goes down every time the app is
-  /// backgrounded (`supabase_flutter` disconnects it on `paused` and rejoins
-  /// on `resumed`) and on any dropped connection, so a gap is not an edge
-  /// case here, it is what happens every time someone switches apps. Nothing
-  /// arriving in that gap is ever delivered, and until this callback existed
-  /// the screen simply never learned of it: the chat sat there missing
-  /// messages until it was closed and reopened.
-  ///
-  /// Fired on re-subscription rather than on resume so the catch-up query
-  /// runs *after* the subscription is live — the other order leaves a second
-  /// hole between the query and the rejoin.
+  /// [onReady] runs after PostgreSQL has enabled live changes. The channel
+  /// join acknowledgement can arrive before replication is ready, so that
+  /// earlier event would leave a gap between the HTTP snapshot and live rows.
   void Function() subscribeToMessages({
     required String roomId,
     required void Function(RoomMessage message) onInsert,
     required void Function(RoomMessage message) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) {
     final filter = PostgresChangeFilter(
       type: PostgresChangeFilterType.eq,
       column: 'room_id',
       value: roomId,
     );
-    var everSubscribed = false;
     final channel = _client
         .channel('room_messages:$roomId')
         .onPostgresChanges(
@@ -1178,14 +1184,10 @@ class RoomsRepository {
           callback: (payload) =>
               onUpdate(RoomMessage.fromRow(payload.newRecord)),
         )
-        .subscribe((status, error) {
-          if (status != RealtimeSubscribeStatus.subscribed) return;
-          if (!everSubscribed) {
-            everSubscribed = true;
-            return;
-          }
-          onResubscribed();
-        });
+        .onSystemEvents((payload) {
+          if (_postgresChangesReady(payload)) onReady();
+        })
+        .subscribe();
     return () => channel.unsubscribe();
   }
 
@@ -1211,27 +1213,12 @@ class RoomsRepository {
   /// and a list left over from a channel that has since dropped is a lie
   /// that outlives the only thing making it true.
   ///
-  /// [onSubscribed] answers "is this viewer typing right now" and is asked on
-  /// every join, not just the first. Both halves of that matter:
-  ///
-  ///  * **on every join** — `supabase_flutter` disconnects the socket the
-  ///    moment the app is backgrounded and rejoins on resume, and a rejoined
-  ///    channel carries no presence over. Until this viewer announces
-  ///    themselves again they are simply not in the room, however long the
-  ///    screen has been open.
-  ///  * **asked, not assumed** — this used to track a hardcoded
-  ///    `typing: false`, which wiped an indicator the viewer had just
-  ///    raised. Announcing before the channel is up isn't dropped, it is
-  ///    *buffered* and flushed on join by the hook the channel registers in
-  ///    its own constructor — before this callback runs. So "typing" sent
-  ///    while joining arrived first and was immediately overwritten by the
-  ///    "false" that followed it, and since the screen had already recorded
-  ///    the announcement, no later keystroke re-sent it: the other side saw
-  ///    nothing for the whole draft. Only the screen knows what the composer
-  ///    actually holds, so only the screen can answer this.
+  /// [onSubscribed] supplies the current typing state on every join. Updates
+  /// while disconnected stay local, so only current state is sent on rejoin.
   RoomPresenceHandle subscribeToPresence({
     required String roomId,
     required String userId,
+    required bool active,
     required void Function(Set<String> present, Set<String> typing) onChange,
     required bool Function() onSubscribed,
   }) {
@@ -1239,43 +1226,80 @@ class RoomsRepository {
       'room:$roomId',
       opts: const RealtimeChannelConfig(private: true),
     );
+    var isActive = active;
+    var isTyping = false;
+    var joined = false;
+    var disposed = false;
+    var revision = 0;
+    Timer? retry;
 
-    void emit() {
-      final present = <String>{};
-      final typing = <String>{};
-      for (final state in channel.presenceState()) {
-        for (final presence in state.presences) {
-          final id = presence.payload['user_id'] as String?;
-          if (id == null) continue;
-          present.add(id);
-          if (presence.payload['typing'] == true) typing.add(id);
-        }
+    Future<void> publish() async {
+      retry?.cancel();
+      final attempt = ++revision;
+      if (disposed || !joined || !channel.canPush) return;
+      const timeout = Duration(seconds: 3);
+      try {
+        final result = isActive
+            ? await channel.track(
+                {'user_id': userId, 'typing': isTyping},
+                {'timeout': timeout},
+              )
+            : await channel.untrack({'timeout': timeout});
+        if (result == ChannelResponse.ok) return;
+      } catch (_) {
+        // A dropped connection or failed acknowledgement is handled below.
       }
-      onChange(present, typing);
+      if (attempt == revision && joined && channel.canPush) {
+        retry = Timer(const Duration(seconds: 2), publish);
+      }
     }
 
     channel
-        .onPresenceSync((_) => emit())
-        .onPresenceJoin((_) => emit())
-        .onPresenceLeave((_) => emit())
-        .subscribe((status, error) async {
-          if (status == RealtimeSubscribeStatus.subscribed) {
-            // This is what puts the viewer on the channel at all: presence is
-            // not a side effect of subscribing, it is this call. See
-            // [onSubscribed] for why it is asked rather than assumed.
-            await channel.track({'user_id': userId, 'typing': onSubscribed()});
-            return;
+        .onPresenceSync((_) {
+          if (disposed || !channel.canPush) return;
+          final present = <String>{};
+          final typing = <String>{};
+          for (final state in channel.presenceState()) {
+            for (final presence in state.presences) {
+              final id = presence.payload['user_id'];
+              if (id is! String) continue;
+              present.add(id);
+              if (presence.payload['typing'] == true) typing.add(id);
+            }
           }
-          // Errored, timed out or closed. Nobody on the channel can be
-          // vouched for any more, and the screen is told so rather than left
-          // showing who was here when it last worked.
-          onChange(const {}, const {});
+          onChange(present, typing);
+        })
+        .subscribe((status, error) {
+          if (disposed) return;
+          joined = status == RealtimeSubscribeStatus.subscribed;
+          if (joined) {
+            isTyping = isActive && onSubscribed();
+            if (isActive) unawaited(publish());
+          } else {
+            revision++;
+            retry?.cancel();
+            onChange(const {}, const {});
+          }
         });
 
     return RoomPresenceHandle(
-      setTyping: (typing) =>
-          channel.track({'user_id': userId, 'typing': typing}),
-      unsubscribe: () => channel.unsubscribe(),
+      setTyping: (typing) {
+        if (typing == isTyping) return;
+        isTyping = typing;
+        if (isActive) unawaited(publish());
+      },
+      setActive: (active) {
+        if (active == isActive) return;
+        isActive = active;
+        isTyping = active && onSubscribed();
+        unawaited(publish());
+      },
+      unsubscribe: () {
+        disposed = true;
+        joined = false;
+        retry?.cancel();
+        unawaited(channel.unsubscribe());
+      },
     );
   }
 

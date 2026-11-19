@@ -19,8 +19,8 @@ class GlassSelection extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              scheme.secondaryContainer.withValues(alpha: 0.85),
-              scheme.primary.withValues(alpha: 0.12),
+              scheme.surfaceContainerHighest.withValues(alpha: 0.85),
+              scheme.surfaceContainerHigh.withValues(alpha: 0.65),
             ],
           ),
         ),

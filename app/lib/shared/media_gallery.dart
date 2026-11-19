@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../l10n/app_localizations.dart';
+import 'bounded_image.dart';
 
 /// One photo or video that a gallery can show, whatever it belongs to.
 ///
@@ -154,8 +154,40 @@ class MediaSlide extends StatefulWidget {
   State<MediaSlide> createState() => _MediaSlideState();
 }
 
-class _MediaSlideState extends State<MediaSlide> {
+class _MediaSlideState extends State<MediaSlide> with WidgetsBindingObserver {
   VideoPlayerController? _controller;
+  bool _foreground =
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  bool _tickerEnabled = true;
+
+  bool get _canPlay => _foreground && _tickerEnabled && widget.isCurrent;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _pause() {
+    final controller = _controller;
+    if (controller != null) {
+      unawaited(controller.pause().catchError((Object _) {}));
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tickerEnabled = TickerMode.of(context);
+    if (!_canPlay) _pause();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) _pause();
+  }
 
   /// A [_play] is between its tap and its `setState`.
   ///
@@ -193,13 +225,14 @@ class _MediaSlideState extends State<MediaSlide> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     super.dispose();
   }
 
   Future<void> _play() async {
     final url = widget.item.url;
-    if (url == null || _isPreparing || _controller != null) return;
+    if (url == null || _isPreparing || _controller != null || !_canPlay) return;
     // Captured before the await: this State is reused across slides, so the
     // clip it is showing can change while `initialize()` runs. Without this,
     // a controller prepared for the previous item would be installed under
@@ -221,12 +254,12 @@ class _MediaSlideState extends State<MediaSlide> {
       // left permanently dead by a clip that failed to open.
       _isPreparing = false;
     }
-    if (!mounted || widget.item.storagePath != path) {
+    if (!mounted || widget.item.storagePath != path || !_canPlay) {
       await controller.dispose();
       return;
     }
     setState(() => _controller = controller);
-    await controller.play();
+    await controller.play().catchError((Object _) {});
   }
 
   @override
@@ -235,7 +268,7 @@ class _MediaSlideState extends State<MediaSlide> {
     if (!item.isVideo) {
       final image = item.url == null
           ? const Center(child: CircularProgressIndicator())
-          : CachedNetworkImage(
+          : CachedMediaImage(
               imageUrl: item.url!,
               // The URL is a signed Storage link that gets re-signed
               // (different query string) on every fetch, which would
@@ -257,7 +290,11 @@ class _MediaSlideState extends State<MediaSlide> {
     if (controller != null) {
       return GestureDetector(
         onTap: () => setState(() {
-          controller.value.isPlaying ? controller.pause() : controller.play();
+          if (controller.value.isPlaying) {
+            _pause();
+          } else if (_canPlay) {
+            unawaited(controller.play().catchError((Object _) {}));
+          }
         }),
         child: Center(
           child: AspectRatio(
@@ -272,7 +309,7 @@ class _MediaSlideState extends State<MediaSlide> {
       fit: StackFit.expand,
       children: [
         if (item.posterUrl != null)
-          CachedNetworkImage(
+          CachedMediaImage(
             imageUrl: item.posterUrl!,
             cacheKey: item.posterPath,
             fit: BoxFit.cover,
@@ -395,10 +432,11 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
                 : InteractiveViewer(
                     minScale: 1,
                     maxScale: 4,
-                    child: Center(
-                      child: CachedNetworkImage(
+                    child: SizedBox.expand(
+                      child: CachedMediaImage(
                         imageUrl: item.url!,
                         cacheKey: item.storagePath,
+                        zoomScale: 4,
                         fit: BoxFit.contain,
                       ),
                     ),

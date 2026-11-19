@@ -4,6 +4,29 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../shared/network_timeout.dart';
 import '../auth/auth_providers.dart';
 
+enum NotificationPreference {
+  systemAccount('notify_system_account'),
+  favorites('notify_favorites'),
+  comments('notify_comments'),
+  digest('notify_digest'),
+  inactiveWeek('notify_inactive_week'),
+  roomMessages('notify_room_messages');
+
+  const NotificationPreference(this.column);
+
+  final String column;
+
+  NotificationPreferences applyTo(NotificationPreferences prefs, bool value) =>
+      switch (this) {
+        systemAccount => prefs.copyWith(systemAccount: value),
+        favorites => prefs.copyWith(favorites: value),
+        comments => prefs.copyWith(comments: value),
+        digest => prefs.copyWith(digest: value),
+        inactiveWeek => prefs.copyWith(inactiveWeek: value),
+        roomMessages => prefs.copyWith(roomMessages: value),
+      };
+}
+
 /// One on/off switch per notification producer that already writes to
 /// `notification_outbox` server-side (posts, favorites, comments/replies,
 /// digest, inactivity nudge, and room messages) — see migrations
@@ -86,21 +109,19 @@ class NotificationPreferencesRepository {
     return NotificationPreferences.fromRow(row);
   }
 
-  /// Upserts the whole row — six booleans is little enough that writing all
-  /// of them on every toggle is simpler than tracking which one column
-  /// changed, and it's what creates the row on a user's first-ever toggle.
-  Future<void> save(String userId, NotificationPreferences prefs) {
+  /// Writes one switch and uses the database defaults on the first insert.
+  Future<void> save(
+    String userId,
+    NotificationPreference preference,
+    bool enabled,
+  ) {
     return _client
         .from('notification_preferences')
-        .upsert({
-          'user_id': userId,
-          'notify_system_account': prefs.systemAccount,
-          'notify_favorites': prefs.favorites,
-          'notify_comments': prefs.comments,
-          'notify_digest': prefs.digest,
-          'notify_inactive_week': prefs.inactiveWeek,
-          'notify_room_messages': prefs.roomMessages,
-        })
+        .upsert(
+          {'user_id': userId, preference.column: enabled},
+          onConflict: 'user_id',
+          defaultToNull: false,
+        )
         .timeout(networkTimeout);
   }
 }

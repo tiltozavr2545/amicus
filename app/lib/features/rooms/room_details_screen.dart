@@ -367,6 +367,19 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> {
               child: Column(
                 children: [
                   RoomAvatar(room: room, viewerId: viewerId, radius: 44),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      roomDisplayName(
+                        room,
+                        viewerId,
+                        fallback: l10n.roomFallbackName,
+                      ),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
                   if (canManage) ...[
                     const SizedBox(height: 8),
                     Wrap(

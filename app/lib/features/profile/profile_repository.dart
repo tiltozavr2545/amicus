@@ -191,16 +191,6 @@ class ProfileRepository {
 
   /// Applies a new display order for the whole gallery, in one transaction.
   ///
-  /// Still delete+insert rather than update-in-place — `profile_photos` has
-  /// no UPDATE policy on purpose — but both halves now happen inside
-  /// `reorder_profile_photos()`, server-side. As two PostgREST calls they
-  /// were two transactions with nothing in between, and a failure after the
-  /// DELETE (which `.timeout()` makes routine: it stops waiting without
-  /// cancelling) wiped the entire gallery — including `users.avatar_path`,
-  /// which the sync trigger had already recomputed against zero rows, so the
-  /// user's avatar vanished everywhere at once while their files sat on in
-  /// Storage referenced by nothing.
-  ///
   /// The whole gallery has to be passed, not a slice: positions are rewritten
   /// as a dense 0..N-1 and a partial reorder would collide with the rows left
   /// out. The server rejects a mismatched set with `PT422`.
@@ -225,16 +215,26 @@ class ProfileRepository {
   /// profile, in every friend's Connections list and on all of their posts.
   Future<void> deletePhotos({required List<ProfilePhoto> photos}) {
     if (photos.isEmpty) return Future.value();
+    var removed = <String>[];
     return deleteRowsThenObjects(
-      rows: () => _client
-          .from('profile_photos')
-          .delete()
-          .inFilter('id', photos.map((p) => p.id).toList())
-          .timeout(networkTimeout),
-      objects: () => _client.storage
-          .from(mediaBucket)
-          .remove(photos.map((p) => p.storagePath).toList())
-          .timeout(networkTimeout),
+      rows: () async {
+        // Older servers regenerated photo IDs when reordering. The path is
+        // stable, and the delete policy restricts the operation to this user.
+        final rows = await _client
+            .from('profile_photos')
+            .delete()
+            .inFilter('storage_path', photos.map((p) => p.storagePath).toList())
+            .select('storage_path')
+            .timeout(networkTimeout);
+        removed = [for (final row in rows) row['storage_path'] as String];
+      },
+      objects: () async {
+        if (removed.isEmpty) return;
+        await _client.storage
+            .from(mediaBucket)
+            .remove(removed)
+            .timeout(networkTimeout);
+      },
     );
   }
 

@@ -1681,6 +1681,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'You cannot post right now — the restriction lasts until {date}.'**
   String writeRestrictedError(DateTime date);
+
+  /// No description provided for @connectionActionsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions for {name}'**
+  String connectionActionsTooltip(String name);
+
+  /// No description provided for @managePhotosTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile photos'**
+  String get managePhotosTitle;
 }
 
 class _AppLocalizationsDelegate

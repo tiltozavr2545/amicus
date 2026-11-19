@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../l10n/app_localizations.dart';
 import '../../shared/bottom_navigation_inset.dart';
 import '../../shared/content_width.dart';
+import '../../shared/connection_name.dart';
 import '../../shared/write_ban.dart';
 import '../../shared/refresh_after_await.dart';
 import '../auth/auth_providers.dart';
@@ -26,11 +27,18 @@ class FriendAvatar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (avatarPath == null) {
-      return const CircleAvatar(radius: 24, child: Icon(Icons.person_outline));
+      return CircleAvatar(
+        radius: 24,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        child: const Icon(Icons.person_outline),
+      );
     }
 
     final avatarAsync = ref.watch(avatarBytesProvider(avatarPath!));
     return CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
       radius: 24,
       backgroundImage: avatarAsync.value != null
           ? sizedMemoryImage(context, avatarAsync.value!, logicalWidth: 48)
@@ -113,8 +121,23 @@ class _FriendListItem extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final repo = ref.read(connectionsRepositoryProvider);
 
+    PopupMenuItem<VoidCallback> action(
+      String label,
+      IconData icon,
+      VoidCallback run, {
+      Color? color,
+    }) => PopupMenuItem(
+      value: run,
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label)),
+        ],
+      ),
+    );
     return ListTile(
-      contentPadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
       onTap: () => Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute(
           builder: (_) => FriendProfileScreen(
@@ -124,52 +147,36 @@ class _FriendListItem extends ConsumerWidget {
           ),
         ),
       ),
-      leading: GestureDetector(
-        onTap: () => Navigator.of(context, rootNavigator: true).push(
-          MaterialPageRoute(
-            builder: (_) => FriendProfileScreen(
-              friendId: friend.userId,
-              friendName: friend.name,
-              avatarPath: friend.avatarPath,
-            ),
-          ),
-        ),
-        child: FriendAvatar(avatarPath: friend.avatarPath),
-      ),
-      title: Text(friend.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      // Duration and date are two independent lines, each capped and
-      // ellipsized on its own — not one Text with an embedded '\n' capped at
-      // maxLines: 2, which let a wrapped duration silently swallow the date
-      // at a larger text scale (the row's trailing icons narrow this column
-      // enough that the duration alone can wrap even at a modest scale).
+      leading: FriendAvatar(avatarPath: friend.avatarPath),
+      title: ConnectionName(name: friend.name, connection: friend),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            formatConnectionDuration(l10n, friend.connectedAt),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(formatConnectionDuration(l10n, friend.connectedAt)),
           Text(
             formatConnectionSinceDate(l10n, friend.connectedAt),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: Icon(friend.isFavorite ? Icons.star : Icons.star_border),
-            color: friend.isFavorite
-                ? Theme.of(context).colorScheme.primary
-                : null,
-            tooltip: friend.isFavorite
+      trailing: PopupMenuButton<VoidCallback>(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        surfaceTintColor: Colors.transparent,
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        icon: const Icon(Icons.more_horiz),
+        tooltip: l10n.connectionActionsTooltip(friend.name),
+        onSelected: (run) => run(),
+        itemBuilder: (_) => [
+          action(
+            friend.isFavorite
                 ? l10n.unfavoriteFriendTooltip
                 : l10n.favoriteFriendTooltip,
-            onPressed: () => _run(
+            friend.isFavorite ? Icons.star : Icons.star_outline,
+            () => _run(
               context,
               () =>
                   (friend.isFavorite ? repo.unfavoriteUser : repo.favoriteUser)(
@@ -179,12 +186,12 @@ class _FriendListItem extends ConsumerWidget {
               refreshFeed: false,
             ),
           ),
-          IconButton(
-            icon: Icon(friend.isMuted ? Icons.volume_off : Icons.volume_up),
-            tooltip: friend.isMuted
-                ? l10n.unmuteFriendTooltip
-                : l10n.muteFriendTooltip,
-            onPressed: () {
+          action(
+            friend.isMuted ? l10n.unmuteFriendTooltip : l10n.muteFriendTooltip,
+            friend.isMuted
+                ? Icons.volume_up_outlined
+                : Icons.volume_off_outlined,
+            () {
               if (friend.isMuted) {
                 _run(
                   context,
@@ -207,13 +214,10 @@ class _FriendListItem extends ConsumerWidget {
               }
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.block),
-            color: friend.isBlocked ? const Color(0xFFD32F2F) : null,
-            tooltip: friend.isBlocked
-                ? l10n.unblockButton
-                : l10n.blockFriendTooltip,
-            onPressed: () {
+          action(
+            friend.isBlocked ? l10n.unblockButton : l10n.blockFriendTooltip,
+            Icons.block,
+            () {
               if (friend.isBlocked) {
                 _run(
                   context,
@@ -235,6 +239,7 @@ class _FriendListItem extends ConsumerWidget {
                 );
               }
             },
+            color: Theme.of(context).colorScheme.error,
           ),
         ],
       ),
@@ -415,105 +420,125 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
             24 + BottomNavigationInset.of(context),
           ),
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.person_add_alt_1_outlined,
-                  color: Theme.of(context).colorScheme.primary,
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: ExpansionTile(
+                key: ValueKey(
+                  friendsAsync.hasValue &&
+                      (friendsAsync.value?.isEmpty ?? false),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    l10n.inviteSectionTitle,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_myInviteCode != null)
-              Row(
+                initiallyExpanded:
+                    friendsAsync.hasValue &&
+                    (friendsAsync.value?.isEmpty ?? false),
+                shape: const Border(),
+                collapsedShape: const Border(),
+                leading: const Icon(Icons.person_add_alt_1_outlined),
+                title: Text(l10n.inviteSectionTitle),
                 children: [
-                  Expanded(
-                    child: SelectableText(
-                      _myInviteCode!,
-                      style: Theme.of(context).textTheme.titleLarge,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_myInviteCode != null)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SelectableText(
+                                  _myInviteCode!,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.copy),
+                                tooltip: l10n.copyTooltip,
+                                onPressed: () {
+                                  Clipboard.setData(
+                                    ClipboardData(text: _myInviteCode!),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(l10n.codeCopiedMessage),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        const SizedBox(height: 8),
+                        if (_createLinkError != null) ...[
+                          Text(
+                            _createLinkError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        FilledButton(
+                          onPressed: _isCreatingLink ? null : _createInviteLink,
+                          child: _isCreatingLink
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  _myInviteCode == null
+                                      ? l10n.createInviteCodeButton
+                                      : l10n.createNewCodeButton,
+                                ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          l10n.haveCodeSectionTitle,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _codeController,
+                          decoration: InputDecoration(
+                            labelText: l10n.inviteCodeLabel,
+                            prefixIcon: const Icon(Icons.key_outlined),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_activationMessage != null) ...[
+                          Text(
+                            _activationMessage!,
+                            style: TextStyle(
+                              color: _activationSucceeded
+                                  ? Colors.green
+                                  : Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        FilledButton.tonal(
+                          onPressed: _isActivating ? null : _activate,
+                          child: _isActivating
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(l10n.activateButton),
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    tooltip: l10n.copyTooltip,
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: _myInviteCode!));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(l10n.codeCopiedMessage)),
-                      );
-                    },
                   ),
                 ],
               ),
-            const SizedBox(height: 8),
-            if (_createLinkError != null) ...[
-              Text(
-                _createLinkError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(height: 8),
-            ],
-            FilledButton(
-              onPressed: _isCreatingLink ? null : _createInviteLink,
-              child: _isCreatingLink
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      _myInviteCode == null
-                          ? l10n.createInviteCodeButton
-                          : l10n.createNewCodeButton,
-                    ),
             ),
-            const SizedBox(height: 32),
-            Text(
-              l10n.haveCodeSectionTitle,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _codeController,
-              decoration: InputDecoration(
-                labelText: l10n.inviteCodeLabel,
-                prefixIcon: const Icon(Icons.key_outlined),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_activationMessage != null) ...[
-              Text(
-                _activationMessage!,
-                style: TextStyle(
-                  color: _activationSucceeded
-                      ? Colors.green
-                      : Theme.of(context).colorScheme.error,
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            FilledButton(
-              onPressed: _isActivating ? null : _activate,
-              child: _isActivating
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(l10n.activateButton),
-            ),
-            // Incoming asks come first: they are the only thing on this screen
-            // that is waiting on the viewer, and an unanswered one is somebody
-            // standing at the door. Nothing is drawn when there are none.
+            const SizedBox(height: 24),
             const _IncomingRequests(),
-            const SizedBox(height: 32),
+            const SizedBox(height: 8),
             Text(
               l10n.myConnectionsTitle,
               style: Theme.of(context).textTheme.titleMedium,
@@ -535,6 +560,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                           .toList(),
                     ),
             ),
+            const SizedBox(height: 32),
           ],
         ),
       ),

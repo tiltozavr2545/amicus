@@ -177,6 +177,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       return Icon(Icons.person_outline, size: iconSize);
     }
     return CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
       radius: iconSize / 2,
       backgroundImage: sizedMemoryImage(
         context,
@@ -194,12 +196,12 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     // user. Only reachable once already authenticated (router redirect), so
     // this is the natural single place to trigger it — no loading/error UI
     // needed, the provider itself is a no-op once already registered.
-    ref.watch(pushRegistrationProvider);
+    ref.listen(pushRegistrationProvider, (_, _) {});
     // Same fire-and-forget shape, right above: tells the server "the app was
     // just opened" so the digest push can count only posts that appeared
     // since — see notification_preferences' notify_digest and migration
     // 20260819190000.
-    ref.watch(userActivityProvider);
+    ref.listen(userActivityProvider, (_, _) {});
     // Taps on notifications, cold start included. `listen` rather than
     // `watch`: this is an event to act on once, not state to paint.
     ref.listen(pushTapsProvider, (previous, next) {
@@ -478,7 +480,7 @@ class _BottomBarIcon extends StatelessWidget {
                   color: compose
                       ? scheme.primary
                       : selected
-                      ? scheme.primaryContainer
+                      ? scheme.surfaceContainerHigh
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(compose ? 16 : 14),
                 ),

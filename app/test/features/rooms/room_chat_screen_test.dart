@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,11 +8,32 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'package:amicus/features/auth/auth_providers.dart';
+import 'package:amicus/features/connections/friend_profile_screen.dart';
+import 'package:amicus/features/profile/profile_repository.dart';
+import 'package:amicus/features/feed/feed_repository.dart';
 import 'package:amicus/features/rooms/room_chat_screen.dart';
 import 'package:amicus/features/rooms/rooms_repository.dart';
 import 'package:amicus/l10n/app_localizations.dart';
 import 'package:amicus/shared/media_picking.dart';
 import 'package:amicus/shared/signed_url_cache.dart';
+
+class _Profile implements ProfileRepository {
+  @override
+  Future<List<ProfilePhoto>> fetchPhotos(String userId) async => [];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Feed implements FeedRepository {
+  @override
+  Future<List<Post>> fetchPage({
+    Post? cursor,
+    String? authorId,
+    Set<String> mutedAuthorIds = const {},
+  }) async => [];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 /// Only the members the chat screen calls need real behaviour; the rest
 /// satisfy the `implements` contract via `noSuchMethod`, the same trick the
@@ -19,11 +42,14 @@ class _FakeRoomsRepository implements RoomsRepository {
   _FakeRoomsRepository({this.messages = const []});
 
   List<RoomMessage> messages;
+  List<RoomMessage> olderMessages = const [];
 
   int markReadCalls = 0;
   final List<String> sentTexts = [];
+  final List<String> sentTokens = [];
   final List<String> deletedIds = [];
   bool sendThrows = false;
+  Completer<RoomMessage>? pendingSend;
 
   /// The screen's realtime handlers, captured so a test can play the part of
   /// the server and push a message in.
@@ -38,8 +64,10 @@ class _FakeRoomsRepository implements RoomsRepository {
   /// How many times a page of OLDER history was asked for. Zero is the right
   /// answer once a short page has said there is no more of it.
   int olderPageFetches = 0;
+  RoomMessage? olderPageCursor;
 
   bool fetchThrows = false;
+  Completer<List<RoomMessage>>? pendingFirstPage;
 
   @override
   Future<List<RoomMessage>> fetchMessages({
@@ -49,13 +77,29 @@ class _FakeRoomsRepository implements RoomsRepository {
   }) async {
     if (before != null) {
       olderPageFetches++;
+      olderPageCursor = before;
       if (fetchThrows) throw Exception('offline');
-      return const [];
+      return olderMessages
+          .where((row) => row.createdAt.isBefore(before.createdAt))
+          .take(limit)
+          .toList();
     }
     firstPageFetches++;
     if (fetchThrows) throw Exception('offline');
+    final pending = pendingFirstPage;
+    pendingFirstPage = null;
+    if (pending != null) return pending.future;
     return messages;
   }
+
+  @override
+  Future<List<RoomMessage>> fetchMessagesByIds({
+    required String roomId,
+    required List<String> ids,
+  }) async => [
+    for (final row in [...messages, ...olderMessages])
+      if (ids.contains(row.id)) row,
+  ];
 
   /// Attachments each send carried — the attach button is only meaningful if
   /// what it collects reaches the repository.
@@ -75,9 +119,11 @@ class _FakeRoomsRepository implements RoomsRepository {
     String? replyToId,
   }) async {
     sentTexts.add(text);
+    sentTokens.add(clientToken);
     sentMedia.add(media);
     sentReplyToIds.add(replyToId);
     if (sendThrows) throw Exception('rejected');
+    if (pendingSend case final pending?) return pending.future;
     return RoomMessage(
       id: 'sent-${sentTexts.length}',
       roomId: roomId,
@@ -137,18 +183,18 @@ class _FakeRoomsRepository implements RoomsRepository {
 
   /// The screen's catch-up hook, captured so a test can play the part of a
   /// channel that went down with the app and came back.
-  void Function()? onResubscribed;
+  void Function()? onReady;
 
   @override
   void Function() subscribeToMessages({
     required String roomId,
     required void Function(RoomMessage message) onInsert,
     required void Function(RoomMessage message) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) {
     this.onInsert = onInsert;
     this.onUpdate = onUpdate;
-    this.onResubscribed = onResubscribed;
+    this.onReady = onReady;
     return () => unsubscribeCalls++;
   }
 
@@ -181,6 +227,7 @@ class _FakeRoomsRepository implements RoomsRepository {
 
   /// What the screen announced about itself, in order.
   final List<bool> typingAnnounced = [];
+  final List<bool> presenceActivity = [];
   int presenceUnsubscribeCalls = 0;
 
   /// The screen's answer to "is this viewer typing right now", captured so a
@@ -192,13 +239,15 @@ class _FakeRoomsRepository implements RoomsRepository {
   RoomPresenceHandle subscribeToPresence({
     required String roomId,
     required String userId,
+    required bool active,
     required void Function(Set<String> present, Set<String> typing) onChange,
     required bool Function() onSubscribed,
   }) {
     onPresence = onChange;
     announceSelf = onSubscribed;
     return RoomPresenceHandle(
-      setTyping: (typing) async => typingAnnounced.add(typing),
+      setTyping: typingAnnounced.add,
+      setActive: presenceActivity.add,
       unsubscribe: () => presenceUnsubscribeCalls++,
     );
   }
@@ -215,7 +264,7 @@ class _FakeRoomsRepository implements RoomsRepository {
   }
 
   /// The receipts channel's own catch-up hook, captured for the same reason
-  /// [onResubscribed] is: a test has to be able to play the part of a channel
+  /// [onReady] is: a test has to be able to play the part of a channel
   /// that dropped and came back.
   void Function()? onReceiptsResubscribed;
 
@@ -223,9 +272,9 @@ class _FakeRoomsRepository implements RoomsRepository {
   void Function() subscribeToMemberReceipts({
     required String roomId,
     required void Function(RoomMemberReceipt receipt) onUpdate,
-    required void Function() onResubscribed,
+    required void Function() onReady,
   }) {
-    onReceiptsResubscribed = onResubscribed;
+    onReceiptsResubscribed = onReady;
     return () {};
   }
 
@@ -240,6 +289,7 @@ RoomMessage _message({
   DateTime? createdAt,
   DateTime? deletedAt,
   DateTime? editedAt,
+  String? clientToken,
   List<RoomMessageMedia> media = const [],
   String? replyToId,
   RoomMessageReplyPreview? replyToPreview,
@@ -251,6 +301,7 @@ RoomMessage _message({
   createdAt: createdAt ?? DateTime.utc(2026, 8, 26, 18),
   deletedAt: deletedAt,
   editedAt: editedAt,
+  clientToken: clientToken,
   media: media,
   replyToId: replyToId,
   replyToPreview: replyToPreview,
@@ -312,14 +363,23 @@ Widget _wrap(
   _FakeRoomsRepository repo, {
   List<Room> rooms = const [],
   bool showChat = true,
+  bool disableAnimations = false,
 }) {
   return ProviderScope(
     overrides: [
       currentUserIdProvider.overrideWithValue('me'),
+      profileRepositoryProvider.overrideWithValue(_Profile()),
+      feedRepositoryProvider.overrideWithValue(_Feed()),
       roomsRepositoryProvider.overrideWithValue(repo),
       myRoomsProvider.overrideWith((ref) => rooms.isEmpty ? [_room] : rooms),
     ],
     child: MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(disableAnimations: disableAnimations),
+        child: child!,
+      ),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: showChat
@@ -330,6 +390,144 @@ Widget _wrap(
 }
 
 void main() {
+  testWidgets(
+    'backgrounding clears typing and defers chat reads until resume',
+    (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final repo = _FakeRoomsRepository();
+      await tester.pumpWidget(_wrap(repo));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Draft');
+      expect(repo.typingAnnounced, [true]);
+      final reads = repo.markReadCalls;
+      final receipts = repo.receiptFetches;
+      try {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        expect(repo.typingAnnounced, [true, false]);
+        expect(repo.announceSelf!(), isFalse);
+        repo.onReceiptsResubscribed!();
+        repo.onReady!();
+        await tester.pump(const Duration(seconds: 10));
+        expect(repo.markReadCalls, reads);
+        expect(repo.receiptFetches, receipts);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(repo.markReadCalls, greaterThan(reads));
+        expect(repo.receiptFetches, greaterThan(receipts));
+        expect(repo.announceSelf!(), isFalse);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      }
+    },
+  );
+  testWidgets(
+    'a direct chat header opens the peer profile and returns to chat',
+    (tester) async {
+      final direct = Room(
+        id: 'room-1',
+        isDirect: true,
+        ownerId: 'me',
+        createdAt: DateTime(2026),
+        members: _room.members,
+      );
+      final repo = _FakeRoomsRepository();
+      await tester.pumpWidget(_wrap(repo, rooms: [direct]));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'An unfinished message');
+      await tester.tap(find.byKey(const ValueKey('chat-header-link')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FriendProfileScreen>(find.byType(FriendProfileScreen))
+            .friendId,
+        'anya',
+      );
+      expect(repo.presenceActivity, [false]);
+      expect(repo.typingAnnounced, [true, false]);
+      final reads = repo.markReadCalls;
+      repo.onInsert!(_message(id: 'behind-profile', authorId: 'anya'));
+      expect(repo.markReadCalls, reads);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(RoomChatScreen), findsOneWidget);
+      expect(repo.presenceActivity, [false, true]);
+      expect(repo.markReadCalls, reads + 1);
+      expect(repo.announceSelf!(), isFalse);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        'An unfinished message',
+      );
+    },
+  );
+
+  testWidgets('a message author opens that member profile', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        _FakeRoomsRepository(
+          messages: [
+            _message(id: 'author-link', authorId: 'anya', text: 'hello'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('message-author-anya')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FriendProfileScreen>(find.byType(FriendProfileScreen))
+          .friendId,
+      'anya',
+    );
+    expect(find.text('Reply'), findsNothing);
+  });
+
+  testWidgets('typing replaces online and clears back to online', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    repo.onPresence!({'me', 'anya'}, {'anya'});
+    await tester.pump();
+    expect(find.text('Аня is typing…'), findsOneWidget);
+    expect(find.text('1 online'), findsNothing);
+    repo.onPresence!({'me', 'anya'}, {});
+    await tester.pump();
+    expect(find.text('Аня is typing…'), findsNothing);
+    expect(find.text('1 online'), findsOneWidget);
+  });
+
+  testWidgets('presence changes keep the room title in place', (tester) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    final title = find.text('Дача');
+    final position = tester.getTopLeft(title);
+    repo.onPresence!({'me', 'anya'}, const {});
+    await tester.pump();
+    expect(tester.getTopLeft(title), position);
+    repo.onPresence!({'me', 'anya'}, {'anya'});
+    await tester.pump();
+    expect(tester.getTopLeft(title), position);
+    repo.onPresence!(const {}, const {});
+    await tester.pump();
+    expect(tester.getTopLeft(title), position);
+  });
+
   testWidgets('shows the room name and its messages', (tester) async {
     final repo = _FakeRoomsRepository(
       messages: [
@@ -431,6 +629,38 @@ void main() {
     expect(repo.typingAnnounced, [true, false]);
   });
 
+  testWidgets('a rejoin does not revive typing from an idle draft', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'unfinished draft');
+    await tester.pump(const Duration(seconds: 5));
+    expect(repo.typingAnnounced, [true, false]);
+    expect(repo.announceSelf!(), isFalse);
+  });
+
+  testWidgets('a rejoin does not announce editing as typing', (tester) async {
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'edit-me',
+          authorId: 'me',
+          text: 'old text',
+          createdAt: DateTime.now(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    await tester.tap(_messageText('old text'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    expect(repo.announceSelf!(), isFalse);
+  });
+
   testWidgets('a join announces the draft rather than wiping it', (
     tester,
   ) async {
@@ -438,8 +668,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pump();
 
-    // The channel is still joining; this announcement is buffered by the
-    // channel, not lost.
+    // The composer starts changing before the channel is ready.
     await tester.enterText(find.byType(TextField), 'пишу');
     await tester.pump();
     expect(repo.typingAnnounced, [true]);
@@ -603,6 +832,80 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       'не уйдёт',
     );
+  });
+
+  testWidgets('moving the caret keeps the failed send token and typing idle', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository()..sendThrows = true;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    final field = find.byType(TextField);
+    await tester.enterText(field, 'Retry this');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+    final controller = tester.widget<TextField>(field).controller!;
+    controller.selection = const TextSelection.collapsed(offset: 2);
+    await tester.pump();
+    expect(repo.typingAnnounced, [true, false]);
+    repo.sendThrows = false;
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+    expect(repo.sentTokens, hasLength(2));
+    expect(repo.sentTokens.last, repo.sentTokens.first);
+  });
+
+  testWidgets('a pending send keeps the composer and send button steady', (
+    tester,
+  ) async {
+    final completion = Completer<RoomMessage>();
+    final repo = _FakeRoomsRepository()..pendingSend = completion;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    final field = find.byType(TextField);
+    final send = find.byTooltip('Send');
+    await tester.enterText(field, 'Original draft');
+    await tester.pump();
+    final button = tester.getRect(send);
+    await tester.tap(send);
+    await tester.pump();
+    expect(tester.getRect(send), button);
+    await tester.enterText(field, 'Extra input');
+    await tester.tap(send);
+    expect(repo.sentTexts, ['Original draft']);
+    expect(tester.widget<TextField>(field).controller?.text, 'Original draft');
+    completion.complete(
+      _message(id: 'sent', authorId: 'me', text: 'Original draft'),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a matching realtime echo confirms a send with no HTTP reply', (
+    tester,
+  ) async {
+    final http = Completer<RoomMessage>();
+    final repo = _FakeRoomsRepository()..pendingSend = http;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    final field = find.byType(TextField);
+    await tester.enterText(field, 'Confirmed via Realtime');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    repo.onInsert!(
+      _message(
+        id: 'confirmed',
+        authorId: 'me',
+        text: 'Confirmed via Realtime',
+        clientToken: repo.sentTokens.single,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller?.text, isEmpty);
+    expect(_messageText('Confirmed via Realtime'), findsOneWidget);
+    http.completeError(TimeoutException('HTTP response lost'));
+    await tester.pumpAndSettle();
+    expect(find.text('Failed to send. Please try again.'), findsNothing);
+    expect(_messageText('Confirmed via Realtime'), findsOneWidget);
   });
 
   testWidgets('a message arriving over realtime appears in the list', (
@@ -1236,7 +1539,7 @@ void main() {
     expect(repo.olderPageFetches, 0);
   });
 
-  testWidgets('a failed load backs off instead of retrying at once', (
+  testWidgets('a channel join retries a failed initial load immediately', (
     tester,
   ) async {
     final repo = _FakeRoomsRepository()..fetchThrows = true;
@@ -1244,12 +1547,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.firstPageFetches, 1);
 
-    // Coming back to the app asks again — but the last failure was a moment
-    // ago, and the trigger behind this fires on every frame of every scroll.
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    repo.fetchThrows = false;
+    repo.messages = [_message(id: 'back', authorId: 'anya', text: 'Recovered')];
+    repo.onReady!();
     await tester.pumpAndSettle();
 
-    expect(repo.firstPageFetches, 1);
+    expect(repo.firstPageFetches, 2);
+    expect(_messageText('Recovered'), findsOneWidget);
+    expect(
+      find.text('Failed to load messages. Please try again.'),
+      findsNothing,
+    );
   });
 
   testWidgets('a channel coming back picks up what was missed', (tester) async {
@@ -1267,7 +1575,7 @@ void main() {
       _message(id: 'm2', authorId: 'anya', text: 'пока тебя не было'),
       _message(id: 'm1', authorId: 'anya', text: 'до'),
     ];
-    repo.onResubscribed!();
+    repo.onReady!();
     await tester.pumpAndSettle();
 
     expect(repo.firstPageFetches, 2);
@@ -1275,6 +1583,83 @@ void main() {
     // Stitched, not replaced: the message that was already here is still
     // here, exactly once.
     expect(_messageText('до'), findsOneWidget);
+  });
+
+  testWidgets('the first join catches up after the initial page', (
+    tester,
+  ) async {
+    final initial = Completer<List<RoomMessage>>();
+    final before = _message(
+      id: 'm1',
+      authorId: 'anya',
+      text: 'Initial snapshot',
+    );
+    final missed = _message(
+      id: 'm2',
+      authorId: 'anya',
+      text: 'Before the join',
+    );
+    final repo = _FakeRoomsRepository(messages: [missed, before])
+      ..pendingFirstPage = initial;
+    await tester.pumpWidget(_wrap(repo));
+    repo.onReady!();
+    initial.complete([before]);
+    await tester.pumpAndSettle();
+    expect(repo.firstPageFetches, 2);
+    expect(_messageText('Before the join'), findsOneWidget);
+  });
+
+  testWidgets('a join during catch-up schedules a fresh server snapshot', (
+    tester,
+  ) async {
+    final before = _message(id: 'm1', authorId: 'anya', text: 'Before');
+    final missed = _message(
+      id: 'm2',
+      authorId: 'anya',
+      text: 'During reconnect',
+    );
+    final repo = _FakeRoomsRepository(messages: [before]);
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    final stale = Completer<List<RoomMessage>>();
+    repo.pendingFirstPage = stale;
+    repo.onReady!();
+    repo.messages = [missed, before];
+    repo.onReady!();
+    stale.complete([before]);
+    await tester.pumpAndSettle();
+    expect(repo.firstPageFetches, 3);
+    expect(_messageText('During reconnect'), findsOneWidget);
+  });
+
+  testWidgets('catch-up preserves a live deletion and a newer live insert', (
+    tester,
+  ) async {
+    final old = _message(id: 'm1', authorId: 'anya', text: 'Old history');
+    final latest = _message(id: 'm2', authorId: 'anya', text: 'Stale snapshot');
+    final newer = _message(id: 'm3', authorId: 'anya', text: 'Live insert');
+    final repo = _FakeRoomsRepository(messages: [old]);
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    final stale = Completer<List<RoomMessage>>();
+    repo.pendingFirstPage = stale;
+    repo.onReady!();
+    repo.onInsert!(newer);
+    repo.onInsert!(latest);
+    repo.onUpdate!(
+      _message(
+        id: latest.id,
+        authorId: latest.authorId,
+        text: '',
+        deletedAt: DateTime.utc(2026, 8, 26, 18, 5),
+      ),
+    );
+    stale.complete([latest]);
+    await tester.pumpAndSettle();
+    expect(find.text('Message deleted'), findsOneWidget);
+    expect(_messageText('Live insert'), findsOneWidget);
+    expect(_messageText('Stale snapshot'), findsNothing);
+    expect(_messageText('Old history'), findsNothing);
   });
 
   testWidgets('a deletion that happened while away lands as a tombstone', (
@@ -1298,7 +1683,7 @@ void main() {
         deletedAt: DateTime.utc(2026, 8, 26, 18, 5),
       ),
     ];
-    repo.onResubscribed!();
+    repo.onReady!();
     await tester.pumpAndSettle();
 
     expect(_messageText('зря написал'), findsNothing);
@@ -1321,12 +1706,153 @@ void main() {
       _message(id: 'n2', authorId: 'anya', text: 'второе новое'),
       _message(id: 'n1', authorId: 'anya', text: 'первое новое'),
     ];
-    repo.onResubscribed!();
+    repo.onReady!();
     await tester.pumpAndSettle();
 
     expect(_messageText('первое новое'), findsOneWidget);
     expect(_messageText('второе новое'), findsOneWidget);
     expect(_messageText('старое'), findsNothing);
+  });
+
+  testWidgets('a live insert does not bridge disconnected history', (
+    tester,
+  ) async {
+    final at = DateTime.utc(2026, 8, 26, 18);
+    final old = _message(
+      id: 'old',
+      authorId: 'anya',
+      text: 'Old history',
+      createdAt: at,
+    );
+    final missing = _message(
+      id: 'missing',
+      authorId: 'anya',
+      text: 'Recovered from the gap',
+      createdAt: at.add(const Duration(minutes: 3)),
+    );
+    final reply = _message(
+      id: 'reply',
+      authorId: 'anya',
+      text: 'Latest reply',
+      createdAt: at.add(const Duration(minutes: 53)),
+      replyToId: missing.id,
+      replyToPreview: replyPreviewFor([missing], missing.id),
+    );
+    final repo = _FakeRoomsRepository(messages: [old]);
+    await tester.pumpWidget(_wrap(repo, disableAnimations: true));
+    await tester.pumpAndSettle();
+
+    repo.onInsert!(reply);
+    repo.messages = [
+      reply,
+      for (var minute = 52; minute >= 4; minute--)
+        _message(
+          id: 'new-$minute',
+          authorId: 'anya',
+          text: 'New message $minute',
+          createdAt: at.add(Duration(minutes: minute)),
+        ),
+    ];
+    repo.olderMessages = [missing, old];
+    repo.onReady!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(missing.text));
+    await tester.pumpAndSettle();
+
+    expect(repo.olderPageCursor?.id, 'new-4');
+    expect(_messageText(missing.text), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a successful empty snapshot removes the last hidden message', (
+    tester,
+  ) async {
+    final repo = _FakeRoomsRepository(
+      messages: [_message(id: 'm1', authorId: 'anya', text: 'Only message')],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    expect(_messageText('Only message'), findsOneWidget);
+
+    repo.messages = [];
+    repo.onReady!();
+    await tester.pumpAndSettle();
+
+    expect(_messageText('Only message'), findsNothing);
+  });
+
+  testWidgets('reconnect rechecks previously loaded older messages', (
+    tester,
+  ) async {
+    final at = DateTime.utc(2026, 8, 26, 18);
+    final older = _message(
+      id: 'older',
+      authorId: 'anya',
+      text: 'Older hidden body',
+      createdAt: at,
+    );
+    final reply = _message(
+      id: 'reply',
+      authorId: 'anya',
+      text: 'Recent reply',
+      createdAt: at.add(const Duration(minutes: 50)),
+      replyToId: older.id,
+      replyToPreview: replyPreviewFor([older], older.id),
+    );
+    final recent = [
+      for (var minute = 49; minute > 0; minute--)
+        _message(
+          id: 'new-$minute',
+          authorId: 'anya',
+          text: 'New message $minute',
+          createdAt: at.add(Duration(minutes: minute)),
+        ),
+    ];
+    final repo = _FakeRoomsRepository(messages: [reply, ...recent])
+      ..olderMessages = [older];
+    await tester.pumpWidget(_wrap(repo, disableAnimations: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(older.text));
+    await tester.pumpAndSettle();
+    expect(_messageText(older.text), findsOneWidget);
+
+    repo.olderMessages = [];
+    repo.messages = [
+      _message(
+        id: reply.id,
+        authorId: reply.authorId,
+        text: reply.text,
+        createdAt: reply.createdAt,
+        replyToId: older.id,
+      ),
+      ...recent,
+    ];
+    repo.onReady!();
+    await tester.pumpAndSettle();
+
+    expect(_messageText(older.text), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a quote jumps immediately when animations are disabled', (
+    tester,
+  ) async {
+    final original = _message(id: 'original', authorId: 'anya', text: 'Note');
+    final reply = _message(
+      id: 'reply',
+      authorId: 'anya',
+      text: 'New reply',
+      replyToId: original.id,
+      createdAt: original.createdAt.add(const Duration(minutes: 1)),
+    );
+    final repo = _FakeRoomsRepository(messages: [reply, original]);
+    await tester.pumpWidget(_wrap(repo, disableAnimations: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(original.text));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 2));
   });
 
   testWidgets('hunting for a reply target gives up instead of spinning', (
@@ -1343,7 +1869,12 @@ void main() {
           replyToId: 'missing-id',
         ),
         for (var i = 1; i < 50; i++)
-          _message(id: 'm$i', authorId: 'anya', text: 'сообщение $i'),
+          _message(
+            id: 'm$i',
+            authorId: 'anya',
+            text: 'сообщение $i',
+            createdAt: DateTime.utc(2026, 8, 26, 18 - i),
+          ),
       ],
     );
     await tester.pumpWidget(_wrap(repo));

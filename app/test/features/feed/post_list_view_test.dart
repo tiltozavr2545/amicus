@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:amicus/shared/bounded_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -144,6 +144,11 @@ Post _post(
 /// The list reads its muted-author ids from here — mute is a feed filter now,
 /// not a server-side visibility rule, so the widget has to ask for it.
 class _FakeConnectionsRepository implements ConnectionsRepository {
+  List<Friend> friends = const [];
+
+  @override
+  Future<List<Friend>> fetchFriends(String currentUserId) async => friends;
+
   Set<String> mutedIds = const {};
   int mutedFetches = 0;
 
@@ -243,6 +248,41 @@ Future<_FakeFeedRepository> _twoReactionsInFlight(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'Author marks follow relationship changes without reloading posts',
+    (tester) async {
+      final repo = _FakeFeedRepository()..pageToReturn = [_post('p1')];
+      final connections = _FakeConnectionsRepository()
+        ..friends = [
+          Friend(
+            userId: 'author-1',
+            name: 'Author',
+            connectedAt: DateTime(2026),
+            isFavorite: true,
+            isMuted: true,
+          ),
+        ];
+      final container = _container(repo, connections: connections);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        _wrap(repo, container: container, authorId: 'author-1'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.star), findsOneWidget);
+      expect(find.byIcon(Icons.volume_off_outlined), findsOneWidget);
+      connections.friends = [
+        Friend(userId: 'author-1', name: 'Author', connectedAt: DateTime(2026)),
+      ];
+      // The badge update must not rely on the post request succeeding again.
+      repo.throwOnFetch = true;
+      container.invalidate(friendsProvider);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.star), findsNothing);
+      expect(find.byIcon(Icons.volume_off_outlined), findsNothing);
+      expect(find.text('text of p1'), findsOneWidget);
+    },
+  );
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -437,8 +477,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      final image = tester.widget<CachedNetworkImage>(
-        find.byType(CachedNetworkImage),
+      final image = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
       );
       // Two signed URLs for the same photo, minted on two different app
       // launches, must resolve to the same on-disk cache entry — otherwise
@@ -479,8 +519,8 @@ void main() {
     // PageView's own cache region (hence `skipOffstage: false`), which is
     // what gets the bytes downloading before the swipe rather than after it.
     final urls = tester
-        .widgetList<CachedNetworkImage>(
-          find.byType(CachedNetworkImage, skipOffstage: false),
+        .widgetList<CachedMediaImage>(
+          find.byType(CachedMediaImage, skipOffstage: false),
         )
         .map((w) => w.imageUrl);
     expect(
@@ -504,6 +544,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await tester.ensureVisible(find.byType(PageView).first);
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(PageView).first, const Offset(-500, 0));
     await tester.pumpAndSettle();
     expect(find.text('2/3'), findsOneWidget);
@@ -536,6 +578,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await tester.ensureVisible(find.byType(PageView));
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(PageView), const Offset(-500, 0));
     await tester.pumpAndSettle();
     expect(find.text('2/3'), findsOneWidget);
@@ -584,11 +628,10 @@ void main() {
     await tester.pump();
 
     expect(
-      tester
-          .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
-          .imageUrl,
+      tester.widget<CachedMediaImage>(find.byType(CachedMediaImage)).imageUrl,
       'https://example.invalid/signed?p=old',
     );
+    final previousElement = tester.element(find.byType(CachedMediaImage));
 
     // A new post arrives at the top, so index 0's State is reused for it.
     repo.pageToReturn = [
@@ -601,11 +644,22 @@ void main() {
     await tester.pump();
 
     final urls = tester
-        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .widgetList<CachedMediaImage>(find.byType(CachedMediaImage))
         .map((w) => w.imageUrl)
         .toList();
     expect(urls.first, 'https://example.invalid/signed?p=new');
     expect(urls, hasLength(2));
+    expect(
+      tester.element(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is CachedMediaImage &&
+              widget.imageUrl == 'https://example.invalid/signed?p=old',
+        ),
+      ),
+      same(previousElement),
+      reason: 'Moving a visible post retains its media subtree',
+    );
   });
 
   // The feed and the profile are two live PostListViews in the shell's

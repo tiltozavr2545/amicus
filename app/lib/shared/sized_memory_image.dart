@@ -18,8 +18,7 @@ import 'package:flutter/widgets.dart';
 /// [ResizeImage] scales proportionally — right for both `BoxFit.cover` tiles
 /// and round avatars.
 ///
-/// Not for a zoomable full-screen viewer: there the full resolution is the
-/// point.
+/// Zoomable viewers use boundedImage with a separate fourfold zoom budget.
 ImageProvider sizedMemoryImage(
   BuildContext context,
   Uint8List bytes, {

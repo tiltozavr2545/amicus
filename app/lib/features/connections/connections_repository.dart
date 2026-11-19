@@ -442,6 +442,15 @@ final friendsProvider = FutureProvider.autoDispose<List<Friend>>((ref) {
   return ref.watch(connectionsRepositoryProvider).fetchFriends(userId!);
 });
 
+/// Shared lookup for author badges; refreshed by the same relationship actions
+/// as the Connections list, without a separate request for each post.
+final connectionsByIdProvider = Provider.autoDispose<Map<String, Friend>>((
+  ref,
+) {
+  final friends = ref.watch(friendsProvider).value ?? const <Friend>[];
+  return {for (final friend in friends) friend.userId: friend};
+});
+
 /// Connection requests in both directions, for the Connections screen (which
 /// answers the incoming ones) and the room screen (which must not offer to ask
 /// somebody who has already been asked).

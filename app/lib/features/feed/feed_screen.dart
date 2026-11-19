@@ -15,14 +15,27 @@ class FeedScreen extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       appBar: AppBar(
-        title: const Row(
-          children: [AmicusMark(size: 32), SizedBox(width: 12), Text('Amicus')],
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
+        title: Row(
+          children: [
+            const AmicusMark(size: 26),
+            const SizedBox(width: 10),
+            Text('Amicus', style: Theme.of(context).textTheme.titleLarge),
+          ],
         ),
         actions: const [SettingsButton()],
       ),
       body: ContentWidth(
         child: PostListView(
+          header: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: Text(
+              l10n.postsTitle,
+              style: Theme.of(context).textTheme.headlineLarge,
+            ),
+          ),
           emptyState: (context) => Column(
             children: [
               const SizedBox(height: 48),
