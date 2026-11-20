@@ -2314,24 +2314,18 @@ class _MessageBubble extends StatelessWidget {
               // tombstone's placeholder isn't the message, and selecting the
               // whole bubble's worth of text on a drag that only meant to
               // grab a couple of words would be its own kind of bug.
-              // Own messages don't repeat one's own name: the side of the
-              // screen already says who wrote them.
-              if (!isMine)
+              // Alignment identifies the sender in a direct chat. Group
+              // messages from other members need the author's name.
+              if (!isMine && room?.isDirect == false)
                 SelectionContainer.disabled(
                   child: InkWell(
                     key: ValueKey('message-author-${message.authorId}'),
                     onTap: onOpenAuthor,
                     borderRadius: BorderRadius.circular(8),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 40),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          authorName,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.primary,
-                          ),
-                        ),
+                    child: Text(
+                      authorName,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.primary,
                       ),
                     ),
                   ),

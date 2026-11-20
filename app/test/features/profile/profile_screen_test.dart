@@ -43,6 +43,7 @@ class _FakeProfileRepository implements ProfileRepository {
     required String name,
   }) async {
     if (updateNameError != null) throw updateNameError!;
+    this.name = name;
     savedName = name;
   }
 
@@ -77,7 +78,12 @@ Widget _wrap(_FakeProfileRepository repo) => ProviderScope(
   ),
 );
 
-Finder get _nameField => find.byType(TextField).first;
+Finder get _nameField => find.byType(TextField);
+
+Future<void> _openNameEditor(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Edit name'));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -88,6 +94,9 @@ void main() {
     await tester.pumpWidget(_wrap(_FakeProfileRepository()));
     await tester.pumpAndSettle();
 
+    expect(find.text('Тимофей'), findsOneWidget);
+    expect(_nameField, findsNothing);
+    await _openNameEditor(tester);
     expect(tester.widget<TextField>(_nameField).controller!.text, 'Тимофей');
   });
 
@@ -99,6 +108,7 @@ void main() {
   testWidgets('clearing the name field leaves it cleared', (tester) async {
     await tester.pumpWidget(_wrap(_FakeProfileRepository()));
     await tester.pumpAndSettle();
+    await _openNameEditor(tester);
 
     await tester.enterText(_nameField, '');
     await tester.pump();
@@ -110,6 +120,7 @@ void main() {
     final repo = _FakeProfileRepository();
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
+    await _openNameEditor(tester);
 
     await tester.enterText(_nameField, '');
     await tester.pump();
@@ -122,34 +133,41 @@ void main() {
   testWidgets('a later rebuild does not re-seed over what was typed', (
     tester,
   ) async {
-    // Seeding is once per screen, not once per build: the profile provider
-    // resolving again (a save, an invalidate) must not clobber an edit in
-    // progress.
     final repo = _FakeProfileRepository();
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
+    await _openNameEditor(tester);
 
     await tester.enterText(_nameField, 'Другое имя');
-    await tester.pump();
-    // Force extra rebuilds of the data branch.
-    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProfileScreen)),
+      listen: false,
+    );
+    container.invalidate(myProfileProvider);
     await tester.pumpAndSettle();
 
     expect(tester.widget<TextField>(_nameField).controller!.text, 'Другое имя');
   });
 
-  testWidgets('Save appears only once the name differs from the profile', (
+  testWidgets('Save updates the profile after the name is changed', (
     tester,
   ) async {
-    await tester.pumpWidget(_wrap(_FakeProfileRepository()));
+    final repo = _FakeProfileRepository();
+    await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
+    await _openNameEditor(tester);
 
-    expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+    final save = find.widgetWithText(FilledButton, 'Save');
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
 
     await tester.enterText(_nameField, 'Тимофей Русаков');
     await tester.pump();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(repo.savedName, 'Тимофей Русаков');
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Тимофей Русаков'), findsOneWidget);
   });
 
   // The failure that used to be invisible: `failedToLoadPhotosError` existed
@@ -228,6 +246,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
 
+    await _openNameEditor(tester);
     await tester.enterText(_nameField, 'Новое имя');
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -254,6 +273,7 @@ void main() {
     await tester.pumpWidget(_wrap(repo));
     await tester.pumpAndSettle();
 
+    await _openNameEditor(tester);
     await tester.enterText(_nameField, 'Новое имя');
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -261,5 +281,6 @@ void main() {
 
     expect(find.textContaining('the restriction lasts until'), findsNothing);
     expect(find.textContaining('Failed to save name'), findsOneWidget);
+    expect(tester.widget<TextField>(_nameField).controller!.text, 'Новое имя');
   });
 }

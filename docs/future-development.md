@@ -44,10 +44,10 @@ work with), and then show the route on a map in a post.
 
 ## iOS release validation
 
-Before distributing 0.19.1 through TestFlight, verify its interface, keyboard,
-media playback, chat reconnect and push behavior on a physical iOS device
-using the [iOS build guide](ios-deployment-guide.md). Use the
-[Xcode Cloud pin](xcode-cloud-setup.md) for the UIScene runner.
+Before distributing 0.19.2 through TestFlight, verify its launcher icon,
+profile layout, keyboard, media playback, chat reconnect and push behavior on
+a physical iOS device using the [iOS build guide](ios-deployment-guide.md). Use
+the [Xcode Cloud pin](xcode-cloud-setup.md) for the UIScene runner.
 
 Store listing copy and iPhone/iPad screenshots still need review against the
 build being submitted; see [the listing draft](review/app-store-listing-draft.md).

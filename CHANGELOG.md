@@ -2808,3 +2808,17 @@ Build 78.
   The updated push sender retries transient delivery failures and records
   terminal errors. See [operations](docs/operations.md#release) for backend
   deployment.
+
+## 0.19.2
+
+Build 79.
+
+- **Matching profiles:** your profile and a Connection's profile use the
+  same layout for the avatar, name and posts. The camera on your avatar
+  opens photo tools, and the pencil in the top bar opens a name editor.
+- **Clearer feed:** posts are in individual cards again. The feed starts
+  directly under the Amicus app bar.
+- **App icon:** Android and iOS use a violet gradient from the Amicus palette
+  behind the original artwork.
+- **Compact chats:** direct messages omit author labels. Short group messages
+  fit their content, with author names still opening member profiles.

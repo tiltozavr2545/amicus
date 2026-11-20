@@ -126,15 +126,14 @@
   "failedToDeletePostError": "Не удалось удалить пост. Попробуйте ещё раз.",
   "noPostsYetMessage": "Пока нет постов от знакомых. Добавьте знакомых или напишите первым.",
   "addConnectionsButton": "Добавить знакомых",
-  "myPostsTitle": "Мои посты",
-  "noOwnPostsYetMessage": "Вы ещё не публиковали посты",
   "postsTitle": "Посты",
-  "noAuthorPostsYetMessage": "У этого пользователя пока нет постов",
+  "noProfilePostsYetMessage": "Пока нет постов",
   "likeTooltip": "Нравится",
   "neutralTooltip": "Нейтрально",
   "dislikeTooltip": "Не нравится",
 
   "failedToLoadProfileError": "Не удалось загрузить профиль. Попробуйте ещё раз.",
+  "editNameTitle": "Изменить имя",
   "failedToSaveNameError": "Не удалось сохранить имя. Попробуйте ещё раз.",
 
   "addPhotoButton": "Добавить фото",

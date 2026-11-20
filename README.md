@@ -8,15 +8,16 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
-Current release version is **0.19.1 (build 78)**. Android builds go to Google
-Play closed testing (`alpha`), and iOS builds go through TestFlight separately.
+The app version in this checkout is **0.19.2 (build 79)**. Android builds go to
+Google Play closed testing (`alpha`), and iOS builds go through TestFlight separately.
 Check delivery and availability for each channel in the
 [release runbook](docs/operations.md#release).
 
 ## Features
 
-- Sign-in/sign-up, a profile with a photo gallery (up to 80) and your own wall of posts
-- Connections via an invite link — with access to the connection's profile and posts; open profiles from post author blocks or full Connection rows
+- Sign-in/sign-up and a shared layout for your profile and your Connections' profiles, with a photo gallery (up to 80) and a wall of post cards
+- Manage your gallery from the camera button on your avatar and edit your name from the profile toolbar
+- Connections via an invite link — open profiles from post author blocks or full Connection rows
 - Local post drafts restore text, audience and ordered attachments after leaving or restarting; successful publication clears the draft
 - Feed: text and up to 20 photos/videos per post, reactions, comments with replies (one level of nesting)
 - Post visibility: publish to all Connections or only your favorites; editing can change that audience
@@ -36,7 +37,7 @@ Full feature history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
-Interface previews for 0.19.1, using fictional people and content.
+Interface previews for 0.19.2, using fictional people and content.
 
 <table>
 <tr>
@@ -120,7 +121,7 @@ Current:
 - [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
 - [App Store listing draft](docs/review/app-store-listing-draft.md) — working copy for proofreading; actual submission status lives in App Store Connect
 - [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
-- [Changelog](CHANGELOG.md) — version history, including 0.19.1
+- [Changelog](CHANGELOG.md) — version history, including 0.19.2
 
 Historical — how the project was conceived and how it went, not how it works now:
 

@@ -59,7 +59,8 @@ void main() {
     await tester.pumpWidget(_wrap(_FakeProfileRepository()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Маша'), findsWidgets);
+    expect(find.text('Profile'), findsOneWidget);
+    expect(find.text('Маша'), findsOneWidget);
   });
 
   // Without this the failure is silent in a particular way: a friend whose

@@ -527,12 +527,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
                 16 + BottomNavigationInset.of(context),
               ),
               itemCount: _posts.length + 1 + (header != null ? 1 : 0),
-              separatorBuilder: (context, index) => index == 0 && header != null
-                  ? const SizedBox(height: 24)
-                  : const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Divider(),
-                    ),
+              separatorBuilder: (context, index) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
                 if (header != null) {
                   if (index == 0) return header;
@@ -555,7 +550,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
                 // screen instead of a clean bounce to sign-in. No id matches
                 // no author, which is the right answer for "is this mine".
                 final currentUserId = ref.read(currentUserIdProvider);
-                return _PostEntry(
+                return _PostCard(
                   key: ValueKey(post.id),
                   post: post,
                   isOwnPost:
@@ -585,8 +580,8 @@ class _PostListViewState extends ConsumerState<PostListView> {
   }
 }
 
-class _PostEntry extends ConsumerWidget {
-  const _PostEntry({
+class _PostCard extends ConsumerWidget {
+  const _PostCard({
     super.key,
     required this.post,
     required this.isOwnPost,
@@ -608,6 +603,7 @@ class _PostEntry extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    final colors = Theme.of(context).colorScheme;
     final connection = ref.watch(
       connectionsByIdProvider.select(
         (connections) => connections[post.authorId],
@@ -617,10 +613,13 @@ class _PostEntry extends ConsumerWidget {
     final avatarBytes = avatarPath == null
         ? null
         : ref.watch(avatarBytesProvider(avatarPath)).value;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.55)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -750,7 +749,9 @@ class _PostEntry extends ConsumerWidget {
                 child: _MediaCarousel(postId: post.id, media: post.media),
               ),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 6),
             Row(
               children: [
                 _ReactionButton(
@@ -957,7 +958,7 @@ class _MediaCarouselState extends ConsumerState<_MediaCarousel> {
     }
 
     // With several items of possibly different aspect ratios, the carousel
-    // needs one fixed frame so the post's height doesn't jump as the user
+    // needs one fixed frame so the card's height doesn't jump as the user
     // swipes — otherwise every slide change would reflow the whole feed list
     // under it. 4:5 mirrors the box Instagram settled on for the same
     // problem. `cover` inside that fixed frame does crop the preview, but a

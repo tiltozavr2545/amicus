@@ -66,9 +66,11 @@ tinted with the primary berry in the light theme. Android notifications use a
 separate 24 dp vector with stronger lines and nodes for small display sizes.
 Its appearance on Samsung One UI still needs device verification.
 
-In a direct chat, tapping the header opens the other person's profile. Group
-headers open room details, while member names above messages link to their
-profiles. These are root-navigator routes; returning retains the chat and draft.
+In a direct chat, tapping the header opens the other person's profile and
+message bubbles omit author names. Group headers open room details, while
+member names above incoming messages link to their profiles. Each link takes
+the space of its text, allowing short bubbles to wrap their content.
+Profile and room-detail routes open above the chat and preserve its draft.
 Profile data continues to use its existing visibility rules.
 
 Presence means the other person is viewing this chat in the foreground.
@@ -94,6 +96,11 @@ favorite/mute/block indicators between author headers and Connections. The
 `connectionsByIdProvider` lookup reuses `friendsProvider`, so relationship changes
 update visible badges without fetching posts again; a missing relationship
 snapshot leaves the name visible without badges.
+
+Both the own-profile tab and Connection routes use `ProfilePage` for the
+app bar, avatar and gallery viewer, identity layout and author-scoped posts.
+The owner supplies the photo menu and the name and Settings actions. A
+Connection route supplies the report action and gets Back from the navigator.
 
 Floating navigation synchronizes its neutral glass selection and pages through one
 animation controller. Dragging the bar or swiping a primary page changes tabs;

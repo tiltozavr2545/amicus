@@ -434,7 +434,7 @@ void main() {
     },
   );
   testWidgets(
-    'a direct chat header opens the peer profile and returns to chat',
+    'a direct chat opens the peer profile from the header without bubble names',
     (tester) async {
       final direct = Room(
         id: 'room-1',
@@ -443,9 +443,18 @@ void main() {
         createdAt: DateTime(2026),
         members: _room.members,
       );
-      final repo = _FakeRoomsRepository();
+      final repo = _FakeRoomsRepository(
+        messages: [
+          _message(id: 'incoming', authorId: 'anya', text: 'Incoming'),
+          _message(id: 'outgoing', authorId: 'me', text: 'Outgoing'),
+        ],
+      );
       await tester.pumpWidget(_wrap(repo, rooms: [direct]));
       await tester.pumpAndSettle();
+      expect(_messageText('Incoming'), findsOneWidget);
+      expect(_messageText('Outgoing'), findsOneWidget);
+      expect(find.byKey(const ValueKey('message-author-anya')), findsNothing);
+      expect(find.byKey(const ValueKey('message-author-me')), findsNothing);
       await tester.enterText(find.byType(TextField), 'An unfinished message');
       await tester.tap(find.byKey(const ValueKey('chat-header-link')));
       await tester.pumpAndSettle();
@@ -473,7 +482,9 @@ void main() {
     },
   );
 
-  testWidgets('a message author opens that member profile', (tester) async {
+  testWidgets('a group author link fits a short bubble and opens the profile', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _wrap(
         _FakeRoomsRepository(
@@ -484,7 +495,18 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('message-author-anya')));
+    final authorLink = find.byKey(const ValueKey('message-author-anya'));
+    final bubble = find.ancestor(
+      of: authorLink,
+      matching: find.byType(AnimatedContainer),
+    );
+    final authorLabel = find.descendant(
+      of: authorLink,
+      matching: find.text('Аня'),
+    );
+    expect(tester.getSize(authorLink), tester.getSize(authorLabel));
+    expect(tester.getSize(bubble).width, lessThan(160));
+    await tester.tap(authorLink);
     await tester.pumpAndSettle();
     expect(
       tester

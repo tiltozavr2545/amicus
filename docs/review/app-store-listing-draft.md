@@ -1,17 +1,15 @@
 # App Store Listing Draft — Amicus (English, U.S.)
 
-Store copy for **0.19.1 (build 78)**, checked against repository behavior on
-2026-11-19. Review it against the submitted build and use App Store Connect
+Store copy for **0.19.2 (build 79)**, checked against repository behavior on
+2026-11-20. Review it against the submitted build and use App Store Connect
 to check the current metadata and approval status.
 
 ## What's New
 
 ```
-Amicus has a refreshed look, with quieter colors, a clearer feed and easier access to profile photos and gallery tools.
+Your profile and your Connections' profiles now share the same layout. On your profile, tap the camera to manage photos or the pencil to edit your name.
 
-Open profiles directly from a chat, and catch up on messages when you come back online. Reply links respect your motion settings.
-
-Notification settings save each switch independently. Reordering your profile photos keeps their references intact.
+Posts appear in separate cards again, and the app icon has a new gradient that matches the Amicus colors.
 ```
 
 ## Promotional Text (170 char max)
