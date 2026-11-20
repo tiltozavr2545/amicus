@@ -1,6 +1,6 @@
 # Interface stability and resource use
 
-Implemented for **0.19.1+78**.
+The resource and lifecycle changes were implemented for **0.19.1+78**.
 
 Framebook techniques evaluated for Amicus on 2026-11-18. The source checkout
 was Framebook `fd4d943`; relevant changes include `7cdbae9` (resource use),
@@ -65,6 +65,7 @@ Frame times, native video and audio behavior, the Android keyboard, and
 battery use still require measurement with a profile build on physical
 hardware. The checks guard individual rendering and lifecycle behaviors.
 
-Local validation for 0.19.1 passed formatting, static analysis and **441 Flutter
-tests**. Android delivery is tracked separately in the
+The interface changes for 0.19.2 passed formatting, static analysis and **441
+Flutter tests**. The layout tests compare the avatar and post list placement
+across both profile routes. Android delivery is tracked separately in the
 [release workflow](operations.md#release).

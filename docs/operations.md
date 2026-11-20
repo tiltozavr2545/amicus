@@ -107,8 +107,8 @@ truth is Play Console and Firebase, not git.
 
 ## Release
 
-The 0.19.1 release uses build **78** in `app/pubspec.yaml`. See
-[the changelog](../CHANGELOG.md#0191) for the user-facing changes.
+The current candidate is **0.19.2+79** in `app/pubspec.yaml`. See
+[the changelog](../CHANGELOG.md#0192) for the user-facing changes.
 
 For Android, send `develop` to `main` through a pull request and merge after
 the checks pass. Synchronize `develop` from the merged `main` and push the

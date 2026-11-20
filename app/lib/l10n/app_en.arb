@@ -141,15 +141,14 @@
   "failedToDeletePostError": "Failed to delete post. Please try again.",
   "noPostsYetMessage": "No posts from connections yet. Add connections or write the first one.",
   "addConnectionsButton": "Add connections",
-  "myPostsTitle": "My posts",
-  "noOwnPostsYetMessage": "You haven't posted anything yet",
   "postsTitle": "Posts",
-  "noAuthorPostsYetMessage": "This user hasn't posted anything yet",
+  "noProfilePostsYetMessage": "No posts yet",
   "likeTooltip": "Like",
   "neutralTooltip": "Neutral",
   "dislikeTooltip": "Dislike",
 
   "failedToLoadProfileError": "Failed to load profile. Please try again.",
+  "editNameTitle": "Edit name",
   "failedToSaveNameError": "Failed to save name. Please try again.",
 
   "addPhotoButton": "Add photo",

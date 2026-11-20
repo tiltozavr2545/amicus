@@ -1,7 +1,7 @@
 # Amicus documentation
 
-The current release version is **0.19.1+78**. See the
-[changelog](../CHANGELOG.md#0191) for the changes and
+The app version in this checkout is **0.19.2+79**. See the
+[changelog](../CHANGELOG.md#0192) for the changes and
 [operations](operations.md#release) for the separate Play, GitHub APK,
 TestFlight, and backend delivery steps.
 

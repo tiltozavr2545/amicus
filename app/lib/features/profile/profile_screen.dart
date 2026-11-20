@@ -5,17 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../shared/content_width.dart';
 import '../../shared/file_extension.dart';
 import '../../shared/media_extensions.dart';
-import '../../shared/photo_viewer_route.dart';
 import '../../shared/picker_limit.dart';
 import '../../shared/refresh_after_await.dart';
-import '../../shared/sized_memory_image.dart';
 import '../../shared/write_ban.dart';
 import '../auth/auth_providers.dart';
-import '../feed/post_list_view.dart';
 import '../settings/settings_button.dart';
+import 'profile_page.dart';
 import 'profile_photos_screen.dart';
 import 'profile_repository.dart';
 
@@ -36,31 +33,9 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final _nameController = TextEditingController();
-  bool _isSaving = false;
   bool _isAddingPhotos = false;
-  bool _nameSeeded = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Repaints the Save button's visibility (shown only once the field
-    // differs from the loaded profile) as the user types.
-    _nameController.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  /// Shared error feedback for every write path on this screen. Takes a
-  /// message *builder*, not a resolved string: after an `await`, the
-  /// `AppLocalizations.of(context)` lookup itself is only safe once
-  /// `context.mounted` has been checked, so it has to happen in here too —
-  /// resolving the string at the call site (before this runs) would read
-  /// context that may already be gone.
+  /// Resolves upload errors after checking that the context is still mounted.
   void _showError(
     BuildContext context,
     String Function(AppLocalizations) message,
@@ -71,39 +46,97 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Future<void> _saveName(String userId) async {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      _showError(context, (l10n) => l10n.nameRequiredError);
-      return;
-    }
-    setState(() => _isSaving = true);
-    // Captured before the await — see [refreshAfterAwait]. The name also
-    // paints the shell's profile tab, which outlives this screen.
+  Future<void> _editName(Profile profile) {
+    final l10n = AppLocalizations.of(context)!;
+    final repository = ref.read(profileRepositoryProvider);
     final container = refreshAfterAwait(context);
-    try {
-      await ref
-          .read(profileRepositoryProvider)
-          .updateName(userId: userId, name: name);
-      container.invalidate(myProfileProvider);
-    } catch (e) {
-      // The write ban now covers name changes too (20260924100000:
-      // `update of name` on `users`), so AMB01 is now reachable from here.
-      // Without this branch a banned user was shown "please try again" — an
-      // invitation to repeat something that won't work until the ban ends.
-      // Same reason and same shape as the other six places with
-      // `writeBanUntil` (see `_addPhotos` below on line order and `ignore`).
-      final bannedUntil = writeBanUntil(e);
-      String message(AppLocalizations l10n) => bannedUntil != null
-          ? l10n.writeRestrictedError(bannedUntil)
-          : l10n.failedToSaveNameError;
-      // _showError checks context.mounted itself before touching context —
-      // the analyzer can't see across that call, only into this function.
-      // ignore: use_build_context_synchronously
-      _showError(context, message);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
+    var draft = profile.name;
+    var saving = false;
+    String? error;
+
+    return showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> save() async {
+            final name = draft.trim();
+            if (saving || name == profile.name) return;
+            if (name.isEmpty) {
+              setDialogState(() => error = l10n.nameRequiredError);
+              return;
+            }
+
+            setDialogState(() {
+              saving = true;
+              error = null;
+            });
+            try {
+              await repository.updateName(userId: profile.id, name: name);
+              container.invalidate(myProfileProvider);
+            } catch (e) {
+              if (!context.mounted) return;
+              final bannedUntil = writeBanUntil(e);
+              setDialogState(() {
+                saving = false;
+                error = bannedUntil == null
+                    ? l10n.failedToSaveNameError
+                    : l10n.writeRestrictedError(bannedUntil);
+              });
+              return;
+            }
+            if (context.mounted && ModalRoute.of(context)?.isCurrent == true) {
+              Navigator.of(context).pop();
+            }
+          }
+
+          return PopScope<void>(
+            canPop: !saving,
+            child: AlertDialog(
+              scrollable: true,
+              title: Text(l10n.editNameTitle),
+              content: TextFormField(
+                initialValue: profile.name,
+                autofocus: true,
+                enabled: !saving,
+                textInputAction: TextInputAction.done,
+                inputFormatters: [
+                  FilteringTextInputFormatter.singleLineFormatter,
+                ],
+                maxLength: 100,
+                decoration: InputDecoration(
+                  labelText: l10n.nameLabel,
+                  counterText: '',
+                  errorText: error,
+                  errorMaxLines: 4,
+                ),
+                onChanged: (value) => setDialogState(() {
+                  draft = value;
+                  error = null;
+                }),
+                onFieldSubmitted: (_) => save(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.of(context).pop(),
+                  child: Text(l10n.cancelButton),
+                ),
+                FilledButton(
+                  onPressed: saving || draft.trim() == profile.name
+                      ? null
+                      : save,
+                  child: saving
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(l10n.saveButton),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _addPhotos(String userId, List<ProfilePhoto> existing) async {
@@ -275,292 +308,92 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     container.invalidate(_profilePhotosProvider);
   }
 
-  void _openViewer(List<ProfilePhoto> photos) {
-    Navigator.of(context, rootNavigator: true).push(
-      photoViewerRoute(
-        (_) => ProfilePhotoViewerScreen(photos: photos, initialIndex: 0),
+  void _showPhotoActions(String userId) {
+    final l10n = AppLocalizations.of(context)!;
+    final photoState = ref.read(_profilePhotosProvider);
+    final photos = photoState.value ?? const <ProfilePhoto>[];
+    // Gallery mutations need a loaded snapshot to enforce the photo limit
+    // and to know which photos can be reordered or deleted.
+    final photosLoaded = photoState.hasValue;
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: Text(
+                  l10n.managePhotosTitle,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              _PhotoMenuAction(
+                icon: Icons.add_photo_alternate_outlined,
+                label: l10n.addPhotoButton,
+                onPressed: photosLoaded && photos.length < _maxProfilePhotos
+                    ? () => _addPhotos(userId, photos)
+                    : null,
+              ),
+              _PhotoMenuAction(
+                icon: Icons.swap_vert,
+                label: l10n.reorderPhotosButton,
+                onPressed: photosLoaded && photos.length >= 2
+                    ? () => _openGalleryEditor(
+                        ProfilePhotoReorderScreen(photos: photos),
+                      )
+                    : null,
+              ),
+              _PhotoMenuAction(
+                icon: Icons.delete_outline,
+                label: l10n.deletePhotoButton,
+                onPressed: photosLoaded && photos.isNotEmpty
+                    ? () => _openGalleryEditor(
+                        ProfilePhotoDeleteScreen(photos: photos),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final userId = ref.watch(currentUserIdProvider);
-    final profileAsync = ref.watch(myProfileProvider);
-    final photosAsync = ref.watch(_profilePhotosProvider);
+    final profileState = ref.watch(myProfileProvider);
+    final profile = profileState.value;
     final l10n = AppLocalizations.of(context)!;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.profileTitle),
-        actions: [const SettingsButton()],
+    return ProfilePage(
+      profile: profileState,
+      photos: ref.watch(_profilePhotosProvider),
+      secondaryAction: IconButton(
+        tooltip: l10n.editNameTitle,
+        icon: const Icon(Icons.edit_outlined),
+        onPressed: profile == null ? null : () => _editName(profile),
       ),
-      body: ContentWidth(
-        child: profileAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) =>
-              Center(child: Text(l10n.failedToLoadProfileError)),
-          data: (profile) {
-            // Seeded once, tracked by a flag rather than by the field being
-            // empty. The listener registered in initState rebuilds on every
-            // keystroke, so an emptiness test ran again the instant the user
-            // cleared the field — and put the old name straight back, caret and
-            // all. Selecting all and pressing backspace to retype a name was
-            // therefore impossible; the field could only be edited around its
-            // existing text. Same seed-once shape SettingsScreen uses for
-            // `_prefs`.
-            if (!_nameSeeded) {
-              _nameSeeded = true;
-              _nameController.text = profile.name;
-            }
-            final avatarBytes = profile.avatarPath == null
-                ? null
-                : ref.watch(avatarBytesProvider(profile.avatarPath!)).value;
-            // Buttons that mutate the gallery need the *current* list (to
-            // compute next positions, or to know what's selectable) — holding
-            // them off until the list has actually loaded avoids an add/reorder
-            // racing ahead of a fetch still in flight and computing positions
-            // against a stale (empty) view of the gallery.
-            final photosLoaded = photosAsync.hasValue;
-            final photos = photosAsync.value ?? const <ProfilePhoto>[];
-            final nameChanged = _nameController.text.trim() != profile.name;
-
-            final header = Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final portrait = SizedBox(
-                        width: 88,
-                        height: 88,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            GestureDetector(
-                              onTap: photos.isEmpty
-                                  ? null
-                                  : () => _openViewer(photos),
-                              child: CircleAvatar(
-                                backgroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHigh,
-                                foregroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                                radius: 40,
-                                backgroundImage: avatarBytes != null
-                                    ? sizedMemoryImage(
-                                        context,
-                                        avatarBytes,
-                                        logicalWidth: 80,
-                                      )
-                                    : null,
-                                child: avatarBytes == null
-                                    ? const Icon(Icons.person, size: 34)
-                                    : null,
-                              ),
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: IconButton.filledTonal(
-                                tooltip: l10n.managePhotosTitle,
-                                iconSize: 18,
-                                icon: _isAddingPhotos
-                                    ? const SizedBox.square(
-                                        dimension: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.photo_camera_outlined),
-                                onPressed: _isAddingPhotos
-                                    ? null
-                                    : () => showModalBottomSheet<void>(
-                                        context: context,
-                                        useRootNavigator: true,
-                                        useSafeArea: true,
-                                        isScrollControlled: true,
-                                        builder: (sheetContext) => SafeArea(
-                                          top: false,
-                                          child: SingleChildScrollView(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.fromLTRB(
-                                                        20,
-                                                        8,
-                                                        20,
-                                                        16,
-                                                      ),
-                                                  child: Text(
-                                                    l10n.managePhotosTitle,
-                                                    style: Theme.of(
-                                                      context,
-                                                    ).textTheme.headlineSmall,
-                                                  ),
-                                                ),
-
-                                                _PhotoMenuAction(
-                                                  icon: Icons
-                                                      .add_photo_alternate_outlined,
-                                                  label: l10n.addPhotoButton,
-                                                  loading: _isAddingPhotos,
-                                                  onPressed:
-                                                      !photosLoaded ||
-                                                          _isAddingPhotos ||
-                                                          photos.length >=
-                                                              _maxProfilePhotos
-                                                      ? null
-                                                      : () => _addPhotos(
-                                                          userId!,
-                                                          photos,
-                                                        ),
-                                                ),
-                                                _PhotoMenuAction(
-                                                  icon: Icons.swap_vert,
-                                                  label:
-                                                      l10n.reorderPhotosButton,
-                                                  onPressed:
-                                                      !photosLoaded ||
-                                                          photos.length < 2
-                                                      ? null
-                                                      : () => _openGalleryEditor(
-                                                          ProfilePhotoReorderScreen(
-                                                            photos: photos,
-                                                          ),
-                                                        ),
-                                                ),
-                                                _PhotoMenuAction(
-                                                  icon: Icons.delete_outline,
-                                                  label: l10n.deletePhotoButton,
-                                                  onPressed:
-                                                      !photosLoaded ||
-                                                          photos.isEmpty
-                                                      ? null
-                                                      : () => _openGalleryEditor(
-                                                          ProfilePhotoDeleteScreen(
-                                                            photos: photos,
-                                                          ),
-                                                        ),
-                                                ),
-
-                                                const SizedBox(height: 16),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                      final name = TextField(
-                        controller: _nameController,
-                        maxLines: null,
-                        textInputAction: TextInputAction.done,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.singleLineFormatter,
-                        ],
-                        // Matches the `users_name_length` CHECK added in
-                        // 20260820140000, so the cap reads as a full field rather
-                        // than as a database error on save. No counter: unlike the
-                        // composer's 5000, nobody writes a name near this limit.
-                        maxLength: 100,
-                        buildCounter:
-                            (
-                              _, {
-                              required currentLength,
-                              required isFocused,
-                              maxLength,
-                            }) => null,
-                        style: Theme.of(context).textTheme.headlineMedium,
-                        decoration: InputDecoration(
-                          labelText: l10n.nameLabel,
-                          filled: false,
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                          suffixIcon: const Icon(Icons.edit_outlined, size: 18),
-                        ),
-                      );
-                      return constraints.maxWidth < 340
-                          ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                portrait,
-                                const SizedBox(height: 12),
-                                name,
-                              ],
-                            )
-                          : Row(
-                              children: [
-                                portrait,
-                                const SizedBox(width: 20),
-                                Expanded(child: name),
-                              ],
-                            );
-                    },
-                  ),
-                  // Keep gallery failures visible even while photo actions are closed.
-                  if (photosAsync.hasError) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      l10n.failedToLoadPhotosError,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ],
-                  if (nameChanged) ...[
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _isSaving ? null : () => _saveName(userId!),
-                      child: _isSaving
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(l10n.saveButton),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  const Divider(height: 1),
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      l10n.myPostsTitle,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                ],
-              ),
-            );
-
-            return PostListView(
-              authorId: userId,
-              header: header,
-              emptyState: (context) => Text(l10n.noOwnPostsYetMessage),
-            );
-          },
-        ),
+      trailingAction: const SettingsButton(),
+      photoAction: IconButton.filledTonal(
+        tooltip: l10n.managePhotosTitle,
+        iconSize: 18,
+        icon: _isAddingPhotos
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.photo_camera_outlined),
+        onPressed: profile == null || _isAddingPhotos
+            ? null
+            : () => _showPhotoActions(profile.id),
       ),
     );
   }
@@ -571,19 +404,17 @@ class _PhotoMenuAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
-    this.loading = false,
   });
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
-  final bool loading;
 
   @override
   Widget build(BuildContext context) => ListTile(
     leading: Icon(icon),
     title: Text(label),
-    enabled: onPressed != null && !loading,
-    onTap: onPressed == null || loading
+    enabled: onPressed != null,
+    onTap: onPressed == null
         ? null
         : () {
             Navigator.of(context).pop();

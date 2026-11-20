@@ -1,6 +1,6 @@
 # iOS deployment: build, signing and TestFlight
 
-Use this runbook to build and validate 0.19.1 for TestFlight. Check processing,
+Use this runbook to build and validate Amicus for TestFlight. Check processing,
 submission and approval status in App Store Connect. Use
 [Xcode Cloud](xcode-cloud-setup.md) for stable remote archives and
 [API automation](app-store-connect-api-automation.md) for a programmatic trigger.
@@ -84,10 +84,10 @@ credentials to the actual installation environment.
 ## 5. Icons and launch screens
 
 The authored mark is `app/assets/branding/app_icon.png`. From the repository
-root, `python3 scripts/generate-branding.py` (Pillow required) regenerates the
-berry Android background layers and opaque iOS icon sizes. It preserves the
-Android foreground/monochrome layers and authored mark. Do not recreate the
-old gradient icon or apply obsolete 88%/61% artwork scaling instructions.
+root, `python3 scripts/generate-branding.py` (Pillow required) generates the
+gradient backgrounds for Android and combines the same gradient with the mark
+for the opaque iOS icon sizes. Android uses the background, foreground and
+monochrome layers in its adaptive icon resources.
 
 iOS slots are defined in `app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json`.
 The App Store icon must remain opaque. Launch screens keep their current
@@ -117,8 +117,8 @@ Alternatively let Xcode Cloud archive on its stable image.
 `pubspec.yaml` is the app-version/build source. Runner keeps
 `VERSIONING_SYSTEM` disabled and `CURRENT_PROJECT_VERSION` tied to
 `$(FLUTTER_BUILD_NUMBER)`; do not enable Cloud's independent build counter.
-The 0.19.1 release uses build 78. Confirm that this build number is available
-in App Store Connect before uploading.
+The current candidate is 0.19.2 (build 79). Confirm that this build number is
+available in App Store Connect before uploading.
 
 ## 8. Upload to App Store Connect
 
@@ -132,9 +132,10 @@ record rather than assuming its marketing name from an old screenshot.
 
 Attach the processed build to the intended existing test group and verify its
 installation on a physical device. Check sign-in, primary and secondary
-navigation, large text, keyboard return, images/zoom, video suspension,
-background chat catch-up and notification taps. Keep reviewer credentials
-outside the repository and confirm that any existing review fixture still works.
+navigation, profile layout and photo controls, large text, keyboard return,
+images/zoom, video suspension, background chat catch-up and notification taps.
+Keep reviewer credentials outside the repository and confirm that any
+existing review fixture still works.
 
 If testers see no available build, check group/build assignment, processing,
 compliance and Test Information before rebuilding. A previous initial group

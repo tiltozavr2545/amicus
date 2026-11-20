@@ -366,16 +366,10 @@ class AppLocalizationsRu extends AppLocalizations {
   String get addConnectionsButton => 'Добавить знакомых';
 
   @override
-  String get myPostsTitle => 'Мои посты';
-
-  @override
-  String get noOwnPostsYetMessage => 'Вы ещё не публиковали посты';
-
-  @override
   String get postsTitle => 'Посты';
 
   @override
-  String get noAuthorPostsYetMessage => 'У этого пользователя пока нет постов';
+  String get noProfilePostsYetMessage => 'Пока нет постов';
 
   @override
   String get likeTooltip => 'Нравится';
@@ -389,6 +383,9 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get failedToLoadProfileError =>
       'Не удалось загрузить профиль. Попробуйте ещё раз.';
+
+  @override
+  String get editNameTitle => 'Изменить имя';
 
   @override
   String get failedToSaveNameError =>

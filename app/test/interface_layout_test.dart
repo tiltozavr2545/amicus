@@ -368,6 +368,20 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(FriendProfileScreen), findsOneWidget);
         expect(find.byKey(const ValueKey('amicus-navigation')), findsNothing);
+        final profileElements = [
+          find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text('Профиль'),
+          ),
+          find.byType(CircleAvatar).first,
+          find.byType(Divider).first,
+          find.text('Посты'),
+        ];
+        final friendGeometry = profileElements.map(tester.getRect).toList();
+        final firstPost = find.byType(Card).first;
+        final friendPost = tester.getRect(firstPost);
+        expect(find.byTooltip('Фотографии профиля'), findsNothing);
+        expect(find.byTooltip('Изменить имя'), findsNothing);
         await _preview(tester, 'friend-$suffix');
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
@@ -455,6 +469,11 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Профиль'));
         await tester.pumpAndSettle();
+        expect(profileElements.map(tester.getRect).toList(), friendGeometry);
+        final ownPost = tester.getRect(firstPost);
+        expect(ownPost.topLeft, friendPost.topLeft);
+        expect(ownPost.width, friendPost.width);
+        expect(find.byTooltip('Изменить имя'), findsOneWidget);
         await _preview(tester, 'profile-$suffix');
         await tester.tap(find.byTooltip('Фотографии профиля'));
         await tester.pumpAndSettle();

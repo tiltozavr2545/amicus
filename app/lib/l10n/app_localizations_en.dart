@@ -367,16 +367,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addConnectionsButton => 'Add connections';
 
   @override
-  String get myPostsTitle => 'My posts';
-
-  @override
-  String get noOwnPostsYetMessage => 'You haven\'t posted anything yet';
-
-  @override
   String get postsTitle => 'Posts';
 
   @override
-  String get noAuthorPostsYetMessage => 'This user hasn\'t posted anything yet';
+  String get noProfilePostsYetMessage => 'No posts yet';
 
   @override
   String get likeTooltip => 'Like';
@@ -390,6 +384,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get failedToLoadProfileError =>
       'Failed to load profile. Please try again.';
+
+  @override
+  String get editNameTitle => 'Edit name';
 
   @override
   String get failedToSaveNameError => 'Failed to save name. Please try again.';

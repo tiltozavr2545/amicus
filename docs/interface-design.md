@@ -4,7 +4,7 @@ Amicus is a personal album and a conversation with people the reader knows.
 Photographs, names and messages carry the identity. Color marks an action or a
 state rather than covering the entire interface.
 
-This is the 0.19.1 interface. Resource and lifecycle behavior is
+This is the 0.19.2 interface. Resource and lifecycle behavior is
 documented in [performance.md](performance.md).
 
 ## Tokens
@@ -32,12 +32,13 @@ the network.
 ## Layout
 
 Reading and forms are left aligned, with a maximum width of 720 logical pixels
-(480 for authentication). Mobile content keeps a 16–24 pixel gutter. The feed
-is a continuous reading surface: entries are separated by space and
-a rule, without enclosing cards. A compact brand signature sits above the feed
-title. Profile photographs and names share an identity block, stacking on narrow
-screens. The name is editable in place. Rooms use two-line previews, dates and a
-stronger weight for unread conversations. Connections keep a compact invitation
+(480 for authentication). Mobile content keeps a 16–24 pixel gutter. Posts use
+rounded cards with a thin outline and a 16-pixel gap. The feed starts below the
+compact brand signature in the app bar. Own and Connection profiles share the
+same title, avatar, name, divider and post list. The avatar and name stack on
+narrow screens. On the owner's profile, the top bar opens name editing and
+Settings. Rooms use two-line previews, dates and a stronger weight for unread
+conversations. Connections keep a compact invitation
 disclosure above the people list. It
 opens automatically for an empty list, and otherwise leaves room for people.
 Relationship actions live in one trailing overflow menu with explicit labels.
@@ -47,7 +48,6 @@ tapping the photograph itself still opens the viewer.
 
 ```text
 Amicus                          Settings
-Posts
   avatar  author                   menu
           date
   text / photo
@@ -57,11 +57,11 @@ Posts
 ```
 
 ```text
-Profile
-  photograph         editable name
-  camera / menu      save when changed
-  wall
-    entries
+                       Profile
+  photograph          name
+  --------------------------------
+  Posts
+    cards
 ```
 
 ```text
@@ -96,11 +96,12 @@ on shared surfaces, with headings outside; account actions form their own group.
 
 The circle-of-people mark stays the identifying element. Its original authored
 foreground is preserved byte for byte.
-`python3 scripts/generate-branding.py` packages background layers and iOS icon
-sizes from that artwork (Pillow required); it does not redraw the symbol. The
-launcher background is berry on Android and iOS; the in-app mark has a transparent background and follows the theme. Android keeps
-its separate, heavier notification vector. Launch screens use a neutral
-background. Original launch artwork is retained.
+`python3 scripts/generate-branding.py` generates the Android launcher
+backgrounds and iOS icon sizes (Pillow required). The launcher background
+uses a diagonal gradient from deep violet (`#30234E`) to the theme's primary
+accent (`#6354A5`). The in-app mark has a transparent background and follows
+the theme. Android keeps its separate, heavier notification vector. Launch
+screens use a neutral background. Original launch artwork is retained.
 
 The shared theme reaches authentication, feed, comments, post creation/editing,
 both profiles, galleries and gallery tools, Connections, blocked users, room
@@ -120,8 +121,10 @@ Secondary screens cover the shell;
 scroll tails clear floating navigation and the device safe area.
 
 Profile links include the author area of a post, the full Connection row, the
-direct-chat header and the name above a room message. Menus, reactions and
-relationship controls remain independent targets. Settings
+direct-chat header and incoming author names in group chats. Direct chats use
+bubble alignment to identify the sender. Group author links fit their text,
+so short messages keep a compact bubble. Menus, reactions and relationship
+controls remain independent targets. Settings
 show cached notification preferences and refresh them in place. Saved theme,
 language and navigation are applied before the first frame; failed changes
 restore the last saved choice. New posts restore
@@ -131,9 +134,15 @@ storage and navigation behavior is documented in
 
 ## Local previews
 
-`AMICUS_PREVIEW_DIR=/private/tmp/amicus-preview make verify` captures interface
-previews while running the existing layout checks. All people and content in
-these fixtures are fictional. Layout checks cover both themes at 320, 390 and
-800 logical pixels with enlarged Russian text, narrow authentication forms,
-keyboard clearance and secondary navigation. Send icons must maintain a contrast
-ratio of at least 4.5 against the filled button in both themes.
+Run the interface layout tests from `app/` to capture previews.
+
+```sh
+flutter test --dart-define=AMICUS_PREVIEW_DIR=/private/tmp/amicus-preview test/interface_layout_test.dart
+```
+
+All people and content in these fixtures are fictional. Layout checks cover
+both themes at 320, 390 and 800 logical pixels, with enlarged Russian text on
+the narrow and wide variants. They compare the two profile layouts and check
+narrow authentication forms, keyboard clearance and secondary navigation.
+Send icons must maintain a contrast ratio of at least 4.5 against the filled
+button in both themes.

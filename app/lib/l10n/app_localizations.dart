@@ -734,29 +734,17 @@ abstract class AppLocalizations {
   /// **'Add connections'**
   String get addConnectionsButton;
 
-  /// No description provided for @myPostsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'My posts'**
-  String get myPostsTitle;
-
-  /// No description provided for @noOwnPostsYetMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'You haven\'t posted anything yet'**
-  String get noOwnPostsYetMessage;
-
   /// No description provided for @postsTitle.
   ///
   /// In en, this message translates to:
   /// **'Posts'**
   String get postsTitle;
 
-  /// No description provided for @noAuthorPostsYetMessage.
+  /// No description provided for @noProfilePostsYetMessage.
   ///
   /// In en, this message translates to:
-  /// **'This user hasn\'t posted anything yet'**
-  String get noAuthorPostsYetMessage;
+  /// **'No posts yet'**
+  String get noProfilePostsYetMessage;
 
   /// No description provided for @likeTooltip.
   ///
@@ -781,6 +769,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to load profile. Please try again.'**
   String get failedToLoadProfileError;
+
+  /// No description provided for @editNameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit name'**
+  String get editNameTitle;
 
   /// No description provided for @failedToSaveNameError.
   ///
