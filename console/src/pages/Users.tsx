@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { UserRow, UsersResponse } from '../../shared/types';
 import { useApi } from '../api';
-import { ago, date, day, Fail } from '../components/ui';
+import { ago, date, day, Fail, Loading, PageHead } from '../components/ui';
 
 type SortKey =
   | 'name'
@@ -54,43 +54,57 @@ export function Users() {
   }, [data, query, sort]);
 
   if (error) return <Fail message={error} onRetry={reload} />;
-  if (!data) return <p className="muted">{loading ? 'Читаю базу…' : ''}</p>;
+  if (!data) return <Loading>Загружаю пользователей…</Loading>;
 
   return (
     <>
-      <div className="page-head">
-        <h1>Пользователи</h1>
-        <span className="stamp">
-          {rows.length === data.total
-            ? `${data.total}`
-            : `${rows.length} из ${data.total}`}{' '}
-          · снято {date(data.generatedAt)}
-        </span>
-        <div className="row-actions" style={{ marginLeft: 'auto' }}>
-          <input
-            type="search"
-            placeholder="имя, почта или id"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button type="button" onClick={reload} disabled={loading}>
-            {loading ? 'Обновляю…' : 'Обновить'}
-          </button>
-        </div>
-      </div>
+      <PageHead
+        title="Пользователи"
+        meta={`Показано ${rows.length} из ${data.total}. Данные на ${date(data.generatedAt)}`}
+      >
+        <input
+          type="search"
+          aria-label="Поиск пользователей"
+          placeholder="Имя, почта или ID"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
 
-      <div className="panel">
+        <button type="button" onClick={reload} disabled={loading}>
+          {loading ? 'Обновляю…' : 'Обновить'}
+        </button>
+      </PageHead>
+
+      <section
+        className="panel table-panel"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need to scroll wide tables.
+        tabIndex={0}
+        aria-label="Таблица пользователей"
+      >
         <table>
           <thead>
             <tr>
               {COLUMNS.map((c) => (
                 <th
                   key={c.title}
-                  className={`${c.num ? 'num' : ''} ${c.key ? '' : 'plain'}`.trim()}
-                  onClick={c.key ? () => setSort(c.key as SortKey) : undefined}
+                  className={c.num ? 'num' : undefined}
+                  scope="col"
+                  aria-sort={sort === c.key ? 'descending' : undefined}
                 >
-                  {c.title}
-                  {sort === c.key ? ' ↓' : ''}
+                  {c.key ? (
+                    <button
+                      type="button"
+                      className="sort-button"
+                      onClick={() => c.key && setSort(c.key)}
+                    >
+                      {c.title}
+                      {sort === c.key ? (
+                        <span aria-hidden="true"> ↓</span>
+                      ) : null}
+                    </button>
+                  ) : (
+                    c.title
+                  )}
                 </th>
               ))}
             </tr>
@@ -98,7 +112,7 @@ export function Users() {
           <tbody>
             {rows.map((u) => (
               <tr key={u.id}>
-                <td>
+                <td className="person-cell">
                   <Link to={`/users/${u.id}`}>{u.name}</Link>
                   {u.isSystem ? (
                     <span className="tag" style={{ marginLeft: 6 }}>
@@ -158,13 +172,15 @@ export function Users() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={COLUMNS.length} className="empty">
-                  Никого не нашлось.
+                  {query.trim()
+                    ? 'Совпадений нет. Попробуйте другое имя, почту или ID.'
+                    : 'Пользователей пока нет.'}
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
-      </div>
+      </section>
     </>
   );
 }

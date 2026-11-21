@@ -18,23 +18,31 @@ export function Card({
   );
 }
 
-export function Bars({
-  points,
+export function PageHead({
+  title,
+  meta,
+  children,
 }: {
-  points: { date: string; count: number }[];
+  title: string;
+  meta?: ReactNode;
+  children?: ReactNode;
 }) {
-  const max = Math.max(1, ...points.map((p) => p.count));
   return (
-    <div className="bars">
-      {points.map((p) => (
-        <div
-          key={p.date}
-          className={p.count === max && max > 0 ? 'hot' : undefined}
-          style={{ height: `${Math.round((p.count / max) * 100)}%` }}
-          title={`${p.date}: ${p.count}`}
-        />
-      ))}
-    </div>
+    <header className="page-head">
+      <div>
+        <h1>{title}</h1>
+        {meta ? <div className="stamp">{meta}</div> : null}
+      </div>
+      {children ? <div className="page-actions">{children}</div> : null}
+    </header>
+  );
+}
+
+export function Loading({ children }: { children: ReactNode }) {
+  return (
+    <p className="loading" role="status">
+      {children}
+    </p>
   );
 }
 
@@ -46,7 +54,8 @@ export function Fail({
   onRetry?: () => void;
 }) {
   return (
-    <div className="error">
+    <div className="error" role="alert">
+      <strong>Не удалось загрузить данные</strong>
       <div>{message}</div>
       {onRetry ? (
         <div style={{ marginTop: 10 }}>

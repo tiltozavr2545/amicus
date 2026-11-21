@@ -2822,3 +2822,18 @@ Build 79.
   behind the original artwork.
 - **Compact chats:** direct messages omit author labels. Short group messages
   fit their content, with author names still opening member profiles.
+
+## 0.19.3
+
+Build 80. The mobile app carries forward the 0.19.2 interface and features.
+
+- **Local admin console:** redesigned the overview, user list and profile,
+  report queue, news editor and broadcasts. Navigation and forms adapt to
+  narrow screens, and the user table supports keyboard sorting and scrolling.
+- **Activity overview:** registrations and posts share a 30-day chart and
+  scale, with a table for exact daily counts.
+- **Moderation and news:** switch between open and all reports, read the
+  reported content with its moderation context, and preview news posts beside
+  the editor.
+- **Update broadcasts:** wait for the audience calculation for the selected
+  build before enabling send. Older responses cannot overwrite newer estimates.

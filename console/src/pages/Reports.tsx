@@ -6,7 +6,7 @@ import type {
   ReportsResponse,
 } from '../../shared/types';
 import { useApi } from '../api';
-import { ago, date, Fail } from '../components/ui';
+import { ago, date, Fail, Loading, PageHead } from '../components/ui';
 
 const REASONS: Record<string, string> = {
   spam: 'Спам или реклама',
@@ -173,12 +173,12 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
     });
 
   return (
-    <div className="panel" style={{ marginBottom: 12 }}>
+    <article className="report panel">
       <div
         className="row-actions"
         style={{ marginBottom: 8, flexWrap: 'wrap' }}
       >
-        <strong>{KINDS[report.targetKind] ?? report.targetKind}</strong>
+        <h2>{cap(KINDS[report.targetKind] ?? report.targetKind)}</h2>
         <span className="tag warn">
           {REASONS[report.reason] ?? report.reason}
         </span>
@@ -204,7 +204,7 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
         </span>
       </div>
 
-      <table style={{ marginBottom: 10 }}>
+      <table className="report-evidence">
         <tbody>
           <tr>
             <td className="muted" style={{ width: 150 }}>
@@ -257,7 +257,8 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
       >
         <input
           type="text"
-          style={{ flex: 1, minWidth: 280 }}
+          className="grow-field"
+          aria-label="Приписка в уведомление"
           placeholder="Приписка в уведомление (необязательно) — она НЕ переводится"
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -454,7 +455,7 @@ function Card({ report, onDone }: { report: ReportRow; onDone: () => void }) {
           {error}
         </p>
       ) : null}
-    </div>
+    </article>
   );
 }
 
@@ -465,24 +466,35 @@ export function Reports() {
   );
 
   if (error) return <Fail message={error} onRetry={reload} />;
-  if (!data) return <p className="muted">{loading ? 'Читаю очередь…' : ''}</p>;
+  if (!data) return <Loading>Загружаю жалобы…</Loading>;
 
   return (
     <>
-      <div className="page-head">
-        <h1>Жалобы</h1>
-        <span className="stamp">
-          открытых {data.open} · снято {date(data.generatedAt)}
-        </span>
-        <div className="row-actions" style={{ marginLeft: 'auto' }}>
-          <button type="button" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? 'Только открытые' : 'Показать разобранные'}
-          </button>
-          <button type="button" onClick={reload} disabled={loading}>
-            {loading ? 'Обновляю…' : 'Обновить'}
-          </button>
-        </div>
-      </div>
+      <PageHead
+        title="Жалобы"
+        meta={`Открытых жалоб: ${data.open}. Данные на ${date(data.generatedAt)}`}
+      >
+        <button type="button" onClick={reload} disabled={loading}>
+          {loading ? 'Обновляю…' : 'Обновить'}
+        </button>
+      </PageHead>
+
+      <fieldset className="segmented" aria-label="Статус жалоб">
+        <button
+          type="button"
+          aria-pressed={!showAll}
+          onClick={() => setShowAll(false)}
+        >
+          Открытые
+        </button>
+        <button
+          type="button"
+          aria-pressed={showAll}
+          onClick={() => setShowAll(true)}
+        >
+          Все жалобы
+        </button>
+      </fieldset>
 
       {data.reports.length === 0 ? (
         <div className="panel">

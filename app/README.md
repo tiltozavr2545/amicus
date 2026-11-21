@@ -2,7 +2,7 @@
 
 The Amicus Flutter app. Only the client code lives here — the full project description, setup, documentation and plans are in the repository root: [../README.md](../README.md).
 
-The version in `pubspec.yaml` is **0.19.2+79**. Android development
+The version in `pubspec.yaml` is **0.19.3+80**. Android development
 and verification use Flutter 3.32.8 and JDK 21. The iOS UIScene runner uses
 the independent SDK pin in the [iOS guide](../docs/ios-deployment-guide.md).
 

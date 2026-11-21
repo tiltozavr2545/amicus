@@ -4,8 +4,9 @@ Amicus is a personal album and a conversation with people the reader knows.
 Photographs, names and messages carry the identity. Color marks an action or a
 state rather than covering the entire interface.
 
-This is the 0.19.2 interface. Resource and lifecycle behavior is
-documented in [performance.md](performance.md).
+The mobile interface in 0.19.3 follows the 0.19.2 design described here.
+See [performance.md](performance.md) for resource and lifecycle behavior and
+the [console guide](../console/README.md#using-the-console) for the local admin interface.
 
 ## Tokens
 

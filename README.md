@@ -8,7 +8,7 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
-The app version in this checkout is **0.19.2 (build 79)**. Android builds go to
+The app version in this checkout is **0.19.3 (build 80)**. Android builds go to
 Google Play closed testing (`alpha`), and iOS builds go through TestFlight separately.
 Check delivery and availability for each channel in the
 [release runbook](docs/operations.md#release).
@@ -114,14 +114,14 @@ Current:
 - [Client architecture](docs/client-architecture.md) — what the app is built with and what the client itself does on top of the schema
 - [Performance](docs/performance.md) — image memory, foreground work, stable media state and verification limits
 - [Operations](docs/operations.md) — scheduled jobs, secrets, release, Edge Function deployment, update-notification broadcast
-- [Console](console/README.md) — the local admin console: what it does, how to run it and why it has a server half
+- [Console](console/README.md) — the responsive local admin console for activity, users, moderation, news and broadcasts
 - [iOS deployment](docs/ios-deployment-guide.md) — the path from simulator to TestFlight: Xcode, icons, export compliance, IPA build
 - [iOS push notifications (APNs)](docs/ios-push-apns-setup.md) — APNs key, linking to Firebase Cloud Messaging
 - [Xcode Cloud](docs/xcode-cloud-setup.md) and [API automation](docs/app-store-connect-api-automation.md) — remote stable iOS builds and authenticated build triggers
 - [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
 - [App Store listing draft](docs/review/app-store-listing-draft.md) — working copy for proofreading; actual submission status lives in App Store Connect
 - [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
-- [Changelog](CHANGELOG.md) — version history, including 0.19.2
+- [Changelog](CHANGELOG.md#0193) — version history and the 0.19.3 changes
 
 Historical — how the project was conceived and how it went, not how it works now:
 

@@ -107,8 +107,8 @@ truth is Play Console and Firebase, not git.
 
 ## Release
 
-The current candidate is **0.19.2+79** in `app/pubspec.yaml`. See
-[the changelog](../CHANGELOG.md#0192) for the user-facing changes.
+The current candidate is **0.19.3+80** in `app/pubspec.yaml`. See
+[the changelog](../CHANGELOG.md#0193) for the local console changes.
 
 For Android, send `develop` to `main` through a pull request and merge after
 the checks pass. Synchronize `develop` from the merged `main` and push the
@@ -149,11 +149,10 @@ the function reports the delivery failures with HTTP 502. The database
 excludes these terminal rows from the pending queue. A worker interruption
 between FCM acceptance and database persistence can still repeat a push.
 
-Everything below is now done from the local console (`console/`, the
-"Рассылки" (Broadcasts) and "Новости" (News) sections) — it also shows the
-audience by name before sending, a breakdown by version, and the report queue.
-SQL remains the fallback: it works when the console isn't running, and when
-you need to do something the console can't.
+Use [Broadcasts and News in the local console](../console/README.md#using-the-console)
+for update notices and feed announcements. Before sending an update notice,
+wait for the audience estimate for the selected build and check that the build
+is available in the intended channel. The SQL examples below are a fallback.
 
 ### GitHub APK and iOS channels
 
