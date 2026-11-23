@@ -256,8 +256,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // failed on `profile_photos_user_position_key` — permanently, until the
       // app was restarted. Positions are now assigned by the server
       // (`append_profile_photos()`, 20260824130000), so that dead end is
-      // gone; the list still has to be reloaded so the person sees what
-      // actually made it.
+      // gone; reloading also picks up the new first photo as the avatar.
       //
       // Invalidation is unconditional, via `container` rather than `ref`:
       // `ref` dies with this screen, while the list that needs reloading must

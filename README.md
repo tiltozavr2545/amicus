@@ -8,24 +8,30 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
-The app version in this checkout is **0.19.3 (build 80)**. Android builds go to
-Google Play closed testing (`alpha`), and iOS builds go through TestFlight separately.
+The release candidate in this checkout is **0.19.3 (build 80)**. Android
+builds go to Google Play closed testing (`alpha`), and iOS builds go through
+TestFlight separately.
 Check delivery and availability for each channel in the
 [release runbook](docs/operations.md#release).
 
 ## Features
 
 - Sign-in/sign-up and a shared layout for your profile and your Connections' profiles, with a photo gallery (up to 80) and a wall of post cards
-- Manage your gallery from the camera button on your avatar and edit your name from the profile toolbar
-- Connections via an invite link — open profiles from post author blocks or full Connection rows
+- Manage your gallery from the camera button and edit your name from the
+  profile toolbar. The first photo in a new upload becomes your avatar.
+- Connections via invite links. Open profiles from post author blocks or
+  Connection rows, and pull down to refresh Connections and incoming requests.
 - Local post drafts restore text, audience and ordered attachments after leaving or restarting; successful publication clears the draft
-- Feed: text and up to 20 photos/videos per post, reactions, comments with replies (one level of nesting)
+- Feed: text and up to 20 photos/videos per post, reactions, comments with
+  replies (one level of nesting). New-post notifications open and refresh
+  the top of the feed.
 - Post visibility: publish to all Connections or only your favorites; editing can change that audience
 - Rooms: realtime chats with unread counts, delivery/read receipts, presence,
   typing and push notifications; up to 10 photos/videos per message, quoted
   replies, editing your messages within 48 hours, and per-room notification
   muting. Reconnecting recovers missed messages and refreshes edits and
-  moderation changes. Open a member's profile from a message or a direct-chat header.
+  moderation changes. Incoming messages keep your reading position in older
+  history. Open a member's profile from a message or a direct-chat header.
 - A two-person room is named after the other person and appears for both; for a group of three or more, the owner sets a name and an avatar, and adds and removes people
 - Connection request — to a member of a shared room if you aren't connected yet: the only way to connect without meeting in person, and it's available only where people already share a chat
 - Mute, block and favorites — with push notifications and fine-grained per-source settings

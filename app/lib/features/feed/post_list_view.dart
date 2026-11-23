@@ -479,6 +479,12 @@ class _PostListViewState extends ConsumerState<PostListView> {
     ref.listen<int>(feedRefreshTickProvider, (previous, next) {
       if (previous != null) _refresh();
     });
+    if (widget.authorId == null) {
+      ref.listen(feedNotificationTickProvider, (_, _) {
+        _refresh();
+        if (_scrollController.hasClients) _scrollController.jumpTo(0);
+      });
+    }
     final l10n = AppLocalizations.of(context)!;
 
     final header = widget.header;

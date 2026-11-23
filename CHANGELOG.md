@@ -2825,8 +2825,18 @@ Build 79.
 
 ## 0.19.3
 
-Build 80. The mobile app carries forward the 0.19.2 interface and features.
+Build 80.
 
+- **Fresh feed from notifications:** tapping a new-post notification opens
+  the top of the feed and loads the latest posts, even if the feed was already
+  open.
+- **Steadier chat:** incoming messages and date labels keep your place while
+  you read or scroll through older messages. At the end of a conversation,
+  new messages appear as they arrive.
+- **Automatic avatar:** the first newly selected photo becomes your avatar
+  after upload. Other selected photos follow it in the gallery.
+- **Refresh Connections:** pull down to reload your Connections and incoming
+  requests, including when the list is empty.
 - **Local admin console:** redesigned the overview, user list and profile,
   report queue, news editor and broadcasts. Navigation and forms adapt to
   narrow screens, and the user table supports keyboard sorting and scrolling.

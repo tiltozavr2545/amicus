@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -46,6 +47,8 @@ class _Drafts extends PostDraftStore {
 }
 
 class _Feed implements FeedRepository {
+  List<Post> additionalPosts = [];
+
   @override
   Future<CommentPage> fetchComments(String postId) async => CommentPage(
     comments: [
@@ -76,6 +79,7 @@ class _Feed implements FeedRepository {
   }) async => cursor != null
       ? []
       : [
+          ...additionalPosts,
           Post(
             id: 'post',
             authorId: 'anna',
@@ -266,6 +270,93 @@ void main() {
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
+
+  testWidgets('post push taps refresh the mounted feed and show its top', (
+    tester,
+  ) async {
+    final taps = StreamController<PushTarget>();
+    addTearDown(taps.close);
+    Post post(String text) => Post(
+      id: text,
+      authorId: 'anna',
+      authorName: 'Anna',
+      createdAt: DateTime(2026, 11, 21),
+      text: text,
+    );
+
+    final feed = _Feed()
+      ..additionalPosts = [
+        for (var i = 0; i < 12; i++) post('Earlier post [$i]'),
+      ];
+    final router = GoRouter(
+      routes: [
+        StatefulShellRoute(
+          navigatorContainerBuilder: (_, shell, children) =>
+              NavigationPages(shell: shell, children: children),
+          builder: (_, _, shell) => MainShellScreen(navigationShell: shell),
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                GoRoute(path: '/', builder: (_, _) => const FeedScreen()),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(path: '/rooms', builder: (_, _) => const Scaffold()),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserIdProvider.overrideWithValue('me'),
+          feedRepositoryProvider.overrideWithValue(feed),
+          connectionsRepositoryProvider.overrideWithValue(_Connections()),
+          profileRepositoryProvider.overrideWithValue(_Profile()),
+          postDraftStoreProvider.overrideWithValue(_Drafts()),
+          pushRegistrationProvider.overrideWith((ref) async {}),
+          userActivityProvider.overrideWith((ref) async {}),
+          pushTapsProvider.overrideWith((ref) => taps.stream),
+        ],
+        child: MaterialApp.router(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.descendant(
+      of: find.byType(FeedScreen),
+      matching: find.byType(Scrollable),
+    );
+    await tester.drag(scrollable, const Offset(0, -530));
+    await tester.pumpAndSettle();
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, greaterThan(300));
+    router.go('/rooms');
+    await tester.pumpAndSettle();
+
+    const newPostPush = {'kind': 'new_post'};
+    feed.additionalPosts.insert(0, post('Post from the first push'));
+    taps.add(pushTargetFrom(newPostPush)!);
+    await tester.pumpAndSettle();
+    expect(find.text('Post from the first push').hitTestable(), findsOneWidget);
+    expect(position.pixels, 0);
+
+    feed.additionalPosts.insert(0, post('Post from the second push'));
+    taps.add(pushTargetFrom(newPostPush)!);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Post from the second push').hitTestable(),
+      findsOneWidget,
+    );
   });
 
   for (final dark in [false, true]) {

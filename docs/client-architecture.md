@@ -96,6 +96,8 @@ favorite/mute/block indicators between author headers and Connections. The
 `connectionsByIdProvider` lookup reuses `friendsProvider`, so relationship changes
 update visible badges without fetching posts again; a missing relationship
 snapshot leaves the name visible without badges.
+Pulling down in Connections reloads both the relationship list and incoming
+requests, including when the list is empty.
 
 Both the own-profile tab and Connection routes use `ProfilePage` for the
 app bar, avatar and gallery viewer, identity layout and author-scoped posts.
@@ -243,6 +245,8 @@ Where each kind leads is decided by a single pure function on the client
 kind → nowhere (the app is already open anyway, and updating doesn't happen
 inside it). A kind whose id didn't arrive also leads nowhere: an empty screen
 is worse than no screen.
+Tapping a feed notification scrolls the main feed to the top and fetches a
+fresh first page, even when the tab is already open.
 
 The tap is handled by the app shell — the only widget that's always mounted
 while there's a session. This matters for a cold start: the tap arrives before
@@ -297,8 +301,13 @@ on the far side of a gap leaves the latest page disconnected and older
 pagination restarts at its boundary. The latest snapshot removes rows no
 longer visible in its range, and retained older messages are rechecked by ID
 through the same RLS policy. The client keeps newer Realtime revisions while
-refreshing embedded quotes from HTTP. A tap on a reply jumps directly to the
-original message when animations are disabled.
+refreshing embedded quotes from HTTP.
+
+The chat's reversed viewport keeps its origin on a message. Newer rows grow
+on one side of the origin, with older history on the other. Incoming messages
+and date labels keep the reading position and scroll momentum. The viewport
+follows new rows when resting at the newest edge. A reply scrolls to a laid-out
+original, or reanchors the viewport directly at a distant original.
 
 ## Confirming a room send
 
@@ -314,21 +323,12 @@ and signing is a network request. The asynchrony was the problem: a widget
 that signs its paths in `initState` shows a spinner until the response — and
 does so again every time its `State` is recreated.
 
-In chat this happens all the time. The list inserts a new message at index 0,
-all indices below shift, and `ScrollablePositionedList` builds through a
-`SliverChildBuilderDelegate` that the package doesn't let you pass a
-`findChildIndexCallback` to — so the element in a slot simply gets the *next*
-message. The attachments key inside doesn't match, the `State` is dropped, and
-a photo that has been on screen for ten minutes flickers a spinner and gets
-signed again — once per visible bubble, for every message sent or received.
-
-The cache (`lib/shared/signed_url_cache.dart`) fixes this at the root instead
-of fighting the list: the recreated `State` asks **synchronously**, before the
-first frame, and gets the same URL it had a second ago; `CachedNetworkImage`
-draws from its disk cache (keyed by the bucket path, not the query string), and
-there's neither a flicker nor a request. In memory only and for the lifetime of
-the process: these are URLs to objects RLS showed to **this** account, so
-`clear()` is called on them on sign-out along with the rest of its state.
+The chat preserves keyed rows as new messages arrive. Rows can still be
+recreated when they leave the viewport or the chat opens at a distant quote.
+The cache (`lib/shared/signed_url_cache.dart`) gives a recreated row the same
+signed URL before the first frame. `CachedNetworkImage` uses the bucket path
+as its disk cache key. Signed URLs live in memory and are cleared on sign-out
+because their access was granted to the current account.
 
 ## Mute as a feed filter
 

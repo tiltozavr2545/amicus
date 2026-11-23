@@ -4,7 +4,7 @@ Amicus is a personal album and a conversation with people the reader knows.
 Photographs, names and messages carry the identity. Color marks an action or a
 state rather than covering the entire interface.
 
-The mobile interface in 0.19.3 follows the 0.19.2 design described here.
+This guide describes the 0.19.3 mobile interface.
 See [performance.md](performance.md) for resource and lifecycle behavior and
 the [console guide](../console/README.md#using-the-console) for the local admin interface.
 
@@ -120,6 +120,11 @@ viewport size, with bounded decoding and fourfold zoom. Videos pause when their
 slide/tab is hidden or the app leaves the foreground; return does not autoplay.
 Secondary screens cover the shell;
 scroll tails clear floating navigation and the device safe area.
+
+Feed notifications open the latest posts at the top of the feed. In chat,
+incoming messages keep the reading position while someone browses older
+messages. Pull down in Connections to reload the people list and incoming
+requests. Uploading profile photos makes the first selected photo the avatar.
 
 Profile links include the author area of a post, the full Connection row, the
 direct-chat header and incoming author names in group chats. Direct chats use

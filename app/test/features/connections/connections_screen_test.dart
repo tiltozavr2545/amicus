@@ -36,10 +36,13 @@ class _FakeConnectionsRepository implements ConnectionsRepository {
   final List<String> requestedIds = [];
   final List<(String, bool)> answeredRequests = [];
   List<ConnectionRequest> requests = [];
+  bool fetchRequestsThrows = false;
 
   @override
-  Future<List<ConnectionRequest>> fetchRequests(String viewerId) async =>
-      requests;
+  Future<List<ConnectionRequest>> fetchRequests(String viewerId) async {
+    if (fetchRequestsThrows) throw Exception('requests unavailable');
+    return requests;
+  }
 
   /// Muted ids the feed filters by; no test here exercises the feed.
   @override
@@ -201,6 +204,48 @@ Future<void> _chooseAction(WidgetTester tester, String label) async {
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('Pulling down refreshes short Connections lists and requests', (
+    tester,
+  ) async {
+    final repo = _FakeConnectionsRepository();
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    final scrollable = tester.state<ScrollableState>(
+      find.byType(Scrollable).first,
+    );
+    expect(scrollable.position.maxScrollExtent, 0);
+
+    repo.fetchRequestsThrows = true;
+    await tester.drag(find.byType(ListView), const Offset(0, 350));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unexpected error. Please try again.'), findsOneWidget);
+
+    repo.fetchRequestsThrows = false;
+    repo.friends = [
+      Friend(
+        userId: 'friend',
+        name: 'New Connection',
+        connectedAt: DateTime(2026),
+      ),
+    ];
+    repo.requests = const [
+      ConnectionRequest(
+        id: 'request',
+        otherId: 'other',
+        otherName: 'New Request',
+        isIncoming: true,
+        isPending: true,
+      ),
+    ];
+    await tester.drag(find.byType(ListView), const Offset(0, 350));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New Connection'), findsOneWidget);
+    expect(find.text('New Request'), findsOneWidget);
   });
 
   testWidgets('Activate with an empty code shows an error and never calls the '

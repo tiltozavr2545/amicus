@@ -162,6 +162,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         // this stack, and pushing a second copy of it over itself would take
         // two backs to leave.
         widget.navigationShell.goBranch(_feedBranchIndex);
+        ref.read(feedNotificationTickProvider.notifier).bump();
     }
   }
 

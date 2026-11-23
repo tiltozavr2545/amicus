@@ -198,11 +198,8 @@ class _FakeRoomsRepository implements RoomsRepository {
     return () => unsubscribeCalls++;
   }
 
-  /// Every batch of paths a round trip was actually spent on. The chat list
-  /// recreates a bubble's `State` whenever a message is inserted above it, so
-  /// "how many times was this photo signed" is precisely the question
-  /// [SignedUrlCache] exists to answer — and the real repository answers it
-  /// the same way this fake does.
+  /// Every batch of paths a round trip was actually spent on. The fake uses
+  /// the same [SignedUrlCache] behavior as the repository.
   final List<List<String>> signedBatches = [];
   final Map<String, String> _signed = {};
 
@@ -945,6 +942,87 @@ void main() {
     expect(_messageText('только что пришло'), findsOneWidget);
     // Reading a room while looking at it is what silences its pushes.
     expect(repo.markReadCalls, 2);
+  });
+
+  testWidgets('new messages and day separators leave history in place', (
+    tester,
+  ) async {
+    final latest = DateTime(2026, 8, 26, 23, 30);
+    final messages = [
+      for (var i = 0; i < 35; i++)
+        _message(
+          id: 'history-$i',
+          authorId: 'anya',
+          text: 'History message [$i]',
+          createdAt: latest.subtract(Duration(minutes: i)),
+        ),
+    ];
+    final repo = _FakeRoomsRepository(messages: messages);
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    final chat = find.byType(SelectionArea);
+    await tester.drag(chat, const Offset(0, 650));
+    await tester.pumpAndSettle();
+
+    final reading = messages
+        .map((message) => _messageText(message.text).hitTestable())
+        .firstWhere((finder) => finder.evaluate().isNotEmpty);
+    final before = tester.getTopLeft(reading);
+    for (final (id, time) in [
+      ('same-day', latest.add(const Duration(minutes: 10))),
+      ('next-day', latest.add(const Duration(hours: 1))),
+    ]) {
+      repo.onInsert!(
+        _message(id: id, authorId: 'anya', text: id, createdAt: time),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(reading), before);
+      expect(_messageText(id).hitTestable(), findsNothing);
+    }
+
+    await tester.drag(chat, const Offset(0, -4000));
+    await tester.pumpAndSettle();
+    expect(_messageText('next-day').hitTestable(), findsOneWidget);
+
+    repo.onInsert!(
+      _message(
+        id: 'at-latest',
+        authorId: 'anya',
+        text: 'Arrived at the latest edge',
+        createdAt: latest.add(const Duration(hours: 1, minutes: 1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final newest = _messageText('Arrived at the latest edge').hitTestable();
+    expect(newest, findsOneWidget);
+    expect(
+      tester.getBottomLeft(chat).dy - tester.getBottomLeft(newest).dy,
+      lessThan(48),
+    );
+
+    await tester.fling(chat, const Offset(0, 240), 1100);
+    await tester.pump(const Duration(milliseconds: 32));
+    final scrollable = find.descendant(
+      of: chat,
+      matching: find.byType(Scrollable),
+    );
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.isScrollingNotifier.value, isTrue);
+    final beforeInsert = position.pixels;
+    repo.onInsert!(
+      _message(
+        id: 'during-fling',
+        authorId: 'anya',
+        text: 'Arrived during a fling',
+        createdAt: latest.add(const Duration(hours: 1, minutes: 2)),
+      ),
+    );
+    await tester.pump();
+    expect(position.pixels, closeTo(beforeInsert, 0.5));
+    await tester.pump(const Duration(milliseconds: 32));
+    expect(position.pixels, greaterThan(beforeInsert));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the echo of an own message does not duplicate it', (
@@ -1874,6 +1952,56 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a distant quote opens its message and keeps it in place', (
+    tester,
+  ) async {
+    final latest = DateTime(2026, 8, 26, 18);
+    final original = _message(
+      id: 'original',
+      authorId: 'anya',
+      text: 'Distant original',
+      createdAt: latest.subtract(const Duration(minutes: 36)),
+    );
+    final repo = _FakeRoomsRepository(
+      messages: [
+        _message(
+          id: 'reply',
+          authorId: 'anya',
+          text: 'Newest reply',
+          replyToId: original.id,
+          createdAt: latest,
+        ),
+        for (var i = 1; i <= 35; i++)
+          _message(
+            id: 'between-$i',
+            authorId: 'anya',
+            text: 'Message [$i]',
+            createdAt: latest.subtract(Duration(minutes: i)),
+          ),
+        original,
+      ],
+    );
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(original.text));
+    await tester.pumpAndSettle();
+    final target = _messageText(original.text).hitTestable();
+    final before = tester.getTopLeft(target);
+
+    repo.onInsert!(
+      _message(
+        id: 'live-latest',
+        authorId: 'anya',
+        text: 'New after jumping to the quote',
+        createdAt: latest.add(const Duration(minutes: 1)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(target), before);
     await tester.pump(const Duration(seconds: 2));
   });
 

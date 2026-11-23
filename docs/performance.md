@@ -54,8 +54,9 @@ disposal and language hydration; actual image decoding and aspect ratio;
 playback/preparation across background/tab/slide transitions; keyboard restore
 with surviving/removed editors; background chat reads and typing; recovery of
 disconnected chat history; removal of moderated messages after a refresh;
-reply navigation with reduced motion; and retained feed image elements when
-a new post is inserted.
+reply navigation; chat position and momentum across incoming messages;
+retained feed image elements when a new post is inserted; and refreshing
+the mounted feed after repeated notification taps.
 
 The decode fixture is a 1000 x 2000 image. A 100 x 100 viewport at fourfold
 zoom decodes it as 200 x 400: 320,000 RGBA bytes instead of 8,000,000,
@@ -65,7 +66,7 @@ Frame times, native video and audio behavior, the Android keyboard, and
 battery use still require measurement with a profile build on physical
 hardware. The checks guard individual rendering and lifecycle behaviors.
 
-The interface changes for 0.19.2 passed formatting, static analysis and **441
+The 0.19.3 candidate passed formatting, static analysis and **445
 Flutter tests**. The layout tests compare the avatar and post list placement
 across both profile routes. Android delivery is tracked separately in the
 [release workflow](operations.md#release).
