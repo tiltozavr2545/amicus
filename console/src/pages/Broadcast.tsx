@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BroadcastResponse, BroadcastTarget } from '../../shared/types';
 import { get } from '../api';
-import { Card, date, Fail } from '../components/ui';
+import { Card, date, Fail, Loading, PageHead } from '../components/ui';
 
 function People({
   title,
@@ -14,7 +14,7 @@ function People({
 }) {
   if (rows.length === 0) return null;
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel audience">
       <h2 style={{ margin: '0 0 4px' }}>
         {title} — {rows.length}
       </h2>
@@ -54,10 +54,16 @@ export function Broadcast() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
+  const [calculating, setCalculating] = useState(false);
+  const request = useRef(0);
+
   async function load(target: number | null) {
+    const id = ++request.current;
+    setCalculating(true);
     try {
       const query = target ? `?build=${target}` : '';
       const next = await get<BroadcastResponse>(`/broadcast${query}`);
+      if (id !== request.current) return;
       setData(next);
       setError(null);
       if (build === null) {
@@ -65,7 +71,9 @@ export function Broadcast() {
         setVersion(next.repoVersion?.name ?? '');
       }
     } catch (e) {
-      setError((e as Error).message);
+      if (id === request.current) setError((e as Error).message);
+    } finally {
+      if (id === request.current) setCalculating(false);
     }
   }
 
@@ -76,8 +84,7 @@ export function Broadcast() {
   }, []);
 
   if (error) return <Fail message={error} onRetry={() => load(build)} />;
-  if (!data || build === null)
-    return <p className="muted">Считаю аудиторию…</p>;
+  if (!data || build === null) return <Loading>Считаю аудиторию…</Loading>;
 
   const ahead = data.repoVersion && build > data.repoVersion.build;
 
@@ -114,22 +121,20 @@ export function Broadcast() {
 
   return (
     <>
-      <div className="page-head">
-        <h1>Рассылки</h1>
-        <span className="stamp">снято {date(data.generatedAt)}</span>
-      </div>
+      <PageHead
+        title="Рассылки"
+        meta={`Данные на ${date(data.generatedAt)}`}
+      ></PageHead>
 
-      <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Уведомление «вышла новая версия»</h2>
-        <div
-          className="row-actions"
-          style={{ flexWrap: 'wrap', marginBottom: 10 }}
-        >
-          <label className="muted" style={{ fontSize: 13 }}>
-            versionCode{' '}
+      <div className="panel broadcast-form">
+        <h2>Уведомление об обновлении</h2>
+        <div className="broadcast-fields">
+          <label className="field">
+            Номер сборки
             <input
               type="text"
-              style={{ minWidth: 90 }}
+              inputMode="numeric"
+              disabled={busy}
               value={build}
               onChange={(e) => {
                 const next = Number(e.target.value);
@@ -138,27 +143,34 @@ export function Broadcast() {
               }}
             />
           </label>
-          <label className="muted" style={{ fontSize: 13 }}>
-            versionName{' '}
+          <label className="field">
+            Версия приложения
             <input
               type="text"
-              style={{ minWidth: 120 }}
+              disabled={busy}
               value={version}
               onChange={(e) => setVersion(e.target.value)}
             />
           </label>
-          <label className="muted" style={{ fontSize: 13 }}>
+          <label className="checkbox-field">
             <input
               type="checkbox"
+              disabled={busy}
               checked={important}
               onChange={(e) => setImportant(e.target.checked)}
             />{' '}
-            настойчивое
+            Важное обновление
           </label>
           <button
             type="button"
+            className="primary"
             onClick={send}
-            disabled={busy || data.willReceive.length === 0}
+            disabled={
+              busy ||
+              calculating ||
+              build !== data.targetBuild ||
+              data.willReceive.length === 0
+            }
           >
             {busy ? 'Отправляю…' : `Отправить ${data.willReceive.length} чел.`}
           </button>
@@ -192,8 +204,24 @@ export function Broadcast() {
           />
         </div>
 
+        {calculating && !busy ? (
+          <p role="status" className="muted">
+            Пересчитываю аудиторию…
+          </p>
+        ) : null}
+        {!Number.isInteger(build) || build <= 0 ? (
+          <p className="warn-note">Укажите положительный целый номер сборки.</p>
+        ) : null}
+
         {result ? (
-          <p style={{ marginBottom: 0, color: 'var(--good)' }}>{result}</p>
+          <p
+            role="status"
+            className={
+              result.startsWith('Не отправилось') ? 'error' : 'success-note'
+            }
+          >
+            {result}
+          </p>
         ) : null}
 
         {ahead ? (

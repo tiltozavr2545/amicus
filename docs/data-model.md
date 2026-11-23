@@ -1000,16 +1000,13 @@ a dense 0..N-1 in one statement. The position constraint checks uniqueness at
 the end of that statement. The row IDs, paths, and creation timestamps survive
 the reorder. The client deletes by storage path, then removes only the objects
 whose rows were returned by the delete. This also handles stale IDs from older
-gallery snapshots. Appending goes through
-`append_profile_photos(items)` (20260824130000) — and `position` there is
-handed out by the server, from the same transaction the rows land in.
-Computing it on the client was impossible for the same reason reordering with
-two requests was: the screen computed it from the cached list, and that list
-lags exactly when the previous attempt committed after "Failed to add
-photos" — and the new rows aimed at occupied positions. An `upsert` can't
-paper over this: its arbiter is `(user_id, storage_path)`, and new files have
-their own paths, so a conflict on `position` isn't absorbed but brings down
-the whole batch. Direct INSERT stays granted — the Play builds use it.
+gallery snapshots. `append_profile_photos(items)` puts fresh paths at the
+front in picker order and shifts existing photos in the same transaction.
+The first fresh photo becomes `users.avatar_path` through the sync trigger.
+A retry with only registered paths leaves the current order intact. The RPC
+allocates positions from the live gallery under a per-user lock shared with
+the limit trigger for legacy direct inserts. It also locks existing rows in
+the same order as the reorder RPC.
 Visibility is **self, a Connection or the system account, ignoring
 mute/block**, not `is_author_visible()`: a block must not hide the avatar on
 the "Blocked" screen, which is where blocks are lifted.

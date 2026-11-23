@@ -22,6 +22,30 @@ npm run dev
 This starts two processes: the API on `127.0.0.1:5174` and Vite on
 `127.0.0.1:5173`. Work with the second one; it proxies the first.
 
+## Using the console
+
+The section navigation moves above the workspace on narrow screens. Wide
+tables scroll within their panels, and the users and devices tables can be
+focused for keyboard scrolling. The first keyboard stop moves focus directly
+to the workspace.
+
+- **Overview (Обзор).** Compare registrations and posts on the same 30-day
+  scale. Expand “Данные по дням” for exact daily counts. The rest of the
+  overview covers community totals, versions, platforms, languages and
+  notification delivery.
+- **Users (Пользователи).** Search by name, email or ID. Select a sortable
+  column header with the mouse or keyboard, then open a name to view the
+  account, devices, notification settings and recent activity.
+- **Reports (Жалобы).** Start with open reports or switch to all reports to
+  include resolved and rejected cases. Each case shows its original text,
+  reporter context and the effect of each moderation action.
+- **News (Новости).** Compose a post next to its feed preview. On narrow
+  screens the preview follows the editor. Open a saved draft or edit a post
+  from the published list.
+- **Broadcasts (Рассылки).** Enter a build number, then check the audience
+  estimate for that build. Send becomes available once the estimate is ready
+  and shows at least one recipient.
+
 ## Why it is built this way
 
 - **The key lives only on the server.** The browser talks to `/api`, and
@@ -53,32 +77,11 @@ This starts two processes: the API on `127.0.0.1:5174` and Vite on
   `enqueue_app_update_notifications()`. Details: "App version and update
   notification" in [../docs/data-model.md](../docs/data-model.md).
 
-## What's done
+## Operational details
 
-- **Overview** ("Обзор"): database totals, sign-ups and posts over 30 days,
-  breakdown by version, platform and language, push-token age, **why pushes
-  don't arrive** (permission denied / registration failure / old version),
-  notification queue state and disabled settings. The pending count includes
-  scheduled retries and excludes terminal delivery failures.
-- **Users** ("Пользователи"): a list with search and sorting, and a person's
-  card: devices with versions and OS, notification settings, recent posts and
-  notifications.
-- **News** ("Новости"): an editor for news-account posts: text with a "how it
-  will look in the feed" preview, media with reordering, drafts, editing and
-  deleting published posts. Publishing sends no notifications: the queue
-  trigger bails out for the system account (20260820190000). Until
-  publication, a selected file sits on the console's disk, not in the bucket;
-  for why, see "About the news editor" below.
-- **Reports** ("Жалобы"): the review queue: what the object is, its text at
-  the time of the report, who reported it, how many reports there are on the
-  same object. Actions: hide and unhide, delete, ban from writing for a period,
-  ban sign-in, lift restrictions, close or reject the report.
-
-- **Broadcasts** ("Рассылки"): the "a new version is out" notification: the
-  target is taken from `app/pubspec.yaml`, the audience is computed in advance
-  and shown by name, with their own builds. Shown separately are those who
-  will be filtered out by the repeat protection and those who turned off
-  notifications from the system account.
+The overview shows push-token age, registration status and disabled
+notification settings. The pending count includes scheduled retries and
+excludes terminal delivery failures.
 
 ### About targeted notifications
 
@@ -100,6 +103,9 @@ This starts two processes: the API on `127.0.0.1:5174` and Vite on
 
 ### About broadcasts
 
+- The proposed target comes from `app/pubspec.yaml`. The estimate lists
+  recipients by name and build, with separate lists for people who already
+  received the notice or turned off system-account notifications.
 - **Sending is done by `enqueue_app_update_notifications()`**; the console is
   only an input form. The recipient list on screen mirrors its selection,
   computed in advance; the function itself is the source of truth, so after
@@ -116,6 +122,8 @@ This starts two processes: the API on `127.0.0.1:5174` and Vite on
 
 ### About the news editor
 
+- The editor can reorder media and edit or delete published posts. Publishing
+  to the feed sends no push notifications (migration `20260820190000`).
 - **Editing rewrites the media entirely.** Otherwise there is no way to assign
   `position`. So the API requires `media` as an explicit list even when only
   the text is edited: a forgotten field would mean "there's no media anymore",
@@ -154,6 +162,9 @@ This starts two processes: the API on `127.0.0.1:5174` and Vite on
 
 ### About queue actions
 
+- Each case shows the total reports on the same object. Available actions
+  depend on the case and include hiding, restoring, deleting, restricting
+  writing or sign-in, lifting a restriction, closing and rejecting.
 - **"Скрыть" ("Hide") is reversible, "Удалить" ("Delete") is not.** Hiding
   sets `hidden_at`, and the object disappears for everyone, the author
   included. Deleting a post removes the row; a comment or a message turns into
@@ -176,10 +187,8 @@ This starts two processes: the API on `127.0.0.1:5174` and Vite on
 
 ## Verification
 
-There are no greyed-out menu items left: all five sections work. What to keep
-in mind: the console is never deployed, so it is not part of the app's
-`make verify`; it has its own workflow,
-`.github/workflows/console-ci.yml`, which on changes to `console/**` runs
+The console workflow `.github/workflows/console-ci.yml` runs on changes to
+`console/**`. It checks
 `npm run lint` (Biome), `npm run typecheck`, `npm test` and `npm run build`.
 The same locally:
 

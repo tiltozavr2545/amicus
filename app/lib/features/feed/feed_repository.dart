@@ -1159,3 +1159,8 @@ class FeedRefreshTick extends Notifier<int> {
 final feedRefreshTickProvider = NotifierProvider<FeedRefreshTick, int>(
   FeedRefreshTick.new,
 );
+
+/// Opens the main feed at the newest posts after a notification tap.
+final feedNotificationTickProvider = NotifierProvider<FeedRefreshTick, int>(
+  FeedRefreshTick.new,
+);

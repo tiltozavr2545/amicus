@@ -89,6 +89,10 @@ ahead — this is a deliberate decision, not the absence of a plan.
   `set local role` — after the role switch, the subquery that looks up the
   test subject's uuid itself goes through RLS, returns NULL, and all the
   control numbers honestly come out as zeros for an entirely different reason.
+- **Reproduce the problem on the target database before applying any migration.**
+  Probe the current behavior first in a transaction with rollback, using the
+  application's role for user-facing behavior. If the problem does not
+  reproduce, investigate the difference before applying the migration.
 - **Run the whole migration inside `begin; … rollback;` before applying it.**
   The Management API accepts a multi-statement query, DDL in Postgres is
   transactional, and the rollback undoes everything — including
@@ -344,16 +348,11 @@ ahead — this is a deliberate decision, not the absence of a plan.
   captured in `initState` (see "A refresh that outlives its screen" in
   [docs/client-architecture.md](docs/client-architecture.md)), with a `catch`
   for the case when the whole `ProviderScope` is torn down in the same frame.
-- **`State` inside a lazy list item doesn't survive an index shift.** Slivers
-  don't reorder elements by key the way a regular multi-child element does:
-  `SliverMultiBoxAdaptorElement` updates a slot by index, and if the key
-  doesn't match, the old element is torn down and a new one is built from
-  scratch. Only `findChildIndexCallback` helps, and `ScrollablePositionedList`
-  doesn't pass it through. So inserting at the start of the chat destroyed the
-  `State` of every visible bubble, and the signed photo URLs that lived in that
-  `State` were signed again — once per bubble, for every message. Adding keys
-  doesn't fix this, it makes it worse. Rule: anything expensive to obtain must
-  live not in a list item's `State` but in a cache that outlives that `State`.
+- **Lazy slivers need a key-to-index lookup to keep state across reordering.**
+  Without `findChildIndexCallback`, inserting a message used to recreate every
+  visible bubble and sign its media URLs again. The chat now uses keyed slivers
+  around a stable origin. The signed URL cache also covers rows recreated after
+  leaving the viewport or jumping to a distant reply.
 - **`SelectionArea` doesn't insert a separator between adjacent selectable
   widgets, and a `\n` inside a single `TextSpan` is not a cheap way to add
   one.** Verified empirically (with a widget test simulating drag-select and a

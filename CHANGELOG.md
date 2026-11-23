@@ -2822,3 +2822,28 @@ Build 79.
   behind the original artwork.
 - **Compact chats:** direct messages omit author labels. Short group messages
   fit their content, with author names still opening member profiles.
+
+## 0.19.3
+
+Build 80.
+
+- **Fresh feed from notifications:** tapping a new-post notification opens
+  the top of the feed and loads the latest posts, even if the feed was already
+  open.
+- **Steadier chat:** incoming messages and date labels keep your place while
+  you read or scroll through older messages. At the end of a conversation,
+  new messages appear as they arrive.
+- **Automatic avatar:** the first newly selected photo becomes your avatar
+  after upload. Other selected photos follow it in the gallery.
+- **Refresh Connections:** pull down to reload your Connections and incoming
+  requests, including when the list is empty.
+- **Local admin console:** redesigned the overview, user list and profile,
+  report queue, news editor and broadcasts. Navigation and forms adapt to
+  narrow screens, and the user table supports keyboard sorting and scrolling.
+- **Activity overview:** registrations and posts share a 30-day chart and
+  scale, with a table for exact daily counts.
+- **Moderation and news:** switch between open and all reports, read the
+  reported content with its moderation context, and preview news posts beside
+  the editor.
+- **Update broadcasts:** wait for the audience calculation for the selected
+  build before enabling send. Older responses cannot overwrite newer estimates.

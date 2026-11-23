@@ -8,24 +8,30 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
-The app version in this checkout is **0.19.2 (build 79)**. Android builds go to
-Google Play closed testing (`alpha`), and iOS builds go through TestFlight separately.
+The release candidate in this checkout is **0.19.3 (build 80)**. Android
+builds go to Google Play closed testing (`alpha`), and iOS builds go through
+TestFlight separately.
 Check delivery and availability for each channel in the
 [release runbook](docs/operations.md#release).
 
 ## Features
 
 - Sign-in/sign-up and a shared layout for your profile and your Connections' profiles, with a photo gallery (up to 80) and a wall of post cards
-- Manage your gallery from the camera button on your avatar and edit your name from the profile toolbar
-- Connections via an invite link — open profiles from post author blocks or full Connection rows
+- Manage your gallery from the camera button and edit your name from the
+  profile toolbar. The first photo in a new upload becomes your avatar.
+- Connections via invite links. Open profiles from post author blocks or
+  Connection rows, and pull down to refresh Connections and incoming requests.
 - Local post drafts restore text, audience and ordered attachments after leaving or restarting; successful publication clears the draft
-- Feed: text and up to 20 photos/videos per post, reactions, comments with replies (one level of nesting)
+- Feed: text and up to 20 photos/videos per post, reactions, comments with
+  replies (one level of nesting). New-post notifications open and refresh
+  the top of the feed.
 - Post visibility: publish to all Connections or only your favorites; editing can change that audience
 - Rooms: realtime chats with unread counts, delivery/read receipts, presence,
   typing and push notifications; up to 10 photos/videos per message, quoted
   replies, editing your messages within 48 hours, and per-room notification
   muting. Reconnecting recovers missed messages and refreshes edits and
-  moderation changes. Open a member's profile from a message or a direct-chat header.
+  moderation changes. Incoming messages keep your reading position in older
+  history. Open a member's profile from a message or a direct-chat header.
 - A two-person room is named after the other person and appears for both; for a group of three or more, the owner sets a name and an avatar, and adds and removes people
 - Connection request — to a member of a shared room if you aren't connected yet: the only way to connect without meeting in person, and it's available only where people already share a chat
 - Mute, block and favorites — with push notifications and fine-grained per-source settings
@@ -114,14 +120,14 @@ Current:
 - [Client architecture](docs/client-architecture.md) — what the app is built with and what the client itself does on top of the schema
 - [Performance](docs/performance.md) — image memory, foreground work, stable media state and verification limits
 - [Operations](docs/operations.md) — scheduled jobs, secrets, release, Edge Function deployment, update-notification broadcast
-- [Console](console/README.md) — the local admin console: what it does, how to run it and why it has a server half
+- [Console](console/README.md) — the responsive local admin console for activity, users, moderation, news and broadcasts
 - [iOS deployment](docs/ios-deployment-guide.md) — the path from simulator to TestFlight: Xcode, icons, export compliance, IPA build
 - [iOS push notifications (APNs)](docs/ios-push-apns-setup.md) — APNs key, linking to Firebase Cloud Messaging
 - [Xcode Cloud](docs/xcode-cloud-setup.md) and [API automation](docs/app-store-connect-api-automation.md) — remote stable iOS builds and authenticated build triggers
 - [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
 - [App Store listing draft](docs/review/app-store-listing-draft.md) — working copy for proofreading; actual submission status lives in App Store Connect
 - [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
-- [Changelog](CHANGELOG.md) — version history, including 0.19.2
+- [Changelog](CHANGELOG.md#0193) — version history and the 0.19.3 changes
 
 Historical — how the project was conceived and how it went, not how it works now:
 

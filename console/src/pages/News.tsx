@@ -6,7 +6,7 @@ import type {
   NewsResponse,
 } from '../../shared/types';
 import { useApi } from '../api';
-import { ago, date, Fail } from '../components/ui';
+import { ago, date, Fail, Loading, PageHead } from '../components/ui';
 
 const MAX_MEDIA = 20;
 
@@ -108,8 +108,13 @@ function Preview({ text, media }: { text: string; media: NewsMedia[] }) {
   const shown = media.filter((m) => m.posterUrl ?? m.url);
   return (
     <div className="post-preview">
-      <div className="who">Amicus</div>
-      <div className="when">{date(new Date().toISOString())}</div>
+      <div className="preview-author">
+        <span className="brand-mark" aria-hidden="true" />
+        <div>
+          <div className="who">Amicus</div>
+          <div className="when">{date(new Date().toISOString())}</div>
+        </div>
+      </div>
       {text.trim() ? (
         <div className="body">{text}</div>
       ) : (
@@ -145,8 +150,7 @@ export function News() {
   }, [data]);
 
   if (error) return <Fail message={error} onRetry={reload} />;
-  if (!data)
-    return <p className="muted">{loading ? 'Читаю ленту аккаунта…' : ''}</p>;
+  if (!data) return <Loading>Загружаю новости…</Loading>;
 
   async function run(
     label: string,
@@ -261,20 +265,14 @@ export function News() {
 
   return (
     <>
-      <div className="page-head">
-        <h1>Новости</h1>
-        <span className="stamp">
-          постов у аккаунта: {data.posts.length} · черновиков: {drafts.length}
-        </span>
-        <button
-          type="button"
-          style={{ marginLeft: 'auto' }}
-          onClick={reload}
-          disabled={loading}
-        >
+      <PageHead
+        title="Новости"
+        meta={`Опубликовано: ${data.posts.length}. Черновиков: ${drafts.length}`}
+      >
+        <button type="button" onClick={reload} disabled={loading}>
           {loading ? 'Обновляю…' : 'Обновить'}
         </button>
-      </div>
+      </PageHead>
 
       {notice ? (
         <div className="error" style={{ marginBottom: 12 }}>
@@ -283,11 +281,9 @@ export function News() {
       ) : null}
 
       <div className="news-columns">
-        <div className="panel">
+        <div className="panel composer">
           <div className="row-actions" style={{ marginBottom: 8 }}>
-            <strong>
-              {editing ? 'Правка опубликованного поста' : 'Новый пост'}
-            </strong>
+            <h2>{editing ? 'Правка опубликованного поста' : 'Новый пост'}</h2>
             {editing ? (
               <button type="button" onClick={clear} disabled={!!busy}>
                 Отменить правку
@@ -295,9 +291,10 @@ export function News() {
             ) : null}
           </div>
           <textarea
+            aria-label="Текст поста"
             value={text}
             maxLength={5000}
-            placeholder="Пост от лица аккаунта Amicus. Разметки в ленте нет — только текст и пустые строки между абзацами."
+            placeholder="Напишите пост от лица Amicus…"
             onChange={(e) => setText(e.target.value)}
           />
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -314,6 +311,7 @@ export function News() {
                 <div className="controls">
                   <button
                     type="button"
+                    aria-label="Переместить вложение левее"
                     onClick={() => move(index, -1)}
                     disabled={index === 0}
                   >
@@ -321,6 +319,7 @@ export function News() {
                   </button>
                   <button
                     type="button"
+                    aria-label="Убрать вложение"
                     onClick={() =>
                       setMedia((current) =>
                         current.filter((_, i) => i !== index),
@@ -331,6 +330,7 @@ export function News() {
                   </button>
                   <button
                     type="button"
+                    aria-label="Переместить вложение правее"
                     onClick={() => move(index, 1)}
                     disabled={index === media.length - 1}
                   >
@@ -350,22 +350,25 @@ export function News() {
                 type="file"
                 multiple
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/x-m4v,video/3gpp,video/webm,video/x-matroska"
-                style={{ display: 'none' }}
+                className="file-input"
+                disabled={!!busy}
                 onChange={(e) => {
                   void addFiles(e.target.files);
                   e.target.value = '';
                 }}
               />
-              <span
-                className="tag"
-                style={{ cursor: 'pointer', padding: '6px 11px' }}
-              >
+              <span className="upload-button">
                 {busy === 'upload'
                   ? 'Загружаю…'
                   : `Добавить медиа (${media.length}/${MAX_MEDIA})`}
               </span>
             </label>
-            <button type="button" onClick={publish} disabled={!!busy}>
+            <button
+              type="button"
+              className="primary"
+              onClick={publish}
+              disabled={!!busy}
+            >
               {editing ? 'Сохранить изменения' : 'Опубликовать'}
             </button>
             {editing ? null : (
@@ -375,14 +378,12 @@ export function News() {
             )}
           </div>
           <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-            Публикация уведомлений не рассылает: триггер очереди выходит на
-            системном аккаунте (20260820190000). Видео сохраняется с постером —
-            кадр снимается здесь же, в браузере.
+            Публикация появится в ленте Amicus без push-уведомления.
           </p>
         </div>
 
-        <div>
-          <h2 style={{ marginTop: 0 }}>Как это увидят в ленте</h2>
+        <aside className="news-preview">
+          <h2>Предпросмотр в ленте</h2>
           <Preview text={text} media={media} />
 
           {drafts.length > 0 ? (
@@ -431,7 +432,7 @@ export function News() {
               </div>
             </>
           ) : null}
-        </div>
+        </aside>
       </div>
 
       <h2>Опубликованное</h2>

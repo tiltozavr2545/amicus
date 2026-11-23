@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { UserDetailResponse } from '../../shared/types';
 import { useApi } from '../api';
-import { ago, Card, date, Fail } from '../components/ui';
+import { ago, Card, date, Fail, Loading, PageHead } from '../components/ui';
 
 const PUSH_STATUS: Record<string, string> = {
   granted: 'разрешил, токен записан',
@@ -89,29 +89,29 @@ export function UserDetail() {
   }
 
   if (error) return <Fail message={error} onRetry={reload} />;
-  if (!data) return <p className="muted">{loading ? 'Читаю…' : ''}</p>;
+  if (!data) return <Loading>Загружаю профиль…</Loading>;
 
   const u = data.user;
   return (
     <>
-      <div className="page-head">
-        <h1>{u.name}</h1>
-        {u.isSystem ? <span className="tag">системный аккаунт</span> : null}
-        {u.banned ? <span className="tag bad">бан</span> : null}
-        <span className="stamp">
-          <Link to="/users">← к списку</Link>
-        </span>
-        <button
-          type="button"
-          style={{ marginLeft: 'auto' }}
-          onClick={reload}
-          disabled={loading}
-        >
+      <Link className="back-link" to="/users">
+        ← Пользователи
+      </Link>
+      <PageHead
+        title={u.name}
+        meta={
+          <div className="row-actions">
+            {u.isSystem ? <span className="tag">Системный аккаунт</span> : null}
+            {u.banned ? <span className="tag bad">Бан</span> : null}
+          </div>
+        }
+      >
+        <button type="button" onClick={reload} disabled={loading}>
           {loading ? 'Обновляю…' : 'Обновить'}
         </button>
-      </div>
+      </PageHead>
 
-      <div className="panel" style={{ marginBottom: 16 }}>
+      <div className="panel profile-panel">
         <table>
           <tbody>
             <tr>
@@ -189,6 +189,7 @@ export function UserDetail() {
           style={{ flexWrap: 'wrap', marginBottom: 8 }}
         >
           <select
+            aria-label="Тип уведомления"
             value={kind}
             onChange={(e) => setKind(e.target.value)}
             disabled={sending}
@@ -202,7 +203,7 @@ export function UserDetail() {
           {spec.needsBuild ? (
             <input
               type="text"
-              style={{ minWidth: 110 }}
+              aria-label="Номер сборки"
               placeholder="versionCode"
               value={build}
               disabled={sending}
@@ -211,7 +212,8 @@ export function UserDetail() {
           ) : (
             <input
               type="text"
-              style={{ flex: 1, minWidth: 260 }}
+              className="grow-field"
+              aria-label="Приписка в уведомление"
               placeholder="Приписка (необязательно) — она НЕ переводится"
               value={note}
               disabled={sending}
@@ -220,6 +222,7 @@ export function UserDetail() {
           )}
           <button
             type="button"
+            className="primary"
             onClick={notify}
             disabled={sending || (spec.needsBuild && !build)}
           >
@@ -245,7 +248,12 @@ export function UserDetail() {
       </div>
 
       <h2>Устройства</h2>
-      <div className="panel">
+      <section
+        className="panel table-panel"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need to scroll wide tables.
+        tabIndex={0}
+        aria-label="Таблица устройств"
+      >
         <table>
           <thead>
             <tr>
@@ -287,7 +295,7 @@ export function UserDetail() {
             ) : null}
           </tbody>
         </table>
-      </div>
+      </section>
 
       <h2>Уведомления</h2>
       <div className="grid-2">

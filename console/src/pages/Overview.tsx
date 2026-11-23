@@ -1,33 +1,31 @@
-import type { OverviewResponse } from '../../shared/types';
+import type { OverviewResponse, SeriesPoint } from '../../shared/types';
 import { useApi } from '../api';
-import { Bars, Card, date, Fail } from '../components/ui';
+import { Card, date, Fail, Loading, PageHead } from '../components/ui';
 
 export function Overview() {
   const { data, error, loading, reload } =
     useApi<OverviewResponse>('/overview');
 
   if (error) return <Fail message={error} onRetry={reload} />;
-  if (!data) return <p className="muted">{loading ? 'Считаю…' : ''}</p>;
+  if (!data) return <Loading>Загружаю обзор…</Loading>;
 
   const t = data.totals;
-  // An install can't report a build that isn't in pubspec — if it does, the
-  // number was bumped on the way to the store, and knowing that is more useful
-  // than silently showing it as "latest".
   const ahead =
     data.repoVersion !== null &&
     data.latestBuild !== null &&
     data.latestBuild > data.repoVersion.build;
   return (
     <>
-      <div className="page-head">
-        <h1>Обзор</h1>
-        <span className="stamp">снято {date(data.generatedAt)}</span>
+      <PageHead title="Обзор" meta={`Данные на ${date(data.generatedAt)}`}>
         <button type="button" onClick={reload} disabled={loading}>
           {loading ? 'Обновляю…' : 'Обновить'}
         </button>
-      </div>
+      </PageHead>
 
-      <div className="cards">
+      <Activity signups={data.signups} posts={data.posts} />
+
+      <h2>Сообщество</h2>
+      <div className="cards community-metrics">
         <Card
           label="Пользователи"
           value={t.users}
@@ -36,7 +34,7 @@ export function Overview() {
         <Card
           label="Активны за сутки"
           value={data.activity.dau}
-          hint={`неделя ${data.activity.wau} · месяц ${data.activity.mau}`}
+          hint={`За неделю ${data.activity.wau}, за месяц ${data.activity.mau}`}
         />
         <Card label="Посты" value={t.posts} />
         <Card label="Комментарии" value={t.comments} />
@@ -48,23 +46,6 @@ export function Overview() {
           hint={`${t.roomMessages} сообщений`}
         />
         <Card label="Устройства" value={t.devices} />
-      </div>
-
-      <div className="grid-2" style={{ marginTop: 18 }}>
-        <div className="panel">
-          <h2 style={{ margin: '0 0 4px' }}>Регистрации, 30 дней</h2>
-          <Bars points={data.signups} />
-          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            всего за период: {data.signups.reduce((s, p) => s + p.count, 0)}
-          </div>
-        </div>
-        <div className="panel">
-          <h2 style={{ margin: '0 0 4px' }}>Посты, 30 дней</h2>
-          <Bars points={data.posts} />
-          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            всего за период: {data.posts.reduce((s, p) => s + p.count, 0)}
-          </div>
-        </div>
       </div>
 
       <h2>Версии приложения</h2>
@@ -301,5 +282,115 @@ export function Overview() {
         </p>
       </div>
     </>
+  );
+}
+
+function Activity({
+  signups,
+  posts,
+}: {
+  signups: SeriesPoint[];
+  posts: SeriesPoint[];
+}) {
+  const byDay = new Map<string, { signups: number; posts: number }>();
+  for (const { date, count } of signups)
+    byDay.set(date, { signups: count, posts: 0 });
+  for (const { date, count } of posts) {
+    byDay.set(date, { signups: byDay.get(date)?.signups ?? 0, posts: count });
+  }
+  const days = [...byDay.keys()].sort();
+  const rows = days.map((date) => ({
+    date,
+    signups: byDay.get(date)?.signups ?? 0,
+    posts: byDay.get(date)?.posts ?? 0,
+  }));
+  const max = Math.max(
+    1,
+    ...rows.map((row) => Math.max(row.signups, row.posts)),
+  );
+  const shortDate = (iso: string) =>
+    iso.split('-').slice(1).reverse().join('.');
+
+  return (
+    <section className="activity" aria-labelledby="activity-title">
+      <header className="activity-head">
+        <h2 id="activity-title">Активность за 30 дней</h2>
+        <div className="activity-legend">
+          <span className="signup-key">
+            Регистрации{' '}
+            <b>{signups.reduce((total, point) => total + point.count, 0)}</b>
+          </span>
+          <span className="post-key">
+            Посты{' '}
+            <b>{posts.reduce((total, point) => total + point.count, 0)}</b>
+          </span>
+        </div>
+      </header>
+      {rows.length ? (
+        <>
+          <div className="chart" aria-hidden="true">
+            <div className="chart-scale">
+              <span>{max}</span>
+              <span>0</span>
+            </div>
+            <div className="chart-body">
+              <div className="bars">
+                {rows.map((row) => (
+                  <div
+                    className="bar-pair"
+                    key={row.date}
+                    title={`${shortDate(row.date)}: регистраций ${row.signups}, постов ${row.posts}`}
+                  >
+                    <span
+                      className="signup-bar"
+                      style={{ height: `${(row.signups / max) * 100}%` }}
+                    />
+                    <span
+                      className="post-bar"
+                      style={{ height: `${(row.posts / max) * 100}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="chart-dates">
+                {days
+                  .filter(
+                    (_, i) =>
+                      i === 0 ||
+                      i === Math.floor(days.length / 2) ||
+                      i === days.length - 1,
+                  )
+                  .map((day) => (
+                    <span key={day}>{shortDate(day)}</span>
+                  ))}
+              </div>
+            </div>
+          </div>
+          <details className="activity-details">
+            <summary>Данные по дням</summary>
+            <table>
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th className="num">Регистрации</th>
+                  <th className="num">Посты</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.date}>
+                    <td>{shortDate(row.date)}</td>
+                    <td className="num">{row.signups}</td>
+                    <td className="num">{row.posts}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </>
+      ) : (
+        <p className="empty">За этот период данных нет.</p>
+      )}
+    </section>
   );
 }

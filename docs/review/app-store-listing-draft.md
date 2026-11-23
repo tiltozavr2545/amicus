@@ -1,8 +1,10 @@
 # App Store Listing Draft — Amicus (English, U.S.)
 
-Store copy for **0.19.2 (build 79)**, checked against repository behavior on
-2026-11-20. Review it against the submitted build and use App Store Connect
-to check the current metadata and approval status.
+Store copy for the current **0.19.3 (build 80)** candidate. The mobile feature
+copy was checked against 0.19.2 on 2026-11-20. The notes below cover the 0.19.2
+mobile changes and can be used when they are new to the intended audience.
+Review the copy against the submitted build and use App Store Connect to
+check the current metadata and approval status.
 
 ## What's New
 

@@ -28,43 +28,35 @@ function ScrollToTop() {
 export function App() {
   return (
     <div className="layout">
+      <button
+        className="skip-link"
+        type="button"
+        onClick={() => document.getElementById('workspace')?.focus()}
+      >
+        К содержимому
+      </button>
       <aside className="sidebar">
-        <p className="brand">Amicus</p>
-        <p className="brand-sub">консоль · локально</p>
-        <nav className="nav">
-          <NavLink
-            to="/overview"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Обзор
-          </NavLink>
-          <NavLink
-            to="/users"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Пользователи
-          </NavLink>
-          <NavLink
-            to="/reports"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Жалобы
-          </NavLink>
-          <NavLink
-            to="/news"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Новости
-          </NavLink>
-          <NavLink
-            to="/broadcast"
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            Рассылки
-          </NavLink>
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true" />
+          <div>
+            <p className="brand">Amicus</p>
+            <p className="brand-sub">Админ-консоль</p>
+          </div>
+        </div>
+        <nav className="nav" aria-label="Разделы консоли">
+          <div className="nav-group">
+            <NavLink to="/overview">Обзор</NavLink>
+            <NavLink to="/users">Пользователи</NavLink>
+            <NavLink to="/reports">Жалобы</NavLink>
+          </div>
+          <div className="nav-group">
+            <NavLink to="/news">Новости</NavLink>
+            <NavLink to="/broadcast">Рассылки</NavLink>
+          </div>
         </nav>
+        <div className="local-status">Локальная консоль</div>
       </aside>
-      <main className="content">
+      <main className="content" id="workspace" tabIndex={-1}>
         <ScrollToTop />
         <Boundary>
           <Routes>

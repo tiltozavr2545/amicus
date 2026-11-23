@@ -44,9 +44,9 @@ work with), and then show the route on a map in a post.
 
 ## iOS release validation
 
-Before distributing 0.19.2 through TestFlight, verify its launcher icon,
-profile layout, keyboard, media playback, chat reconnect and push behavior on
-a physical iOS device using the [iOS build guide](ios-deployment-guide.md). Use
+Before distributing the current candidate through TestFlight, verify its
+launcher icon, profile layout, keyboard, media playback, chat reconnect and push
+behavior on a physical iOS device using the [iOS build guide](ios-deployment-guide.md). Use
 the [Xcode Cloud pin](xcode-cloud-setup.md) for the UIScene runner.
 
 Store listing copy and iPhone/iPad screenshots still need review against the
@@ -116,38 +116,10 @@ can be rewritten on it. RLS policies are currently written as plain Postgres
 SQL — access logic won't need porting during the migration, only the
 Auth/Storage/Realtime layer.
 
-## Chat jumps when a message arrives while reading history
+## Pull-to-refresh on more data screens
 
-Deliberately deferred in 0.18.10, along with the rest of the batch of chat
-fixes (see [../CHANGELOG.md](../CHANGELOG.md)). `ScrollablePositionedList`
-anchors by **index**, and inserting at the start of the list shifts every
-index below by one — by two if the message opens a new calendar day and a
-divider is added for it. So for someone who has scrolled up and is reading,
-the conversation slides away under their finger by the height of a message.
-
-The compensation arithmetic is trivial (the shift equals the growth of the
-item list, because items are only ever prepended), but it can only be applied
-with `jumpTo` in a post-frame callback — and that cancels momentum if the
-message arrives mid-fling. The package doesn't let you tell whether "a finger
-is on the screen right now": it doesn't expose its own `ScrollController`. So
-in the worst case the cure is worse than the disease, and an automated test
-can't catch the difference — it would have to be checked by hand on a device.
-
-A possible path, if taken on: see whether a newer version of the package
-exposes `findChildIndexCallback` or the controller itself — then this gets
-solved together with bubbles recreating their `State` (see "Pitfalls" in
-[../AGENTS.md](../AGENTS.md)).
-
-## Instant display of a new avatar in the profile
-
-When a new avatar is uploaded it should immediately become the current one
-(first), so that it shows in the profile right after upload, without any
-extra action from the user.
-
-## Pull-to-refresh on every screen of the app
-
-The ability to refresh a screen with a swipe — currently not available
-everywhere.
+The feed, profile post lists, Rooms and Connections support pull-to-refresh.
+Extend it to other data screens where a manual reload is useful.
 
 ---
 

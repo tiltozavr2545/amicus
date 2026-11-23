@@ -32,11 +32,11 @@ class ConnectionsTarget extends PushTarget {
 }
 
 /// Nothing more specific than "there is something new in the feed" — a new
-/// post from a favourite, a digest, a nudge after a quiet week. The feed is
-/// the answer to all three, and it is also the tab the app opens on, so this
-/// only matters when the app was left on another one.
+/// post from a favourite, a digest, a nudge after a quiet week. Each tap
+/// opens a fresh view of the feed, including from an already open feed tab.
 class FeedTarget extends PushTarget {
-  const FeedTarget();
+  // Each tap is a distinct event even when its destination is the same.
+  FeedTarget();
 }
 
 /// What [data] points at, or null when the notification has no destination
@@ -53,7 +53,7 @@ PushTarget? pushTargetFrom(Map<String, dynamic> data) {
     'post_comment' ||
     'comment_reply' when postId != null => PostCommentsTarget(postId),
     'connection_request' || 'connection_accepted' => const ConnectionsTarget(),
-    'new_post' || 'digest' || 'inactive_week' => const FeedTarget(),
+    'new_post' || 'digest' || 'inactive_week' => FeedTarget(),
     // Includes 'app_update'/'app_update_important' — and anything a future
     // migration adds before this table hears about it. Opening the app is
     // all such a push ever asked for.

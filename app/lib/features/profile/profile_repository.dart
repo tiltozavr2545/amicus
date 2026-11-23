@@ -129,30 +129,12 @@ class ProfileRepository {
     return rows.map(ProfilePhoto.fromRow).toList();
   }
 
-  /// Uploads [items] and appends them to the end of the gallery.
-  /// `users.avatar_path` is updated automatically by a DB trigger, not here —
-  /// see `sync_avatar_path_from_profile_photos()` in the migration.
-  ///
-  /// Uploads go through [uploadTolerantFile] for the same reason post media
-  /// does:
-  /// `.timeout()` stops waiting without cancelling, so a batch can be half
-  /// landed when the screen reports failure, and the natural retry re-sends
-  /// items whose objects are already there. A plain `uploadBinary` answers
-  /// that with 409 and failed the whole batch every single time, forever.
-  ///
-  /// The rows go through `append_profile_photos()` rather than a direct
-  /// upsert, and the caller no longer passes the gallery in. `position` used
-  /// to be computed here, from the screen's cached list — which is stale in
-  /// exactly the situations the retry tolerance above exists for. A previous
-  /// batch that committed after this method reported failure (or a second
-  /// device) leaves that list short, the new rows aim at positions that are
-  /// already taken, and `profile_photos_user_position_key` rejects them. The
-  /// upsert cannot absorb that: it arbitrates on `(user_id, storage_path)`,
-  /// and a fresh file has a path of its own, so the position clash is a hard
-  /// error that takes the whole batch with it. The server assigns positions
-  /// from the table it is inserting into, in the same transaction, so a stale
-  /// client has nothing to be stale about — the same move migration
-  /// 20260820150000 made for reordering.
+  /// Uploads [items] and adds them to the front of the gallery in picker order.
+  /// The `append_profile_photos()` RPC assigns positions from the live gallery
+  /// in one transaction, and the sync trigger sets `users.avatar_path` to its
+  /// first photo. Paths already registered by an earlier attempt keep their
+  /// positions. [uploadTolerantFile] likewise accepts an object that landed
+  /// before a previous attempt timed out.
   Future<void> addPhotos({
     required String userId,
     required List<PendingPhoto> items,

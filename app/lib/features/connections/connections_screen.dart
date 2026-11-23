@@ -391,6 +391,20 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
     }
   }
 
+  Future<void> _refresh() async {
+    try {
+      await Future.wait<void>([
+        ref.refresh(friendsProvider.future),
+        ref.refresh(connectionRequestsProvider.future),
+      ]);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context)!.unexpectedError)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final friendsAsync = ref.watch(friendsProvider);
@@ -411,157 +425,166 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
           const SettingsButton(),
         ],
       ),
-      body: ContentWidth(
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            24,
-            24,
-            24 + BottomNavigationInset.of(context),
-          ),
-          children: [
-            Material(
-              color: Theme.of(context).colorScheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(16),
-              clipBehavior: Clip.antiAlias,
-              child: ExpansionTile(
-                key: ValueKey(
-                  friendsAsync.hasValue &&
-                      (friendsAsync.value?.isEmpty ?? false),
-                ),
-                initiallyExpanded:
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: ContentWidth(
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              24,
+              24,
+              24,
+              24 + BottomNavigationInset.of(context),
+            ),
+            children: [
+              Material(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(16),
+                clipBehavior: Clip.antiAlias,
+                child: ExpansionTile(
+                  key: ValueKey(
                     friendsAsync.hasValue &&
-                    (friendsAsync.value?.isEmpty ?? false),
-                shape: const Border(),
-                collapsedShape: const Border(),
-                leading: const Icon(Icons.person_add_alt_1_outlined),
-                title: Text(l10n.inviteSectionTitle),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_myInviteCode != null)
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SelectableText(
-                                  _myInviteCode!,
-                                  style: Theme.of(context).textTheme.titleLarge,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.copy),
-                                tooltip: l10n.copyTooltip,
-                                onPressed: () {
-                                  Clipboard.setData(
-                                    ClipboardData(text: _myInviteCode!),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(l10n.codeCopiedMessage),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        const SizedBox(height: 8),
-                        if (_createLinkError != null) ...[
-                          Text(
-                            _createLinkError!,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        FilledButton(
-                          onPressed: _isCreatingLink ? null : _createInviteLink,
-                          child: _isCreatingLink
-                              ? const SizedBox(
-                                  height: 16,
-                                  width: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                        (friendsAsync.value?.isEmpty ?? false),
+                  ),
+                  initiallyExpanded:
+                      friendsAsync.hasValue &&
+                      (friendsAsync.value?.isEmpty ?? false),
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  leading: const Icon(Icons.person_add_alt_1_outlined),
+                  title: Text(l10n.inviteSectionTitle),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_myInviteCode != null)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SelectableText(
+                                    _myInviteCode!,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleLarge,
                                   ),
-                                )
-                              : Text(
-                                  _myInviteCode == null
-                                      ? l10n.createInviteCodeButton
-                                      : l10n.createNewCodeButton,
                                 ),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          l10n.haveCodeSectionTitle,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _codeController,
-                          decoration: InputDecoration(
-                            labelText: l10n.inviteCodeLabel,
-                            prefixIcon: const Icon(Icons.key_outlined),
+                                IconButton(
+                                  icon: const Icon(Icons.copy),
+                                  tooltip: l10n.copyTooltip,
+                                  onPressed: () {
+                                    Clipboard.setData(
+                                      ClipboardData(text: _myInviteCode!),
+                                    );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(l10n.codeCopiedMessage),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          const SizedBox(height: 8),
+                          if (_createLinkError != null) ...[
+                            Text(
+                              _createLinkError!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          FilledButton(
+                            onPressed: _isCreatingLink
+                                ? null
+                                : _createInviteLink,
+                            child: _isCreatingLink
+                                ? const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(
+                                    _myInviteCode == null
+                                        ? l10n.createInviteCodeButton
+                                        : l10n.createNewCodeButton,
+                                  ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (_activationMessage != null) ...[
+                          const SizedBox(height: 24),
                           Text(
-                            _activationMessage!,
-                            style: TextStyle(
-                              color: _activationSucceeded
-                                  ? Colors.green
-                                  : Theme.of(context).colorScheme.error,
+                            l10n.haveCodeSectionTitle,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _codeController,
+                            decoration: InputDecoration(
+                              labelText: l10n.inviteCodeLabel,
+                              prefixIcon: const Icon(Icons.key_outlined),
                             ),
                           ),
                           const SizedBox(height: 12),
-                        ],
-                        FilledButton.tonal(
-                          onPressed: _isActivating ? null : _activate,
-                          child: _isActivating
-                              ? const SizedBox(
-                                  height: 16,
-                                  width: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(l10n.activateButton),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            const _IncomingRequests(),
-            const SizedBox(height: 8),
-            Text(
-              l10n.myConnectionsTitle,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            friendsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Text(l10n.failedToLoadConnectionsError),
-              data: (friends) => friends.isEmpty
-                  ? Text(l10n.noConnectionsYetMessage)
-                  : Column(
-                      children: friends
-                          .map(
-                            (friend) => _FriendListItem(
-                              friend: friend,
-                              currentUserId: userId!,
+                          if (_activationMessage != null) ...[
+                            Text(
+                              _activationMessage!,
+                              style: TextStyle(
+                                color: _activationSucceeded
+                                    ? Colors.green
+                                    : Theme.of(context).colorScheme.error,
+                              ),
                             ),
-                          )
-                          .toList(),
+                            const SizedBox(height: 12),
+                          ],
+                          FilledButton.tonal(
+                            onPressed: _isActivating ? null : _activate,
+                            child: _isActivating
+                                ? const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(l10n.activateButton),
+                          ),
+                        ],
+                      ),
                     ),
-            ),
-            const SizedBox(height: 32),
-          ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              const _IncomingRequests(),
+              const SizedBox(height: 8),
+              Text(
+                l10n.myConnectionsTitle,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              friendsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, stack) =>
+                    Text(l10n.failedToLoadConnectionsError),
+                data: (friends) => friends.isEmpty
+                    ? Text(l10n.noConnectionsYetMessage)
+                    : Column(
+                        children: friends
+                            .map(
+                              (friend) => _FriendListItem(
+                                friend: friend,
+                                currentUserId: userId!,
+                              ),
+                            )
+                            .toList(),
+                      ),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );

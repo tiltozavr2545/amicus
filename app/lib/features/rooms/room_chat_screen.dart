@@ -7,7 +7,6 @@ import 'package:flutter/services.dart'
     show Clipboard, ClipboardData, TextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -101,18 +100,14 @@ class RoomChatScreen extends ConsumerStatefulWidget {
 
 class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     with WidgetsBindingObserver {
-  /// Index-addressable, unlike a plain `ScrollController` — [_scrollToMessage]
-  /// needs to land on an arbitrary loaded message, most of which are never
-  /// built (`ListView.builder` only builds what's near the viewport), and a
-  /// pixel offset has no honest answer for "where is item N" once bubbles
-  /// vary in height (text vs. media).
-  final _itemScrollController = ItemScrollController();
-  final _itemPositionsListener = ItemPositionsListener.create();
+  final _scrollController = ScrollController(keepScrollOffset: false);
+  final _messageKeys = <String, GlobalKey>{};
   final _textController = TextEditingController();
 
-  /// Newest first — the list is `reverse: true`, so index 0 sits at the
-  /// bottom where a chat's newest message belongs, and "load older" is the
-  /// same "near the end of the scroll" gesture the feed already uses.
+  /// Newest first. The scroll origin stays on the first loaded message until
+  /// a quote jump needs to address a message that has not been laid out.
+  String? _scrollAnchorId;
+  double _scrollAnchorAlignment = 0;
   final _messages = <RoomMessage>[];
 
   // Only HTTP pages establish which part of history is contiguous. Live
@@ -226,19 +221,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
   /// has to be worked out again. Dropped by [_updateMessages], which is the
   /// only thing allowed to change the list it is derived from.
   ///
-  /// Kept because it is asked for far more often than it changes: `build`
-  /// wants it, [_scrollToMessage] wants it, and [_maybeLoadMoreOnScroll]
-  /// wants it on **every frame of every scroll** — the positions notifier
-  /// assigns a new list after each layout, so its listeners run continuously
-  /// while a finger is down. Rebuilding a few hundred items there, per frame,
-  /// was the jank itself.
+  /// Keep this across rebuilds for composer, presence and receipt changes.
   List<_ChatListItem>? _chatItems;
+  final _chatItemIndices = <Key, int>{};
 
   /// When the last attempt to page in history failed.
   ///
   /// A failure leaves [_hasMore] true — there may well be more, the request
-  /// simply didn't get there — and [_maybeLoadMoreOnScroll] fires on every
-  /// frame, so the retry went out again the instant the previous one gave up:
+  /// simply didn't get there — and scrolling can check every frame, so the
+  /// retry went out again the instant the previous one gave up:
   /// a request every [networkTimeout] for as long as the chat stayed open and
   /// offline. The backoff below leaves the retry in place (it is how this
   /// heals on its own when the connection comes back) and only stops it being
@@ -268,7 +259,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     // fresher than a minute, and every arriving message moves it again.
     _markRead();
     _subscribePresence();
-    _itemPositionsListener.itemPositions.addListener(_maybeLoadMoreOnScroll);
+    _scrollController.addListener(_maybeLoadMoreOnScroll);
   }
 
   @override
@@ -332,7 +323,7 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     _typingTimer?.cancel();
     _highlightTimer?.cancel();
     _presence?.unsubscribe();
-    _itemPositionsListener.itemPositions.removeListener(_maybeLoadMoreOnScroll);
+    _scrollController.dispose();
     _textController.dispose();
     super.dispose();
   }
@@ -368,7 +359,15 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
 
   /// [_messages] with its day separators, worked out once per change to the
   /// list rather than once per caller — see [_chatItems].
-  List<_ChatListItem> get _chatListItems => _chatItems ??= _buildChatItems();
+  List<_ChatListItem> get _chatListItems {
+    if (_chatItems case final items?) return items;
+    final items = _buildChatItems();
+    _chatItemIndices.clear();
+    for (var index = 0; index < items.length; index++) {
+      _chatItemIndices[items[index].key] = index;
+    }
+    return _chatItems = items;
+  }
 
   /// The one way [_messages] is allowed to change: it repaints and drops the
   /// derived [_chatItems], which would otherwise go on describing the list as
@@ -377,6 +376,11 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     setState(() {
       change();
       _chatItems = null;
+      if (_scrollAnchorId != null &&
+          !_messages.any((message) => message.id == _scrollAnchorId)) {
+        _scrollAnchorId = null;
+        _scrollAnchorAlignment = 0;
+      }
     });
   }
 
@@ -387,18 +391,13 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
     _messages.insert(index == -1 ? _messages.length : index, message);
   }
 
-  /// Pages in older history once the loaded list's oldest end comes into
-  /// view — the same "near the end of the scroll" trigger the feed uses,
-  /// expressed in item indices instead of pixels since [_itemScrollController]
-  /// replaced the plain `ScrollController` this used to read.
+  /// A reversed viewport still reports the older end as extentAfter.
   void _maybeLoadMoreOnScroll() {
-    final positions = _itemPositionsListener.itemPositions.value;
-    if (positions.isEmpty) return;
-    var maxIndex = 0;
-    for (final position in positions) {
-      if (position.index > maxIndex) maxIndex = position.index;
+    if (!_hasMore || _isLoading || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.hasContentDimensions && position.extentAfter < 160) {
+      _loadMore();
     }
-    if (maxIndex >= _chatListItems.length - 3) _loadMore();
   }
 
   void _subscribe() {
@@ -1267,14 +1266,21 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       );
       return;
     }
-    if (!_itemScrollController.isAttached) return;
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _itemScrollController.jumpTo(index: index, alignment: 0.5);
+    final target = _messageKeys[messageId]?.currentContext;
+    if (target == null || !target.mounted) {
+      // A distant row has no pixel offset yet. Give it the viewport's
+      // origin so the slivers can lay it out directly.
+      setState(() {
+        _scrollAnchorId = messageId;
+        _scrollAnchorAlignment = 0.5;
+      });
     } else {
-      await _itemScrollController.scrollTo(
-        index: index,
+      await Scrollable.ensureVisible(
+        target,
         alignment: 0.5,
-        duration: const Duration(milliseconds: 180),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
         curve: Curves.easeOut,
       );
     }
@@ -1308,6 +1314,87 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
       }
     }
     return items;
+  }
+
+  Widget _buildHistory(IndexedWidgetBuilder buildRow) {
+    final items = _chatListItems;
+    // Select the first anchor from the first layout, after any data that
+    // arrived together with the initial page has been merged.
+    final anchorId = _scrollAnchorId ??= _messages.firstOrNull?.id;
+    final anchorIndex = anchorId == null
+        ? 0
+        : _chatItemIndices[ValueKey(anchorId)] ?? 0;
+    final olderStart = items.isEmpty ? 0 : anchorIndex + 1;
+    const center = ValueKey('chat-history-center');
+
+    Widget row(BuildContext context, int index) {
+      final child = buildRow(context, index);
+      if (index == items.length) return child;
+      return IndexedSemantics(
+        key: items[index].key,
+        index: index,
+        child: child,
+      );
+    }
+
+    // Newer rows grow outward on the other side of the center sliver.
+    // The origin and the pixel offsets of older rows stay put during a drag
+    // or fling, even when a new date label is inserted with a message.
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0) _maybeLoadMoreOnScroll();
+        return false;
+      },
+      child: CustomScrollView(
+        key: ValueKey((_scrollAnchorId, _scrollAnchorAlignment)),
+        controller: _scrollController,
+        reverse: true,
+        center: center,
+        anchor: _scrollAnchorAlignment,
+        physics: const _ChatScrollPhysics(),
+        semanticChildCount: items.length,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverList.builder(
+              addSemanticIndexes: false,
+              itemCount: anchorIndex,
+              itemBuilder: (context, index) =>
+                  row(context, anchorIndex - 1 - index),
+              findChildIndexCallback: (key) {
+                final index = _chatItemIndices[key];
+                return index != null && index < anchorIndex
+                    ? anchorIndex - 1 - index
+                    : null;
+              },
+            ),
+          ),
+          SliverPadding(
+            key: center,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverList.builder(
+              addSemanticIndexes: false,
+              itemCount: items.isEmpty ? 0 : 1,
+              itemBuilder: (context, _) => row(context, anchorIndex),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            sliver: SliverList.builder(
+              addSemanticIndexes: false,
+              itemCount: items.length - olderStart + (_isLoading ? 1 : 0),
+              itemBuilder: (context, index) => row(context, olderStart + index),
+              findChildIndexCallback: (key) {
+                final index = _chatItemIndices[key];
+                return index != null && index >= olderStart
+                    ? index - olderStart
+                    : null;
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1435,91 +1522,82 @@ class _RoomChatScreenState extends ConsumerState<RoomChatScreen>
                 // already claims.
                 : SelectionArea(
                     contextMenuBuilder: _chatSelectionToolbarBuilder,
-                    child: ScrollablePositionedList.builder(
-                      itemScrollController: _itemScrollController,
-                      itemPositionsListener: _itemPositionsListener,
-                      reverse: true,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      itemCount: chatItems.length + (_isLoading ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= chatItems.length) {
-                          return const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-                        final item = chatItems[index];
-                        if (item.day case final day?) {
-                          // "Today"/a date, not a message — nothing here
-                          // belongs in a copied selection. `disabled` alone
-                          // stops it from being selected, but the list's
-                          // `SelectionArea` still owns long presses across
-                          // its whole area regardless of what ends up
-                          // selectable under the finger, so a long press
-                          // here started a (fruitless) selection attempt —
-                          // no menu, but still the haptic buzz that opening
-                          // one gives. A no-op `onLongPress`, being the
-                          // deeper recognizer, wins that gesture first and
-                          // leaves `SelectionArea` nothing to attempt.
-                          return GestureDetector(
-                            onLongPress: () {},
-                            child: SelectionContainer.disabled(
-                              child: _DateSeparator(day: day),
-                            ),
-                          );
-                        }
-                        final message = item.message!;
-                        return _MessageBubble(
-                          message: message,
-                          isMine: message.authorId == viewerId,
-                          authorName:
-                              room?.memberById(message.authorId)?.name ??
-                              message.authorName ??
-                              l10n.formerMemberLabel,
-                          onOpenAuthor: switch (room?.memberById(
-                            message.authorId,
-                          )) {
-                            final member? when member.userId != viewerId =>
-                              () => _openMemberProfile(member),
-                            _ => null,
-                          },
-                          room: room,
-                          receipts: _receipts,
-                          replyPreview: _resolveReplyPreview(message, room),
-                          isHighlighted: message.id == _highlightedMessageId,
-                          onDelete:
-                              message.authorId == viewerId && !message.isDeleted
-                              ? () => _delete(message)
-                              : null,
-                          // Offered while the window is open; the server
-                          // checks it again and has the last word.
-                          onEdit:
-                              !_isSending &&
-                                  !_isPicking &&
-                                  message.canBeEditedBy(
-                                    viewerId,
-                                    DateTime.now(),
-                                  )
-                              ? () => _startEdit(message)
-                              : null,
-                          // Not while editing: the reply would belong to the
-                          // draft set aside for the edit, not to the edit.
-                          onReply:
-                              message.isDeleted ||
-                                  _editTarget != null ||
-                                  _isSending ||
-                                  _isPicking
-                              ? null
-                              : () => _startReply(message),
-                          onTapReply: message.replyToId == null
-                              ? null
-                              : () => _scrollToMessage(message.replyToId!),
+                    child: _buildHistory((context, index) {
+                      if (index >= chatItems.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: CircularProgressIndicator()),
                         );
-                      },
-                    ),
+                      }
+                      final item = chatItems[index];
+                      if (item.day case final day?) {
+                        // "Today"/a date, not a message — nothing here
+                        // belongs in a copied selection. `disabled` alone
+                        // stops it from being selected, but the list's
+                        // `SelectionArea` still owns long presses across
+                        // its whole area regardless of what ends up
+                        // selectable under the finger, so a long press
+                        // here started a (fruitless) selection attempt —
+                        // no menu, but still the haptic buzz that opening
+                        // one gives. A no-op `onLongPress`, being the
+                        // deeper recognizer, wins that gesture first and
+                        // leaves `SelectionArea` nothing to attempt.
+                        return GestureDetector(
+                          onLongPress: () {},
+                          child: SelectionContainer.disabled(
+                            child: _DateSeparator(day: day),
+                          ),
+                        );
+                      }
+                      final message = item.message!;
+                      return _MessageBubble(
+                        key: _messageKeys.putIfAbsent(
+                          message.id,
+                          GlobalKey.new,
+                        ),
+                        message: message,
+                        isMine: message.authorId == viewerId,
+                        authorName:
+                            room?.memberById(message.authorId)?.name ??
+                            message.authorName ??
+                            l10n.formerMemberLabel,
+                        onOpenAuthor: switch (room?.memberById(
+                          message.authorId,
+                        )) {
+                          final member? when member.userId != viewerId =>
+                            () => _openMemberProfile(member),
+                          _ => null,
+                        },
+                        room: room,
+                        receipts: _receipts,
+                        replyPreview: _resolveReplyPreview(message, room),
+                        isHighlighted: message.id == _highlightedMessageId,
+                        onDelete:
+                            message.authorId == viewerId && !message.isDeleted
+                            ? () => _delete(message)
+                            : null,
+                        // Offered while the window is open; the server
+                        // checks it again and has the last word.
+                        onEdit:
+                            !_isSending &&
+                                !_isPicking &&
+                                message.canBeEditedBy(viewerId, DateTime.now())
+                            ? () => _startEdit(message)
+                            : null,
+                        // Not while editing: the reply would belong to the
+                        // draft set aside for the edit, not to the edit.
+                        onReply:
+                            message.isDeleted ||
+                                _editTarget != null ||
+                                _isSending ||
+                                _isPicking
+                            ? null
+                            : () => _startReply(message),
+                        onTapReply: message.replyToId == null
+                            ? null
+                            : () => _scrollToMessage(message.replyToId!),
+                      );
+                    }),
                   ),
           ),
           if (error != null && _messages.isNotEmpty)
@@ -1671,6 +1749,44 @@ class _ChatListItem {
 
   final RoomMessage? message;
   final DateTime? day;
+
+  Key get key {
+    if (message case final row?) return ValueKey(row.id);
+    final date = day!;
+    return ValueKey(DateTime(date.year, date.month, date.day));
+  }
+}
+
+class _ChatScrollPhysics extends ScrollPhysics {
+  const _ChatScrollPhysics({super.parent});
+
+  @override
+  _ChatScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      _ChatScrollPhysics(parent: buildParent(ancestor));
+
+  @override
+  double adjustPositionForNewDimensions({
+    required ScrollMetrics oldPosition,
+    required ScrollMetrics newPosition,
+    required bool isScrolling,
+    required double velocity,
+  }) {
+    // Follow incoming messages only when already resting at the newest edge.
+    // Correct during layout so the active gesture never needs a jumpTo.
+    final oldEdge = oldPosition.minScrollExtent;
+    if (!isScrolling &&
+        (oldPosition.pixels - oldEdge).abs() < 0.5 &&
+        newPosition.pixels <= oldEdge + 0.5 &&
+        newPosition.minScrollExtent < oldEdge) {
+      return newPosition.minScrollExtent;
+    }
+    return super.adjustPositionForNewDimensions(
+      oldPosition: oldPosition,
+      newPosition: newPosition,
+      isScrolling: isScrolling,
+      velocity: velocity,
+    );
+  }
 }
 
 /// The day label between two calendar days' worth of messages — "Today",
@@ -2095,6 +2211,7 @@ class _LinkifiedMessageTextState extends State<_LinkifiedMessageText> {
 
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
+    super.key,
     required this.message,
     required this.isMine,
     required this.authorName,
@@ -2580,11 +2697,8 @@ class _MessageMediaState extends ConsumerState<_MessageMedia> {
     _resolve();
   }
 
-  /// This `State` is recreated far more often than the message changes: the
-  /// chat list hands a given slot's element the *next* message whenever one
-  /// is inserted at the top (see [SignedUrlCache]). But the widget's own
-  /// [media] can change under a surviving `State` too — so the same path is
-  /// taken here rather than trusting it not to.
+  /// The widget can be rebuilt with different media after a message edit,
+  /// while a previously visited row can reuse its URLs from [SignedUrlCache].
   @override
   void didUpdateWidget(_MessageMedia oldWidget) {
     super.didUpdateWidget(oldWidget);
