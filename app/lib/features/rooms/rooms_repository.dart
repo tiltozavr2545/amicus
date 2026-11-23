@@ -646,12 +646,14 @@ class RoomsRepository {
   Future<String> createRoom({
     required List<String> memberIds,
     String? name,
+    String? clientToken,
   }) async {
     final id = await _client
         .rpc(
-          'create_room',
+          clientToken == null ? 'create_room' : 'create_room_once',
           params: {
             'p_member_ids': memberIds,
+            if (clientToken != null) 'p_client_token': clientToken,
             'p_name': (name != null && name.isNotEmpty) ? name : null,
           },
         )

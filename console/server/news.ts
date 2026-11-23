@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import {
   mkdir,
   readdir,
   readFile,
+  rename,
   stat,
   unlink,
   writeFile,
@@ -77,17 +79,32 @@ export type Draft = {
 
 export async function readDrafts(): Promise<Draft[]> {
   try {
-    const parsed = JSON.parse(await readFile(DRAFTS, 'utf8'));
-    return Array.isArray(parsed) ? (parsed as Draft[]) : [];
-  } catch {
-    // The file doesn't exist yet or is corrupted — an empty list is more
-    // honest than crashing the whole section over a note.
-    return [];
+    const parsed: unknown = JSON.parse(await readFile(DRAFTS, 'utf8'));
+    if (!Array.isArray(parsed)) throw new Error('Invalid news drafts file');
+    return parsed as Draft[];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
   }
 }
 
-export async function writeDrafts(drafts: Draft[]): Promise<void> {
-  await writeFile(DRAFTS, JSON.stringify(drafts, null, 2), 'utf8');
+let draftWrites = Promise.resolve();
+
+export function changeDrafts(
+  update: (drafts: Draft[]) => Draft[],
+): Promise<void> {
+  const write = draftWrites.then(async () => {
+    const drafts = update(await readDrafts());
+    const temporary = `${DRAFTS}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify(drafts, null, 2), 'utf8');
+      await rename(temporary, DRAFTS);
+    } finally {
+      await unlink(temporary).catch(() => {});
+    }
+  });
+  draftWrites = write.catch(() => {});
+  return write;
 }
 
 /// Whether the path refers to a staged file rather than a bucket object.

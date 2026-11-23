@@ -314,6 +314,10 @@ call returns the existing one. A group room without a name is called by
 listing its members — that's also computed on the client, because storing the
 list would freeze it: names change, and so does membership.
 
+The group composer uses `create_room_once()` with a caller-scoped token.
+The room and token are committed together, so retrying the same request
+returns the original room.
+
 A direct room does have an owner in the schema (it's just the lowest `seq`;
 the schema has no "ownerless" case), but **the UI doesn't show it**: there's
 nothing for the owner to do there — no adding, removing or renaming — and a

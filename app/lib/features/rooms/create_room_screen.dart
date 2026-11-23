@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../shared/bottom_navigation_inset.dart';
@@ -30,6 +31,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
 
   bool _isSubmitting = false;
   String? _errorMessage;
+  String? _creationToken;
 
   @override
   void dispose() {
@@ -56,6 +58,9 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           .read(roomsRepositoryProvider)
           .createRoom(
             memberIds: _selected.toList(),
+            clientToken: _selected.length > 1
+                ? (_creationToken ??= const Uuid().v4())
+                : null,
             // A two-person room is named after the other person, so whatever
             // is in the field is not its name — don't send it.
             name: _selected.length == 1 ? null : _nameController.text.trim(),
@@ -140,6 +145,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _nameController,
+                    readOnly: _isSubmitting,
+                    onChanged: (_) => _creationToken = null,
                     maxLength: 100,
                     decoration: InputDecoration(
                       labelText: l10n.roomNameLabel,
@@ -166,6 +173,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                     onChanged: _isSubmitting
                         ? null
                         : (value) => setState(() {
+                            _creationToken = null;
                             if (value ?? false) {
                               _selected.add(friend.userId);
                             } else {

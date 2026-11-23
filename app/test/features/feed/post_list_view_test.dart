@@ -438,6 +438,26 @@ void main() {
     },
   );
 
+  testWidgets('an offline refresh keeps the latest successful empty page', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      _cacheKey: jsonEncode([_post('obsolete').toCacheJson()]),
+    });
+    final repo = _FakeFeedRepository();
+    final container = _container(repo);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_wrap(repo, container: container));
+    await tester.pumpAndSettle();
+
+    repo.throwOnFetch = true;
+    container.read(feedRefreshTickProvider.notifier).bump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('text of obsolete'), findsNothing);
+    expect(find.text(_failedToLoad), findsOneWidget);
+  });
+
   testWidgets('a successful fetch replaces the cached preview outright', (
     tester,
   ) async {

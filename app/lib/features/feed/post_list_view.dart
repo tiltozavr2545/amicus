@@ -69,8 +69,9 @@ class _PostListViewState extends ConsumerState<PostListView> {
   // instant preview) and [_loadMore]'s failure path (a fallback if the fetch
   // loses that race). A single shared read — rather than each side issuing
   // its own — means the two can never disagree about what was cached or
-  // apply it twice.
-  late final Future<List<Post>?> _cacheLoadFuture;
+  // apply it twice. A successful first page replaces the fallback, even
+  // when the server returns an empty list.
+  late Future<List<Post>?> _cacheLoadFuture;
 
   // Who this viewer has muted, i.e. who the *main feed* leaves out — mute is
   // no longer part of the server's visibility rule, so this is what still
@@ -214,6 +215,7 @@ class _PostListViewState extends ConsumerState<PostListView> {
         _hasMore = page.length == pageSize;
       });
       if (isFirstPage) {
+        _cacheLoadFuture = Future.value(page);
         // `unawaited` silences the lint, not the failure: a rejected future
         // nobody is holding is an unhandled async error, and this one has a
         // plugin and a disk behind it. Writing the snapshot is best-effort by

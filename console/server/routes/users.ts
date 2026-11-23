@@ -185,14 +185,16 @@ usersRouter.get('/users/:id', async (req, res, next) => {
             .order('created_at', { ascending: false })
             .limit(20),
         ),
-        fetchOnce<{ kind: string; created_at: string; sent_at: string | null }>(
-          'notification_outbox',
-          'kind, created_at, sent_at',
-          (q) =>
-            q
-              .eq('user_id', id)
-              .order('created_at', { ascending: false })
-              .limit(20),
+        fetchOnce<{
+          kind: string;
+          created_at: string;
+          sent_at: string | null;
+          failed_at: string | null;
+        }>('notification_outbox', 'kind, created_at, sent_at, failed_at', (q) =>
+          q
+            .eq('user_id', id)
+            .order('created_at', { ascending: false })
+            .limit(20),
         ),
       ]);
 
@@ -280,6 +282,7 @@ usersRouter.get('/users/:id', async (req, res, next) => {
         kind: n.kind,
         createdAt: n.created_at,
         sentAt: n.sent_at,
+        failedAt: n.failed_at,
       })),
     };
 

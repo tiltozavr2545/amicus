@@ -8,7 +8,7 @@ A pilot/portfolio project (originally developed under the working name "Круг
 
 ## Status
 
-The release candidate in this checkout is **0.19.3 (build 80)**. Android
+The release candidate in this checkout is **0.19.4 (build 81)**. Android
 builds go to Google Play closed testing (`alpha`), and iOS builds go through
 TestFlight separately.
 Check delivery and availability for each channel in the
@@ -127,7 +127,7 @@ Current:
 - [Deferred features](docs/future-development.md) — GPS tracks, web version, open questions
 - [App Store listing draft](docs/review/app-store-listing-draft.md) — working copy for proofreading; actual submission status lives in App Store Connect
 - [GitHub Pages pages](docs/gh-pages/) — the published privacy policy and terms of use, the email confirmation and password reset pages
-- [Changelog](CHANGELOG.md#0193) — version history and the 0.19.3 changes
+- [Changelog](CHANGELOG.md#0194) — version history and the 0.19.4 changes
 
 Historical — how the project was conceived and how it went, not how it works now:
 

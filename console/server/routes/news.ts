@@ -11,6 +11,7 @@ import { fetchOnce } from '../db.ts';
 import type { Draft } from '../news.ts';
 import {
   ALLOWED_MIME,
+  changeDrafts,
   extensionForMime,
   isStaged,
   MAX_FILE_BYTES,
@@ -21,7 +22,6 @@ import {
   readStaged,
   stagedName,
   stagedRef,
-  writeDrafts,
   writeStaged,
 } from '../news.ts';
 import { admin } from '../supabase.ts';
@@ -242,25 +242,17 @@ newsRouter.get('/news', async (_req, res, next) => {
       ),
     );
 
-    const [comments, reactions] = await Promise.all([
-      ids.length
-        ? fetchOnce<{ post_id: string }>('comments', 'post_id', (q) =>
-            q.in('post_id', ids).is('deleted_at', null),
-          )
-        : [],
-      ids.length
-        ? fetchOnce<{ post_id: string }>('reactions', 'post_id', (q) =>
-            q.in('post_id', ids),
-          )
-        : [],
-    ]);
-    const tally = (rows: { post_id: string }[]) => {
-      const map = new Map<string, number>();
-      for (const r of rows) map.set(r.post_id, (map.get(r.post_id) ?? 0) + 1);
-      return map;
-    };
-    const commentCount = tally(comments);
-    const reactionCount = tally(reactions);
+    const engagement = new Map<
+      string,
+      { comment_count: number; reaction_count: number }
+    >();
+    if (ids.length) {
+      const { data, error } = await admin.rpc('news_engagement', {
+        p_post_ids: ids,
+      });
+      if (error) throw new Error(`news_engagement: ${error.message}`);
+      for (const row of data ?? []) engagement.set(row.post_id, row);
+    }
 
     // Staging cleanup hangs here rather than on its own schedule: the news
     // section is the only place anything gets in there from, and it's
@@ -286,8 +278,8 @@ newsRouter.get('/news', async (_req, res, next) => {
         text: p.text,
         createdAt: p.created_at,
         hidden: p.hidden_at !== null,
-        comments: commentCount.get(p.id) ?? 0,
-        reactions: reactionCount.get(p.id) ?? 0,
+        comments: engagement.get(p.id)?.comment_count ?? 0,
+        reactions: engagement.get(p.id)?.reaction_count ?? 0,
         media: media
           .filter((m) => m.post_id === p.id)
           .map((m) => ({
@@ -466,21 +458,36 @@ newsRouter.delete('/news/:id', async (req, res, next) => {
   }
 });
 
-newsRouter.put('/news/drafts', async (req, res, next) => {
+newsRouter.put('/news/drafts/:id', async (req, res, next) => {
   try {
-    // A non-array is a request error, NOT "there are no more drafts". The
-    // previous version substituted an empty list in its place and silently
-    // wiped the whole file: the same class as a PATCH without `media`, only
-    // costlier — there's nowhere to restore a draft from, it isn't stored
-    // anywhere else.
-    if (!Array.isArray(req.body?.drafts)) {
-      res.status(400).json({
-        error: 'drafts обязателен списком — пустой список тоже список',
-      });
+    const { text, media, updatedAt } = req.body ?? {};
+    if (
+      typeof text !== 'string' ||
+      !Array.isArray(media) ||
+      typeof updatedAt !== 'string'
+    ) {
+      res
+        .status(400)
+        .json({ error: 'Нужны текст, список медиа и дата черновика' });
       return;
     }
-    const drafts = req.body.drafts as Draft[];
-    await writeDrafts(drafts);
+    const id = String(req.params.id);
+    const draft: Draft = { id, text, media, updatedAt };
+    await changeDrafts((drafts) => [
+      draft,
+      ...drafts.filter((d) => d.id !== id),
+    ]);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+newsRouter.delete('/news/drafts/:id', async (req, res, next) => {
+  try {
+    await changeDrafts((drafts) =>
+      drafts.filter((d) => d.id !== req.params.id),
+    );
     res.json({ ok: true });
   } catch (error) {
     next(error);

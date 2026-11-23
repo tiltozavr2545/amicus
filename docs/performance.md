@@ -66,7 +66,7 @@ Frame times, native video and audio behavior, the Android keyboard, and
 battery use still require measurement with a profile build on physical
 hardware. The checks guard individual rendering and lifecycle behaviors.
 
-The 0.19.3 candidate passed formatting, static analysis and **445
+The 0.19.4 candidate passed formatting, static analysis and **449
 Flutter tests**. The layout tests compare the avatar and post list placement
 across both profile routes. Android delivery is tracked separately in the
 [release workflow](operations.md#release).

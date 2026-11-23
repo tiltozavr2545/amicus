@@ -58,50 +58,25 @@ android {
 
     buildTypes {
         release {
-            // Without key.properties a release build would be signed with the
-            // world-known Android debug key: not uploadable to Play, not
-            // installable over a Play build, and named `app-release.aab` like
-            // any other. That used to happen silently.
-            //
-            // It now FAILS rather than warns. A warning was tried first and is
-            // the wrong instrument twice over: it scrolls past in a build log
-            // nobody reads, and on the machine that has key.properties — every
-            // machine that matters — it is unreachable, so there is no way to
-            // tell a working warning from a broken one without deliberately
-            // hiding the keystore. A failure cannot be missed, Flutter always
-            // surfaces it (verified: the banner below appears in full through
-            // `flutter build appbundle`), and it is the right default anyway —
-            // an unsigned release is never what someone actually wanted.
-            //
-            // Compile-checking without the keystore is still legitimate (CI, a
-            // fresh clone, `flutter run --release`), so it is available — just
-            // never by accident. Pass `-PallowDebugSigning=true`, which
-            // `make build-android` and the CI workflow do explicitly. The
-            // deploy workflow deliberately does not, so a keystore that failed
-            // to materialise there stops the build instead of shipping a
-            // debug-signed bundle to the alpha track.
-            signingConfig = if (hasKeystoreProperties) {
-                signingConfigs.getByName("release")
-            } else {
-                if (project.findProperty("allowDebugSigning") != "true") {
-                    throw GradleException(
-                        "\n" +
-                            "**********************************************************************\n" +
-                            "android/key.properties not found, so this RELEASE build would be\n" +
-                            "signed with the DEBUG key. Such a build cannot be uploaded to Play\n" +
-                            "and cannot be installed over or upgraded by a Play build, which\n" +
-                            "makes it useless — and dangerous — to hand to a tester.\n" +
-                            "\n" +
-                            "To compile-check on purpose, opt in:\n" +
-                            "  flutter build appbundle --release -PallowDebugSigning=true\n" +
-                            "  (or just `make build-android`, which passes it)\n" +
-                            "\n" +
-                            "To produce a real release, put the upload keystore at\n" +
-                            "android/key.properties.\n" +
-                            "**********************************************************************\n"
-                    )
-                }
-                signingConfigs.getByName("debug")
+            if (hasKeystoreProperties) {
+                signingConfig = signingConfigs.getByName("release")
+            } else if (project.findProperty("allowDebugSigning") == "true") {
+                signingConfig = signingConfigs.getByName("debug")
+            }
+        }
+    }
+}
+
+// Fail only when the release variant is built. Gradle configures the release
+// build type even when the requested task is assembleDebug.
+if (!hasKeystoreProperties && project.findProperty("allowDebugSigning") != "true") {
+    tasks.configureEach {
+        if (name == "preReleaseBuild") {
+            doFirst {
+                throw GradleException(
+                    "Release signing requires android/key.properties. " +
+                        "For a compile check, use make build-android."
+                )
             }
         }
     }

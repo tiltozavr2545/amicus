@@ -17,14 +17,11 @@ import { isUuid, uuidParam } from '../uuid.ts';
 export const moderationRouter = Router();
 moderationRouter.param('id', uuidParam);
 
-// The table and column where each kind of object lives. One place instead of
-// three branches in every handler.
-const TARGETS: Record<ModerationTargetKind, { table: string; author: string }> =
-  {
-    post: { table: 'posts', author: 'author_id' },
-    comment: { table: 'comments', author: 'author_id' },
-    room_message: { table: 'room_messages', author: 'author_id' },
-  };
+const TARGET_TABLES: Record<ModerationTargetKind, string> = {
+  post: 'posts',
+  comment: 'comments',
+  room_message: 'room_messages',
+};
 
 function isTargetKind(value: unknown): value is ModerationTargetKind {
   return value === 'post' || value === 'comment' || value === 'room_message';
@@ -175,7 +172,7 @@ moderationRouter.get('/reports', async (req, res, next) => {
       ];
       if (ids.length === 0) continue;
       const found = await fetchOnce<{ id: string; hidden_at: string | null }>(
-        TARGETS[kind].table,
+        TARGET_TABLES[kind],
         'id, hidden_at',
         (q) => q.in('id', ids),
       );
@@ -237,7 +234,8 @@ moderationRouter.get('/reports', async (req, res, next) => {
             ? (nameOf.get(r.target_author_id) ?? '—')
             : null,
           targetAuthorBanned: r.target_author_id
-            ? Boolean(auth.get(r.target_author_id)?.bannedUntil)
+            ? Date.parse(auth.get(r.target_author_id)?.bannedUntil ?? '') >
+              Date.now()
             : false,
           targetSnapshot: r.target_snapshot,
           media: media.get(key) ?? [],
@@ -276,59 +274,22 @@ moderationRouter.post('/moderation/content', async (req, res, next) => {
       res.status(400).json({ error: 'Нужны kind и targetId (uuid)' });
       return;
     }
-    const { table, author } = TARGETS[kind];
-
-    const existing = await fetchOnce<Record<string, unknown>>(
-      table,
-      `id, ${author}`,
-      (q) => q.eq('id', targetId),
-    );
-    if (existing.length === 0) {
-      res.status(404).json({ error: 'Объект уже не существует' });
-      return;
-    }
-    const authorId = existing[0][author] as string;
-
-    if (action === 'hide' || action === 'unhide') {
-      const { error } = await admin
-        .from(table)
-        .update({
-          hidden_at: action === 'hide' ? new Date().toISOString() : null,
-        })
-        .eq('id', targetId);
-      if (error) throw new Error(`${table}: ${error.message}`);
-    } else if (action === 'delete') {
-      if (kind === 'post') {
-        // A post is deleted as a row: comments and `post_media` go via
-        // foreign keys, and the bucket objects become orphaned and get
-        // cleared by `reap-orphaned-media` — the same path as for a post
-        // deleted by its own author.
-        const { error } = await admin.from('posts').delete().eq('id', targetId);
-        if (error) throw new Error(`posts: ${error.message}`);
-      } else {
-        // A comment or message becomes a tombstone, as the app itself does
-        // (`delete_own_comment`, `delete_own_room_message`): the row is
-        // needed so the reply thread under it isn't cut off. Moderation
-        // deliberately has no second deletion semantics of its own.
-        const patch: Record<string, unknown> = {
-          deleted_at: new Date().toISOString(),
-          text: '',
-        };
-        if (kind === 'room_message') patch.media = [];
-        const { error } = await admin
-          .from(table)
-          .update(patch)
-          .eq('id', targetId);
-        if (error) throw new Error(`${table}: ${error.message}`);
-      }
-    } else {
+    if (action !== 'hide' && action !== 'unhide' && action !== 'delete') {
       res.status(400).json({ error: 'action: hide, unhide или delete' });
       return;
     }
-
-    if (notifyAuthor && action !== 'unhide') {
-      await enqueue(authorId, 'moderation_notice', note);
+    const { error } = await admin.rpc('moderate_content', {
+      p_kind: kind,
+      p_target_id: targetId,
+      p_action: action,
+      p_notify_author: notifyAuthor === true,
+      p_note: typeof note === 'string' ? note : null,
+    });
+    if (error?.code === 'PT404') {
+      res.status(404).json({ error: 'Объект уже не существует' });
+      return;
     }
+    if (error) throw new Error(`moderate_content: ${error.message}`);
     res.json({ ok: true });
   } catch (error) {
     next(error);

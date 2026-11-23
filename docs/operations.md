@@ -107,8 +107,8 @@ truth is Play Console and Firebase, not git.
 
 ## Release
 
-The current candidate is **0.19.3+80** in `app/pubspec.yaml`. See
-[the changelog](../CHANGELOG.md#0193) for the mobile and local console changes.
+The current candidate is **0.19.4+81** in `app/pubspec.yaml`. See
+[the changelog](../CHANGELOG.md#0194) for the mobile and local console changes.
 
 For Android, send `develop` to `main` through a pull request and merge after
 the checks pass. Synchronize `develop` from the merged `main` and push the
@@ -143,6 +143,10 @@ On 2026-11-23, production recorded `20261122000000` to make the first newly
 uploaded profile photo the avatar. The existing RPC signature supports
 installed clients. An authenticated gallery probe reproduced the original
 behavior, verified the dry run, and confirmed the change after commit.
+
+Production also recorded `20261123000000` on 2026-11-23. It adds
+caller-scoped group-room retry tokens, atomic content moderation with its
+notification, and server-side news engagement counts.
 
 Deploy the updated `send-push` separately to activate retries in production.
 The migration preserves the previous sender's claim RPC during the rollout.

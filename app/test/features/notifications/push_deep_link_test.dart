@@ -33,6 +33,11 @@ void main() {
       }
     });
 
+    test('each connection push produces a distinct navigation event', () {
+      const data = {'kind': 'connection_request'};
+      expect(pushTargetFrom(data), isNot(equals(pushTargetFrom(data))));
+    });
+
     test('the feed answers everything that is only "something is new"', () {
       for (final kind in ['new_post', 'digest', 'inactive_week']) {
         expect(pushTargetFrom({'kind': kind}), isA<FeedTarget>(), reason: kind);

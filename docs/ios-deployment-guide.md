@@ -117,7 +117,7 @@ Alternatively let Xcode Cloud archive on its stable image.
 `pubspec.yaml` is the app-version/build source. Runner keeps
 `VERSIONING_SYSTEM` disabled and `CURRENT_PROJECT_VERSION` tied to
 `$(FLUTTER_BUILD_NUMBER)`; do not enable Cloud's independent build counter.
-The current candidate is 0.19.3 (build 80). Confirm that this build number is
+The current candidate is 0.19.4 (build 81). Confirm that this build number is
 available in App Store Connect before uploading.
 
 ## 8. Upload to App Store Connect

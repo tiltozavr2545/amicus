@@ -1,17 +1,14 @@
 # App Store Listing Draft — Amicus (English, U.S.)
 
-Store copy for the current **0.19.3 (build 80)** candidate. The mobile feature
-copy was checked against 0.19.2 on 2026-11-20. The notes below cover the 0.19.2
-mobile changes and can be used when they are new to the intended audience.
-Review the copy against the submitted build and use App Store Connect to
-check the current metadata and approval status.
+Store copy for the current **0.19.4 (build 81)** candidate. Check App Store
+Connect for the current metadata and approval status before submitting.
 
 ## What's New
 
 ```
-Your profile and your Connections' profiles now share the same layout. On your profile, tap the camera to manage photos or the pencil to edit your name.
+Retrying a group chat after a connection error opens the same chat. Tapping another Connections notification opens your Connections again.
 
-Posts appear in separate cards again, and the app icon has a new gradient that matches the Amicus colors.
+The feed keeps its latest results when you go offline, and writing a post is more reliable when you publish or reopen a saved draft.
 ```
 
 ## Promotional Text (170 char max)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type {
   NewsDraft,
   NewsMedia,
@@ -142,15 +142,11 @@ export function News() {
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<NewsDraft[]>([]);
   const publishToken = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (data) setDrafts(data.drafts);
-  }, [data]);
 
   if (error) return <Fail message={error} onRetry={reload} />;
   if (!data) return <Loading>Загружаю новости…</Loading>;
+  const { drafts } = data;
 
   async function run(
     label: string,
@@ -246,11 +242,6 @@ export function News() {
       reload();
     });
 
-  const saveDrafts = async (next: NewsDraft[]) => {
-    setDrafts(next);
-    await send('/news/drafts', 'PUT', { drafts: next });
-  };
-
   const keepDraft = () =>
     run('draft', async () => {
       const draft: NewsDraft = {
@@ -259,8 +250,9 @@ export function News() {
         media,
         updatedAt: new Date().toISOString(),
       };
-      await saveDrafts([draft, ...drafts]);
+      await send(`/news/drafts/${draft.id}`, 'PUT', draft);
       clear();
+      reload();
     });
 
   return (
@@ -419,9 +411,10 @@ export function News() {
                         type="button"
                         disabled={!!busy}
                         onClick={() =>
-                          run('drop-draft', () =>
-                            saveDrafts(drafts.filter((x) => x.id !== d.id)),
-                          )
+                          run('drop-draft', async () => {
+                            await send(`/news/drafts/${d.id}`, 'DELETE');
+                            reload();
+                          })
                         }
                       >
                         Удалить черновик

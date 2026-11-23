@@ -83,6 +83,15 @@ a {
   margin: 2px 8px 35px;
 }
 
+.brand-icon {
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 10px;
+  background:
+    url("../../app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@2x.png")
+    center / cover;
+}
+
 .brand-mark {
   position: relative;
   flex: 0 0 40px;

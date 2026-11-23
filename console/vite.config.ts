@@ -1,7 +1,15 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 // The API port comes from the same .env the server reads: keeping the same
 // number written down in two places is a guaranteed way to make them diverge.
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
+
+const appIcon = fileURLToPath(
+  new URL(
+    '../app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-60x60@2x.png',
+    import.meta.url,
+  ),
+);
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -14,6 +22,7 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
+      fs: { allow: [searchForWorkspaceRoot(process.cwd()), appIcon] },
       proxy: {
         '/api': {
           target: `http://127.0.0.1:${apiPort}`,

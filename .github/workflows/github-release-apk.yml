@@ -40,6 +40,18 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
 
+      - name: Verify the source commit matches the release tag
+        working-directory: ${{ github.workspace }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          tag_commit=$(git rev-parse --verify --end-of-options "refs/tags/${TAG}^{commit}")
+          if [ "$(git rev-parse HEAD)" != "$tag_commit" ]; then
+            echo "::error::The selected ref must resolve to the release tag's commit."
+            exit 1
+          fi
+
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.21.0
         with:
           flutter-version: "3.32.8"

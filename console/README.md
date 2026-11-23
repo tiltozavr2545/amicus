@@ -122,6 +122,12 @@ excludes terminal delivery failures.
 
 ### About the news editor
 
+Draft saves and removals update a single draft ID. The server serializes writes
+and replaces the draft file atomically, so one tab can save a draft while
+another manages a different draft. Published comment and reaction totals are
+calculated by the database, independent of the Data API page size.
+
+
 - The editor can reorder media and edit or delete published posts. Publishing
   to the feed sends no push notifications (migration `20260820190000`).
 - **Editing rewrites the media entirely.** Otherwise there is no way to assign

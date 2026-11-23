@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +22,7 @@ class _FakeFeedRepository implements FeedRepository {
 
   /// Stands in for the server (or the network) refusing the submission.
   bool createThrows = false;
+  Completer<void>? publication;
 
   /// Recorded calls to [updatePost], for the edit-mode tests.
   int updateCalls = 0;
@@ -56,6 +59,7 @@ class _FakeFeedRepository implements FeedRepository {
     texts.add(text);
     visibilities.add(visibility);
     if (createThrows) throw Exception('rejected');
+    await publication?.future;
   }
 
   @override
@@ -80,8 +84,14 @@ class _FakeFeedRepository implements FeedRepository {
 
 class _Drafts extends PostDraftStore {
   PostDraft? value;
+  bool failRead = false;
+
   @override
-  Future<PostDraft?> load(String user) async => value;
+  Future<PostDraft?> load(String user) async {
+    if (failRead) throw StateError('Media is unavailable');
+    return value;
+  }
+
   @override
   Future<void> save(String user, PostDraft draft) async {
     value = draft;
@@ -120,6 +130,54 @@ Future<void> _tapSave(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('Closing after a restore failure preserves the saved draft', (
+    tester,
+  ) async {
+    final drafts = _Drafts()
+      ..failRead = true
+      ..value = const PostDraft(
+        token: 'saved-token',
+        text: 'Saved story',
+        visibility: PostVisibility.connections,
+        media: [],
+      );
+    await tester.pumpWidget(_wrap(_FakeFeedRepository(), drafts: drafts));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(drafts.value?.text, 'Saved story');
+  });
+
+  testWidgets('The composer is read-only while publication is pending', (
+    tester,
+  ) async {
+    final publication = Completer<void>();
+    final repo = _FakeFeedRepository()..publication = publication;
+    await tester.pumpWidget(_wrap(repo));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Ready to publish');
+    await _tapPublish(tester);
+
+    expect(tester.widget<TextField>(find.byType(TextField)).readOnly, isTrue);
+    expect(
+      tester
+          .widget<AbsorbPointer>(
+            find
+                .ancestor(
+                  of: find.byType(TextField),
+                  matching: find.byType(AbsorbPointer),
+                )
+                .first,
+          )
+          .absorbing,
+      isTrue,
+    );
+
+    publication.complete();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     'A new composer restores text, audience and token, then clears after publication',
     (tester) async {

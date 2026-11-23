@@ -130,6 +130,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
   String? _draftUser;
   Timer? _draftTimer;
   bool _draftReady = false;
+  bool _draftChanged = false;
   bool _published = false;
 
   Future<void> _restoreDraft() async {
@@ -161,6 +162,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
 
   void _scheduleDraft() {
     if (_isEditing || !_draftReady || _published) return;
+    _draftChanged = true;
     _draftTimer?.cancel();
     _draftTimer = Timer(const Duration(milliseconds: 250), _saveDraft);
   }
@@ -169,7 +171,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
     _draftTimer?.cancel();
     final store = _draftStore;
     final user = _draftUser;
-    if (store == null || user == null || !_draftReady || _published) return;
+    if (store == null || user == null || !_draftChanged || _published) return;
     unawaited(
       store
           .save(
@@ -215,7 +217,6 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
       _draftStore = ref.read(postDraftStoreProvider);
       _draftUser = ref.read(currentUserIdProvider);
       WidgetsBinding.instance.addObserver(this);
-      _textController.addListener(_scheduleDraft);
       unawaited(_restoreDraft());
     }
   }
@@ -350,6 +351,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
       _slots.addAll(result.items.map(_slotFor));
       _isPicking = false;
     });
+    if (result.items.isNotEmpty) _draftChanged = true;
     _saveDraft();
     if (mediaPickProblemMessage(result.firstProblem, l10n)
         case final message?) {
@@ -384,6 +386,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
 
   void _removeSlot(_Slot slot) {
     setState(() => _slots.remove(slot));
+    _draftChanged = true;
     _saveDraft();
   }
 
@@ -392,10 +395,12 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
       final slot = _slots.removeAt(oldIndex);
       _slots.insert(newIndex, slot);
     });
+    _draftChanged = true;
     _saveDraft();
   }
 
   Future<void> _submit() async {
+    if (_isSubmitting || _isPicking) return;
     final l10n = AppLocalizations.of(context)!;
     final text = _textController.text.trim();
     if (text.isEmpty && _slots.isEmpty) {
@@ -482,7 +487,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
         title: Text(_isEditing ? l10n.editPostTitle : l10n.newPostTitle),
       ),
       body: AbsorbPointer(
-        absorbing: !_isEditing && !_draftReady,
+        absorbing: _isSubmitting || (!_isEditing && !_draftReady),
         child: ContentWidth(
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
@@ -496,6 +501,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
               children: [
                 TextField(
                   controller: _textController,
+                  readOnly: _isSubmitting,
+                  onChanged: (_) => _scheduleDraft(),
                   minLines: 7,
                   maxLines: null,
                   style: Theme.of(context).textTheme.bodyLarge,
@@ -590,7 +597,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen>
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.all(16),
         child: FilledButton(
-          onPressed: _isSubmitting || (!_isEditing && !_draftReady)
+          onPressed:
+              _isSubmitting || _isPicking || (!_isEditing && !_draftReady)
               ? null
               : _submit,
           child: _isSubmitting

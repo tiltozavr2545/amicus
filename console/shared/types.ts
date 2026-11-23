@@ -118,6 +118,7 @@ export type UserDetailResponse = {
     kind: string;
     createdAt: string;
     sentAt: string | null;
+    failedAt: string | null;
   }[];
 };
 

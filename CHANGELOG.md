@@ -2847,3 +2847,19 @@ Build 80.
   the editor.
 - **Update broadcasts:** wait for the audience calculation for the selected
   build before enabling send. Older responses cannot overwrite newer estimates.
+
+## 0.19.4
+
+Build 81.
+
+- **Feed and composer:** keep the latest successful feed result through
+  refresh failures, including an empty page. Lock the editor while a post is
+  being sent and preserve a saved draft when opening it fails.
+- **Rooms and Connections:** retrying group-room creation from the same form
+  returns the original room, and each notification tap can open Connections.
+- **Admin console:** show the Amicus app icon in the sidebar, save news drafts
+  individually across tabs, and calculate full comment and reaction totals.
+  Content moderation commits with the selected notification. User and report
+  views show terminal push failures and account ban expiry accurately.
+- **Builds:** run Android debug builds without a release signing key and verify
+  the source commit matches the GitHub release tag before building its APK.

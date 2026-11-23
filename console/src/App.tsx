@@ -37,7 +37,7 @@ export function App() {
       </button>
       <aside className="sidebar">
         <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true" />
+          <span className="brand-icon" aria-hidden="true" />
           <div>
             <p className="brand">Amicus</p>
             <p className="brand-sub">Админ-консоль</p>

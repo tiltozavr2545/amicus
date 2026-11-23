@@ -336,8 +336,14 @@ export function UserDetail() {
                   <td className="mono">{n.kind}</td>
                   <td className="muted">{date(n.createdAt)}</td>
                   <td>
-                    <span className={`tag ${n.sentAt ? 'good' : 'warn'}`}>
-                      {n.sentAt ? 'ушло' : 'в очереди'}
+                    <span
+                      className={`tag ${n.failedAt ? 'bad' : n.sentAt ? 'good' : 'warn'}`}
+                    >
+                      {n.failedAt
+                        ? 'ошибка доставки'
+                        : n.sentAt
+                          ? 'ушло'
+                          : 'в очереди'}
                     </span>
                   </td>
                 </tr>
